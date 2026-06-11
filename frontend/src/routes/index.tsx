@@ -527,7 +527,7 @@ function PlanCard({ plan }: { plan: PlanTier }) {
     >
       {featured && (
         <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 animate-bob rounded-full bg-accent px-4 py-1.5 text-xs font-bold tracking-wide text-accent-foreground shadow-soft [animation-duration:5s]">
-          Most chosen
+          Recommended
         </div>
       )}
       <h3 className={"font-display text-[23px] font-semibold " + (featured ? "" : "text-primary")}>
@@ -585,11 +585,15 @@ function HealthRing() {
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") {
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!el || reduced || typeof IntersectionObserver === "undefined") {
       setActive(true);
       setNum(DEMO_SCORE);
       return;
     }
+    let raf = 0;
     const io = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
@@ -598,15 +602,18 @@ function HealthRing() {
         const tick = (t: number) => {
           const p = Math.min((t - t0) / 1800, 1);
           setNum(Math.round(DEMO_SCORE * (1 - Math.pow(1 - p, 3))));
-          if (p < 1) requestAnimationFrame(tick);
+          if (p < 1) raf = requestAnimationFrame(tick);
         };
-        requestAnimationFrame(tick);
+        raf = requestAnimationFrame(tick);
         io.disconnect();
       },
       { threshold: 0.5 },
     );
     io.observe(el);
-    return () => io.disconnect();
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   return (

@@ -46,7 +46,12 @@ export function useRevealGroup<T extends HTMLElement>(threshold = 0.16) {
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
-    const targets = root.querySelectorAll<HTMLElement>("[data-reveal]");
+    // querySelectorAll only matches descendants — include the root itself when tagged.
+    const targets = [
+      ...(root.matches("[data-reveal]") ? [root] : []),
+      ...root.querySelectorAll<HTMLElement>("[data-reveal]"),
+    ];
+    if (targets.length === 0) return;
     if (typeof IntersectionObserver === "undefined") {
       targets.forEach((t) => t.classList.add("in"));
       return;
