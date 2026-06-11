@@ -10,5 +10,6 @@ Subscription home maintenance for the GTA (Oakville · Mississauga · Milton).
 | `ops/` | Deployment and operations notes |
 
 Build plan: the GitHub issues, labeled by week (`week-1` … `week-8`).
+Backend tests use Testcontainers — a running Docker daemon is required for `./gradlew test`/`build` (compile targets don't need it).
 Workflow: see `.claude/skills/homekept-feature.md` — branch → PR → CI → review → squash-merge.
 Anything labeled `hand-write` (migrations, auth, `application.yml`) is written by hand, not generated.
