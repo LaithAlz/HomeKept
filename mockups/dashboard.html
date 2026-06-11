@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Owner's Console — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Spline+Sans+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Caveat:wght@600&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT — DRAWING SET / SHEET 2 OF 3 — OWNER'S CONSOLE */
+:root{
+  --paper:#F2EDDF;--ink:#1C2B45;--line:#2A4690;
+  --line-soft:rgba(42,70,144,.16);--line-faint:rgba(42,70,144,.08);
+  --blue:#15306E;--orange:#FF4D00;--cream:#F6F2E6;--ok:#1E7A4D;--hand:#C93A00;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:"Bricolage Grotesque",sans-serif;font-optical-sizing:auto;
+  background-image:
+    linear-gradient(var(--line-faint) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line-faint) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+::selection{background:var(--orange);color:var(--cream)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+body::after{content:"";position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+.mono{font-family:"Spline Sans Mono",monospace}
+.hand{font-family:"Caveat",cursive;color:var(--hand)}
+.wrap{max-width:1280px;margin:0 auto;padding:0 40px}
+@media(max-width:720px){.wrap{padding:0 20px}}
+
+header{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1.5px solid var(--ink)}
+.bar{display:flex;align-items:center;justify-content:space-between;height:64px;gap:24px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.logo .sq{width:14px;height:14px;background:var(--orange);transform:rotate(45deg);flex:none}
+.bar nav{display:flex;gap:2px;font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.1em}
+.bar nav a{padding:8px 14px;border:1px solid transparent;transition:.2s}
+.bar nav a:hover{border-color:var(--ink)}
+.bar nav a.now{background:var(--ink);color:var(--paper)}
+.avatar{width:36px;height:36px;border:1.5px solid var(--ink);background:var(--cream);display:grid;place-items:center;font-family:"Spline Sans Mono",monospace;font-size:11px;font-weight:600}
+
+/* entrance choreography */
+.up{opacity:0;transform:translateY(22px);animation:up .7s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+
+.greet{padding:56px 0 36px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.greet h1{font-size:clamp(40px,4.6vw,64px);font-weight:800;letter-spacing:-.035em;line-height:1}
+.greet h1 em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--orange)}
+.greet .addr{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--line);margin-top:16px;display:flex;align-items:center;gap:12px}
+.greet .addr::before{content:"";width:30px;height:1.5px;background:var(--orange)}
+.greet .today{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.14em;color:var(--line);text-align:right;line-height:2}
+.greet .today b{color:var(--ink)}
+
+/* stat strip */
+.strip{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--ink);background:var(--cream);margin-bottom:32px}
+@media(max-width:760px){.strip{grid-template-columns:repeat(2,1fr)}}
+.strip div{padding:18px 22px;border-right:1px solid var(--ink)}
+.strip div:last-child{border-right:0}
+@media(max-width:760px){.strip div:nth-child(2n){border-right:0}.strip div:nth-child(-n+2){border-bottom:1px solid var(--ink)}}
+.strip .n{font-size:30px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.strip .n s{text-decoration:none;color:var(--orange);font-size:18px}
+.strip .l{font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.18em;color:var(--line);margin-top:4px}
+
+/* console grid */
+.console{display:grid;grid-template-columns:repeat(12,1fr);gap:26px;padding-bottom:90px}
+.card{position:relative;border:1.5px solid var(--ink);background:var(--cream);padding:28px}
+.card .tag{position:absolute;top:-1px;left:-1px;background:var(--ink);color:var(--paper);font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.16em;padding:6px 12px}
+.card.c-score{grid-column:span 4}
+.card.c-visit{grid-column:span 8}
+.card.c-map{grid-column:span 5}
+.card.c-ledger{grid-column:span 7}
+.card.c-bill{grid-column:span 12}
+@media(max-width:1000px){.card{grid-column:span 12 !important}}
+
+/* score gauge */
+.gauge{display:flex;flex-direction:column;align-items:center;padding-top:26px}
+.gauge svg{width:220px;height:130px;overflow:visible}
+.gauge .track{stroke:var(--line-soft);stroke-width:14;fill:none}
+.gauge .arc{stroke:var(--ink);stroke-width:14;fill:none;stroke-dasharray:251.3;stroke-dashoffset:251.3;transition:stroke-dashoffset 1.6s cubic-bezier(.3,.7,.2,1) .4s}
+.gauge .num{font-size:64px;font-weight:800;letter-spacing:-.04em;line-height:1;margin-top:-58px;font-variant-numeric:tabular-nums}
+.gauge .den{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.2em;color:var(--line);margin-top:6px}
+.delta{display:inline-flex;align-items:center;gap:6px;margin-top:14px;font-family:"Spline Sans Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;color:var(--ok);border:1px solid var(--ok);padding:5px 10px}
+.flag{margin-top:20px;border-top:1px dashed var(--line);padding-top:16px;font-size:13px;line-height:1.6;color:#3A4660;width:100%}
+.flag b{color:var(--orange);font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.14em}
+
+/* next visit */
+.visit-grid{display:grid;grid-template-columns:auto 1fr;gap:34px;padding-top:14px}
+@media(max-width:640px){.visit-grid{grid-template-columns:1fr}}
+.datebox{border:1.5px solid var(--ink);background:#fff;text-align:center;min-width:150px;align-self:start}
+.datebox .m{background:var(--orange);color:#fff;font-family:"Spline Sans Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.24em;padding:8px}
+.datebox .d{font-size:64px;font-weight:800;letter-spacing:-.04em;padding:8px 18px 2px;font-variant-numeric:tabular-nums}
+.datebox .wd{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.2em;color:var(--line);padding-bottom:14px}
+.countdown{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.16em;color:var(--orange);margin-top:10px;text-align:center}
+.vmeta{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.12em;color:var(--line);display:flex;gap:22px;flex-wrap:wrap}
+.vmeta b{color:var(--ink)}
+.svc{margin-top:20px;display:flex;flex-direction:column;gap:0;border:1px solid var(--line-soft)}
+.svc li{display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid var(--line-soft);font-size:14.5px;background:#fff}
+.svc li:last-child{border-bottom:0}
+.svc .box{width:15px;height:15px;border:1.5px solid var(--ink);flex:none;position:relative}
+.svc .st{margin-left:auto;font-family:"Spline Sans Mono",monospace;font-size:9px;letter-spacing:.18em;color:var(--line)}
+.techline{margin-top:18px;display:flex;align-items:center;gap:12px;font-size:14px}
+.techline .tdot{width:34px;height:34px;border:1.5px solid var(--ink);background:var(--paper);display:grid;place-items:center;font-family:"Spline Sans Mono",monospace;font-size:10px;font-weight:600}
+.techline .hand{font-size:19px;transform:rotate(-2deg)}
+
+/* system map */
+.map svg{width:100%;height:auto;cursor:crosshair}
+.map .s{stroke:var(--line);stroke-width:1.4;fill:none}
+.map .thin{stroke-width:1;opacity:.8}
+.map .dash{stroke-dasharray:4 4}
+.sysdot{transform-box:fill-box;transform-origin:center}
+.sysdot.ok{fill:var(--ok)}
+.sysdot.due{fill:var(--orange);animation:throb 1.6s ease-in-out infinite}
+@keyframes throb{0%,100%{transform:scale(1)}50%{transform:scale(1.5)}}
+.legend{display:flex;gap:24px;margin-top:16px;font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.16em;color:var(--line)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px}
+.maplist{margin-top:18px;border-top:1px dashed var(--line);padding-top:6px}
+.maplist li{display:flex;justify-content:space-between;padding:9px 0;font-size:13.5px;border-bottom:1px solid var(--line-faint)}
+.maplist li:last-child{border-bottom:0}
+.maplist .st{font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.14em;color:var(--ok)}
+.maplist .st.due{color:var(--orange)}
+
+/* ledger */
+.ledger{width:100%;border-collapse:collapse;margin-top:8px}
+.ledger tr{border-bottom:1px solid var(--line-faint);opacity:0;transform:translateX(-14px);animation:lrow .55s cubic-bezier(.2,.7,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes lrow{to{opacity:1;transform:none}}
+.ledger tr:hover{background:#fff}
+.ledger td{padding:13px 10px;font-size:14px;vertical-align:top}
+.ledger .when{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.12em;color:var(--line);white-space:nowrap;padding-top:16px}
+.ledger .ic{width:30px;height:30px;border:1.5px solid var(--ink);display:grid;place-items:center;font-size:13px;background:#fff}
+.ledger .t{font-weight:700;letter-spacing:-.01em}
+.ledger .dd{color:#3A4660;font-size:13px;margin-top:3px;line-height:1.5}
+.ledger .actor{font-family:"Spline Sans Mono",monospace;font-size:9px;letter-spacing:.16em;color:var(--orange);white-space:nowrap;padding-top:17px;text-align:right}
+
+/* billing */
+.bill{display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap;padding-top:8px}
+.bill .plan{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.bill .plan em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--line)}
+.bill .meta{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.12em;color:var(--line);line-height:2.1}
+.bill .meta b{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;gap:10px;font-family:"Spline Sans Mono",monospace;font-size:12px;font-weight:600;letter-spacing:.1em;padding:13px 22px;border:1.5px solid var(--ink);cursor:pointer;transition:transform .2s,box-shadow .2s;background:transparent;color:var(--ink)}
+.btn.solid{background:var(--orange);border-color:var(--orange);color:#fff}
+.btn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--ink)}
+
+footer{border-top:1.5px solid var(--ink);padding:22px 0;font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.14em;color:var(--line)}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{border-bottom:1px solid var(--line)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="index.html"><span class="sq"></span>HomeKept</a>
+    <nav>
+      <a href="index.html">SHEET 1 — SITE</a>
+      <a class="now" href="dashboard.html">SHEET 2 — OWNER</a>
+      <a href="tech.html">SHEET 3 — FIELD</a>
+    </nav>
+    <div class="avatar">PS</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="greet">
+    <div class="up">
+      <h1>Good <em id="tod">evening</em>, Priya.</h1>
+      <p class="addr">14 MAPLE RIDGE CRT · ERIN MILLS · MISSISSAUGA</p>
+    </div>
+    <div class="today up" style="--d:.1s">
+      <b id="today-long"></b><br/>COMPLETE PLAN · YEAR 1 · DWG № HK-014
+    </div>
+  </div>
+
+  <div class="strip up" style="--d:.15s">
+    <div><div class="n" data-count="14">0</div><div class="l">VISITS COMPLETED</div></div>
+    <div><div class="n" data-count="132">0</div><div class="l">PHOTOS ON FILE</div></div>
+    <div><div class="n" data-count="96">0</div><div class="l">TASKS CHECKED OFF</div></div>
+    <div><div class="n"><span data-count="1">0</span><s> ⚑</s></div><div class="l">ITEM FLAGGED</div></div>
+  </div>
+
+  <div class="console">
+
+    <!-- HOME HEALTH -->
+    <section class="card c-score up" style="--d:.25s">
+      <span class="tag">FIG. 2.1 — HOME HEALTH</span>
+      <div class="gauge">
+        <svg viewBox="0 0 220 130">
+          <path class="track" d="M30 110 A80 80 0 0 1 190 110"/>
+          <path class="arc" id="arc" d="M30 110 A80 80 0 0 1 190 110"/>
+          <line x1="110" y1="110" x2="110" y2="98" stroke="#2A4690" stroke-width="1"/>
+        </svg>
+        <div class="num"><span id="score">0</span></div>
+        <div class="den">OF 100 · Q2 ASSESSMENT</div>
+        <div class="delta">▲ +6 SINCE LAST QUARTER</div>
+        <p class="flag"><b>⚑ FLAGGED:</b> Dryer vent due for cleaning. Added to your next visit automatically.</p>
+      </div>
+    </section>
+
+    <!-- NEXT VISIT -->
+    <section class="card c-visit up" style="--d:.3s">
+      <span class="tag">FIG. 2.2 — NEXT SCHEDULED VISIT</span>
+      <div class="visit-grid" style="margin-top:18px">
+        <div>
+          <div class="datebox">
+            <div class="m" id="nv-month">—</div>
+            <div class="d" id="nv-day">—</div>
+            <div class="wd">WEDNESDAY</div>
+          </div>
+          <p class="countdown" id="nv-count">T-MINUS — DAYS</p>
+        </div>
+        <div>
+          <div class="vmeta">
+            <span>WINDOW <b>1:00 – 4:00 PM</b></span>
+            <span>DURATION <b>~90 MIN</b></span>
+            <span>ACCESS <b>LOCKBOX</b></span>
+          </div>
+          <ul class="svc">
+            <li><span class="box"></span>Furnace filter swap<span class="st">SCHEDULED</span></li>
+            <li><span class="box"></span>AC startup check<span class="st">SCHEDULED</span></li>
+            <li><span class="box"></span>Gutter clearing<span class="st">SCHEDULED</span></li>
+            <li><span class="box"></span>Dryer vent cleaning<span class="st" style="color:var(--orange)">⚑ ADDED</span></li>
+          </ul>
+          <div class="techline">
+            <span class="tdot">MT</span>
+            <span>Marcus T. — your lead technician, 14th visit</span>
+            <span class="hand">“see you Wednesday”</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SYSTEM MAP -->
+    <section class="card c-map up" style="--d:.35s">
+      <span class="tag">FIG. 2.3 — SYSTEM MAP</span>
+      <div class="map" style="margin-top:20px">
+        <svg viewBox="0 0 420 300">
+          <line class="s" x1="20" y1="240" x2="400" y2="240"/>
+          <line class="s" x1="100" y1="118" x2="100" y2="240"/>
+          <line class="s" x1="320" y1="118" x2="320" y2="240"/>
+          <path class="s" d="M84 118 L210 46 L336 118"/>
+          <line class="s thin" x1="100" y1="118" x2="320" y2="118"/>
+          <path class="s thin dash" d="M100 240 V286 H320 V240"/>
+          <rect class="s thin" x="188" y="250" width="30" height="32"/>
+          <rect class="s thin" x="248" y="252" width="22" height="30" rx="7"/>
+          <line class="s thin" x1="320" y1="122" x2="328" y2="122"/>
+          <line class="s thin" x1="328" y1="122" x2="328" y2="240"/>
+          <!-- status dots -->
+          <circle class="sysdot ok" cx="203" cy="266" r="5"/>   <!-- furnace -->
+          <circle class="sysdot ok" cx="259" cy="267" r="5"/>   <!-- tank -->
+          <circle class="sysdot ok" cx="328" cy="126" r="5"/>   <!-- gutters -->
+          <circle class="sysdot ok" cx="210" cy="92" r="5"/>    <!-- detectors -->
+          <circle class="sysdot due" cx="140" cy="200" r="5"/>  <!-- dryer vent -->
+        </svg>
+        <div class="legend">
+          <span><i style="background:var(--ok)"></i>ON SCHEDULE</span>
+          <span><i style="background:var(--orange)"></i>ATTENTION DUE</span>
+        </div>
+        <ul class="maplist">
+          <li><span>Furnace &amp; HVAC</span><span class="st">OK — CHECKED MAY</span></li>
+          <li><span>Water heater</span><span class="st">OK — FLUSH AUG</span></li>
+          <li><span>Gutters &amp; exterior</span><span class="st">OK — CLEARED APR</span></li>
+          <li><span>Smoke &amp; CO detectors</span><span class="st">OK — TESTED MAY</span></li>
+          <li><span>Dryer vent</span><span class="st due">⚑ DUE — NEXT VISIT</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ACTIVITY LEDGER -->
+    <section class="card c-ledger up" style="--d:.4s">
+      <span class="tag">FIG. 2.4 — ACTIVITY LEDGER</span>
+      <table class="ledger" style="margin-top:20px">
+        <tr style="--d:.6s">
+          <td class="when" data-ago="1">—</td>
+          <td><div class="t">Reminder sent</div><div class="dd">We confirmed your upcoming Wednesday visit with Marcus.</div></td>
+          <td class="actor">HOMEKEPT</td>
+        </tr>
+        <tr style="--d:.7s">
+          <td class="when" data-ago="6">—</td>
+          <td><div class="t">Visit report uploaded</div><div class="dd">Q2 readiness report — 12 checkpoints, 1 flagged.</div></td>
+          <td class="actor">MARCUS T.</td>
+        </tr>
+        <tr style="--d:.8s">
+          <td class="when" data-ago="6">—</td>
+          <td><div class="t">12 photos added</div><div class="dd">Roof, gutters, and exterior trim from the last walkaround.</div></td>
+          <td class="actor">MARCUS T.</td>
+        </tr>
+        <tr style="--d:.9s">
+          <td class="when" data-ago="6">—</td>
+          <td><div class="t">Visit completed</div><div class="dd">Replaced 2 HVAC filters, tested 4 smoke detectors, cleared front gutters.</div></td>
+          <td class="actor">MARCUS T.</td>
+        </tr>
+        <tr style="--d:1s">
+          <td class="when" data-ago="12">—</td>
+          <td><div class="t">Payment processed</div><div class="dd">Complete plan — $189.00 CAD billed to Visa •• 4321.</div></td>
+          <td class="actor">BILLING</td>
+        </tr>
+        <tr style="--d:1.1s">
+          <td class="when" data-ago="20">—</td>
+          <td><div class="t">Seasonal checklist updated</div><div class="dd">Spring items added: hose bib reconnect, AC startup, gutter clear.</div></td>
+          <td class="actor">HOMEKEPT</td>
+        </tr>
+      </table>
+    </section>
+
+    <!-- BILLING -->
+    <section class="card c-bill up" style="--d:.45s">
+      <span class="tag">FIG. 2.5 — SUBSCRIPTION</span>
+      <div class="bill" style="margin-top:16px">
+        <div class="plan">Complete <em>— $189/mo</em></div>
+        <div class="meta">
+          NEXT INVOICE <b id="next-inv">—</b> · METHOD <b>VISA •• 4321</b> · SINCE <b>JAN 2026</b>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <a class="btn" href="#">MANAGE BILLING</a>
+          <a class="btn solid" href="#">REQUEST EXTRA VISIT +</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>OWNER'S CONSOLE — SHEET 2 OF 3</span>
+    <span><a href="index.html">← SHEET 1</a> · <a href="tech.html">SHEET 3 →</a></span>
+  </div>
+</footer>
+
+<script>
+const now = new Date();
+
+/* greeting */
+const h = now.getHours();
+document.getElementById('tod').textContent = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+document.getElementById('today-long').textContent = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Toronto', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+}).format(now).toUpperCase();
+
+/* next Wednesday */
+const nv = new Date(now);
+nv.setDate(nv.getDate() + (((3 - nv.getDay() + 7) % 7) || 7));
+document.getElementById('nv-month').textContent = nv.toLocaleDateString('en-CA', { month: 'long' }).toUpperCase();
+document.getElementById('nv-day').textContent = nv.getDate();
+const days = Math.ceil((nv - now) / 86400000);
+document.getElementById('nv-count').textContent = 'T-MINUS ' + String(days).padStart(2, '0') + ' DAYS';
+
+/* next invoice = 1st of next month */
+const inv = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+document.getElementById('next-inv').textContent =
+  inv.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }).toUpperCase();
+
+/* ledger relative dates */
+document.querySelectorAll('.when[data-ago]').forEach(td => {
+  const d = new Date(now); d.setDate(d.getDate() - +td.dataset.ago);
+  td.textContent = d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }).toUpperCase();
+});
+
+/* gauge sweep + score count */
+const SCORE = 84, arc = document.getElementById('arc');
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  arc.style.strokeDashoffset = (251.3 * (1 - SCORE / 100)).toFixed(1);
+}));
+const sEl = document.getElementById('score'); const t0 = performance.now();
+(function tick(t) {
+  const p = Math.min((t - t0) / 1800, 1), eased = 1 - Math.pow(1 - p, 3);
+  sEl.textContent = Math.round(SCORE * eased);
+  if (p < 1) requestAnimationFrame(tick);
+})(t0);
+
+/* counters */
+document.querySelectorAll('[data-count]').forEach(el => {
+  const target = +el.dataset.count, s0 = performance.now();
+  (function tick(t) {
+    const p = Math.min((t - s0) / 1300, 1), eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased).toLocaleString('en-CA');
+    if (p < 1) requestAnimationFrame(tick);
+  })(s0);
+});
+</script>
+</body>
+</html>

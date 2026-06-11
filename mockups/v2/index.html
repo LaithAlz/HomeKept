@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HomeKept — Home maintenance on autopilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   HOMEKEPT v2 — "Soft Keeping"
+   Lovable's warm cream + deep pine DNA, elevated:
+   Fraunces serif, organic shapes, breathing light, gentle motion.
+   ============================================================ */
+:root{
+  --cream:#F8F5EE;
+  --cream-2:#F0EBDF;
+  --card:#FFFEFA;
+  --pine:#1E3A2B;
+  --pine-2:#2A4D39;
+  --moss:#5E7D62;
+  --sage:#A9BFAC;
+  --honey:#DE8F3F;
+  --honey-soft:#F4D9B8;
+  --ink:#22312A;
+  --mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--cream);color:var(--ink);
+  font-family:"Figtree",sans-serif;font-size:16px;line-height:1.6;
+  overflow-x:hidden;
+}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+img,svg{display:block}
+.serif{font-family:"Fraunces",serif;font-optical-sizing:auto}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+@media(max-width:680px){.wrap{padding:0 20px}}
+
+/* ambient background light */
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:560px;height:560px;background:rgba(169,191,172,.4);top:-180px;right:-140px;animation:drift 16s ease-in-out infinite alternate}
+.glow.g2{width:460px;height:460px;background:rgba(244,217,184,.5);top:40vh;left:-200px;animation:drift 20s ease-in-out infinite alternate-reverse}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(40px,30px) scale(1.08)}}
+main,header,footer{position:relative;z-index:1}
+
+/* ---------- nav ---------- */
+.nav{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;gap:8px;
+  background:rgba(255,254,250,.8);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--ring);border-radius:999px;padding:8px 8px 8px 20px;
+  box-shadow:0 10px 30px -12px rgba(30,58,43,.18);
+  width:min(1100px,calc(100% - 40px));justify-content:space-between;
+  animation:navin .8s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes navin{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translate(-50%,0)}}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-.01em;color:var(--pine)}
+.leaf{width:26px;height:26px;background:var(--pine);border-radius:50% 50% 50% 6px;position:relative;flex:none}
+.leaf::after{content:"";position:absolute;inset:8px;border-radius:50% 50% 50% 4px;background:var(--honey)}
+.nav-links{display:flex;gap:4px;font-size:14.5px;font-weight:500;color:var(--mut)}
+.nav-links a{padding:9px 15px;border-radius:999px;transition:.25s}
+.nav-links a:hover{background:var(--cream-2);color:var(--pine)}
+@media(max-width:860px){.nav-links{display:none}}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:15px;
+  padding:13px 24px;border-radius:999px;cursor:pointer;border:0;
+  transition:transform .25s cubic-bezier(.3,1.4,.5,1),box-shadow .25s,background .25s;
+}
+.btn.honey{background:var(--honey);color:var(--pine);box-shadow:0 8px 20px -8px rgba(222,143,63,.7)}
+.btn.honey:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 14px 28px -10px rgba(222,143,63,.8)}
+.btn.pine{background:var(--pine);color:var(--cream)}
+.btn.pine:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 14px 28px -12px rgba(30,58,43,.55)}
+.btn.ghost{background:transparent;color:var(--pine);border:1.5px solid rgba(30,58,43,.25)}
+.btn.ghost:hover{border-color:var(--pine);transform:translateY(-2px)}
+.btn .arr{transition:transform .25s}
+.btn:hover .arr{transform:translateX(4px)}
+.btn.sm{padding:10px 18px;font-size:14px}
+
+/* ---------- hero ---------- */
+.hero{padding:150px 0 110px;position:relative}
+.hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center}
+@media(max-width:920px){.hero .wrap{grid-template-columns:1fr}}
+.pill{
+  display:inline-flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--pine);
+  background:var(--card);border:1px solid var(--ring);border-radius:999px;padding:8px 16px;
+  box-shadow:0 4px 14px -6px rgba(30,58,43,.15);
+}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:var(--honey);animation:soft-blink 2.4s infinite}
+@keyframes soft-blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+h1{
+  font-family:"Fraunces",serif;font-optical-sizing:auto;
+  font-size:clamp(46px,5.8vw,82px);font-weight:560;line-height:1.04;letter-spacing:-.025em;
+  color:var(--pine);margin-top:26px;
+}
+h1 .line{display:block;overflow:hidden}
+h1 .line span{display:inline-block;transform:translateY(105%);animation:rise 1s cubic-bezier(.2,.8,.2,1) forwards}
+h1 .line:nth-child(2) span{animation-delay:.12s}
+@keyframes rise{to{transform:translateY(0)}}
+h1 em{font-style:italic;font-weight:480;color:var(--moss);position:relative;white-space:nowrap}
+.squiggle{position:absolute;left:0;right:0;bottom:-10px;width:100%;height:14px;overflow:visible}
+.squiggle path{stroke:var(--honey);stroke-width:3.5;fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1s ease .9s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.lede{margin-top:26px;max-width:46ch;font-size:17.5px;color:var(--mut);opacity:0;animation:fade .9s .5s forwards}
+@keyframes fade{to{opacity:1}}
+.hero-ctas{display:flex;align-items:center;gap:18px;margin-top:34px;flex-wrap:wrap;opacity:0;animation:fade .9s .65s forwards}
+.hero-note{font-size:13.5px;color:var(--mut)}
+.hero-note b{display:block;color:var(--pine);font-size:14.5px}
+.trust{display:flex;align-items:center;gap:14px;margin-top:42px;opacity:0;animation:fade .9s .85s forwards}
+.faces{display:flex}
+.face{width:38px;height:38px;border-radius:50%;border:2.5px solid var(--cream);display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;margin-left:-10px}
+.face:first-child{margin-left:0}
+.trust p{font-size:13.5px;color:var(--mut)}
+.trust b{color:var(--pine)}
+.stars{color:var(--honey);letter-spacing:2px}
+
+/* hero visual */
+.hero-vis{position:relative;opacity:0;animation:fade 1s .3s forwards}
+.arch{
+  position:relative;border-radius:200px 200px 36px 36px;overflow:hidden;
+  aspect-ratio:4/5;max-height:560px;width:100%;
+  background:linear-gradient(160deg,var(--sage),var(--moss) 55%,var(--pine));
+  box-shadow:0 30px 60px -28px rgba(30,58,43,.45);
+}
+.arch img{width:100%;height:100%;object-fit:cover}
+.blob{
+  position:absolute;z-index:-1;width:115%;height:108%;top:-4%;left:-8%;
+  background:radial-gradient(circle at 35% 35%,rgba(244,217,184,.85),rgba(169,191,172,.35) 65%,transparent 75%);
+  border-radius:54% 46% 58% 42%/48% 56% 44% 52%;
+  animation:breathe 9s ease-in-out infinite;
+}
+@keyframes breathe{
+  0%,100%{border-radius:54% 46% 58% 42%/48% 56% 44% 52%;transform:rotate(0deg) scale(1)}
+  50%{border-radius:46% 54% 44% 56%/56% 44% 58% 42%;transform:rotate(3deg) scale(1.04)}
+}
+.float-card{
+  position:absolute;bottom:-26px;left:-34px;width:280px;
+  background:var(--card);border:1px solid var(--ring);border-radius:24px;padding:18px;
+  box-shadow:0 24px 48px -20px rgba(30,58,43,.35);
+  animation:bob 6s ease-in-out infinite;
+}
+@media(max-width:680px){.float-card{left:0;bottom:-40px}}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-1.2deg)}50%{transform:translateY(-9px) rotate(-1.2deg)}}
+.float-card .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.float-card .lab{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
+.tagchip{background:rgba(94,125,98,.14);color:var(--moss);font-size:11.5px;font-weight:700;border-radius:999px;padding:4px 10px}
+.float-card h4{font-family:"Fraunces",serif;font-size:19px;font-weight:600;color:var(--pine)}
+.float-card p{font-size:12.5px;color:var(--mut);margin-top:3px}
+.float-card .tech{display:flex;align-items:center;gap:9px;border-top:1px dashed rgba(30,58,43,.15);margin-top:12px;padding-top:12px;font-size:12.5px;color:var(--mut)}
+.float-card .tech .av{width:26px;height:26px;border-radius:50%;background:var(--pine);color:var(--cream);display:grid;place-items:center;font-size:10px;font-weight:700}
+.mini-pill{
+  position:absolute;top:34px;right:-18px;background:var(--pine);color:var(--cream);
+  border-radius:999px;padding:10px 18px;font-size:13px;font-weight:600;
+  box-shadow:0 14px 30px -12px rgba(30,58,43,.5);transform:rotate(3deg);
+  animation:bob2 7s ease-in-out infinite;
+}
+@keyframes bob2{0%,100%{transform:rotate(3deg) translateY(0)}50%{transform:rotate(3deg) translateY(-7px)}}
+.mini-pill span{color:var(--honey-soft)}
+
+/* ---------- marquee ---------- */
+.marq{padding:8px 0 0}
+.marq .inner{
+  background:var(--pine);color:var(--cream);border-radius:999px;overflow:hidden;
+  transform:rotate(-1deg);padding:16px 0;margin:0 -10px;
+}
+.marq .track{display:flex;width:max-content;animation:scroll 32s linear infinite;gap:0}
+.marq:hover .track{animation-play-state:paused}
+@keyframes scroll{to{transform:translateX(-50%)}}
+.marq span{display:flex;align-items:center;gap:28px;padding:0 28px;font-size:14px;font-weight:500;letter-spacing:.04em;white-space:nowrap}
+.marq i{font-style:normal;color:var(--honey)}
+
+/* ---------- reveal util ---------- */
+[data-reveal]{opacity:0;transform:translateY(30px) scale(.985);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--i,0)*.12s)}
+[data-reveal].in{opacity:1;transform:none}
+
+section{padding:110px 0}
+.eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:12.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--honey)}
+.eyebrow::before{content:"";width:26px;height:2px;border-radius:2px;background:var(--honey)}
+h2{font-family:"Fraunces",serif;font-size:clamp(34px,4.2vw,56px);font-weight:560;letter-spacing:-.02em;line-height:1.08;color:var(--pine);margin-top:16px}
+h2 em{font-style:italic;font-weight:480;color:var(--moss)}
+.sub{margin-top:16px;color:var(--mut);max-width:54ch}
+
+/* ---------- how it works ---------- */
+.steps-zone{position:relative}
+.path-svg{position:absolute;top:130px;left:0;width:100%;height:120px;pointer-events:none}
+.path-svg path{stroke:var(--sage);stroke-width:2.5;stroke-dasharray:8 10;fill:none;opacity:.7}
+@media(max-width:920px){.path-svg{display:none}}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:64px}
+@media(max-width:920px){.steps{grid-template-columns:1fr;max-width:480px}}
+.step{position:relative;padding-top:14px}
+.step:nth-child(2){transform:translateY(34px)}
+@media(max-width:920px){.step:nth-child(2){transform:none}}
+.step .num{
+  width:74px;height:74px;border-radius:50% 50% 50% 12px;display:grid;place-items:center;
+  font-family:"Fraunces",serif;font-size:27px;font-weight:600;color:var(--pine);
+  background:var(--card);border:1px solid var(--ring);box-shadow:0 12px 26px -12px rgba(30,58,43,.25);
+  transition:transform .35s cubic-bezier(.3,1.5,.5,1),background .35s,color .35s;
+}
+.step:hover .num{transform:rotate(-8deg) scale(1.08);background:var(--honey);color:#fff}
+.step h3{font-family:"Fraunces",serif;font-size:25px;font-weight:600;color:var(--pine);margin-top:22px}
+.step p{margin-top:10px;font-size:15px;color:var(--mut)}
+
+/* ---------- included ---------- */
+.inc-zone{background:var(--card);border-radius:56px;padding:90px 0;box-shadow:0 1px 0 var(--ring) inset}
+.inc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:60px}
+@media(max-width:1000px){.inc-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.inc-grid{grid-template-columns:1fr}}
+.inc{
+  background:var(--cream);border-radius:28px;padding:28px 24px;
+  transition:transform .35s cubic-bezier(.25,1,.4,1),box-shadow .35s;
+}
+.inc:nth-child(2),.inc:nth-child(4){transform:translateY(20px)}
+@media(max-width:1000px){.inc:nth-child(2),.inc:nth-child(4){transform:none}}
+.inc:hover{transform:translateY(-6px);box-shadow:0 22px 44px -22px rgba(30,58,43,.3)}
+.inc:nth-child(2):hover,.inc:nth-child(4):hover{transform:translateY(14px)}
+.inc .ico{
+  width:50px;height:50px;border-radius:18px;background:rgba(94,125,98,.15);
+  display:grid;place-items:center;transition:.35s;
+}
+.inc:hover .ico{background:var(--pine)}
+.inc .ico svg{width:23px;height:23px;stroke:var(--pine);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;transition:.35s}
+.inc:hover .ico svg{stroke:var(--honey-soft)}
+.inc h3{font-family:"Fraunces",serif;font-size:20px;font-weight:600;color:var(--pine);margin-top:18px}
+.inc ul{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+.inc li{display:flex;gap:9px;font-size:14px;color:var(--mut);align-items:baseline}
+.inc li::before{content:"✓";color:var(--honey);font-weight:700;font-size:12px}
+
+/* ---------- plans ---------- */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:64px;align-items:center}
+@media(max-width:980px){.plans{grid-template-columns:1fr;max-width:460px;margin-inline:auto}}
+.plan{
+  background:var(--card);border:1px solid var(--ring);border-radius:34px;padding:36px 32px;
+  transition:transform .35s cubic-bezier(.25,1,.4,1),box-shadow .35s;position:relative;
+}
+.plan:hover{transform:translateY(-8px);box-shadow:0 28px 56px -26px rgba(30,58,43,.35)}
+.plan .name{font-family:"Fraunces",serif;font-size:23px;font-weight:600;color:var(--pine)}
+.plan .cad{font-size:13px;color:var(--mut);margin-top:4px}
+.plan .price{display:flex;align-items:baseline;gap:5px;margin-top:22px}
+.plan .price .d{font-family:"Fraunces",serif;font-size:54px;font-weight:600;letter-spacing:-.03em;color:var(--pine)}
+.plan .price .per{color:var(--mut);font-size:14px}
+.plan ul{margin-top:24px;padding-top:22px;border-top:1px dashed rgba(30,58,43,.18);display:flex;flex-direction:column;gap:11px}
+.plan li{display:flex;gap:10px;font-size:14.5px;color:var(--ink);align-items:baseline}
+.plan li::before{content:"✓";color:var(--honey);font-weight:800;font-size:12px}
+.plan .btn{width:100%;justify-content:center;margin-top:28px}
+.plan.feat{
+  background:var(--pine);color:var(--cream);border:0;padding:46px 34px;
+  box-shadow:0 34px 64px -26px rgba(30,58,43,.55);
+}
+.plan.feat:hover{transform:translateY(-8px) scale(1.01)}
+.plan.feat .name,.plan.feat .price .d{color:var(--cream)}
+.plan.feat .cad,.plan.feat .price .per{color:var(--sage)}
+.plan.feat li{color:#E8EFE6}
+.plan.feat ul{border-top-color:rgba(248,245,238,.2)}
+.badge{
+  position:absolute;top:-15px;left:50%;transform:translateX(-50%);
+  background:var(--honey);color:var(--pine);font-size:12px;font-weight:700;letter-spacing:.08em;
+  border-radius:999px;padding:7px 16px;box-shadow:0 8px 18px -6px rgba(222,143,63,.6);
+  animation:bob 5s ease-in-out infinite;
+}
+.plans-note{text-align:center;margin-top:36px;color:var(--mut);font-size:14px}
+
+/* ---------- score teaser ---------- */
+.score-zone{background:var(--pine);border-radius:56px;color:var(--cream);overflow:hidden;position:relative}
+.score-zone .inner{display:grid;grid-template-columns:auto 1fr;gap:70px;align-items:center;padding:80px 72px}
+@media(max-width:920px){.score-zone .inner{grid-template-columns:1fr;padding:56px 32px;gap:44px}}
+.score-zone .orb{position:absolute;width:420px;height:420px;border-radius:50%;background:rgba(222,143,63,.18);filter:blur(70px);top:-140px;right:-100px;animation:drift 14s ease-in-out infinite alternate}
+.ringwrap{position:relative;width:240px;height:240px;margin:0 auto}
+.ringwrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ringwrap .tr{stroke:rgba(248,245,238,.14);stroke-width:14;fill:none}
+.ringwrap .pr{stroke:var(--honey);stroke-width:14;fill:none;stroke-linecap:round;stroke-dasharray:660;stroke-dashoffset:660;transition:stroke-dashoffset 1.8s cubic-bezier(.3,.7,.2,1) .3s}
+.ringwrap .mid{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ringwrap .mid .n{font-family:"Fraunces",serif;font-size:62px;font-weight:600;line-height:1}
+.ringwrap .mid .l{font-size:11px;letter-spacing:.16em;color:var(--sage);font-weight:700;margin-top:6px}
+.score-zone h2{color:var(--cream)}
+.score-zone h2 em{color:var(--sage)}
+.score-zone .sub{color:#BCCDBD}
+.score-feats{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
+.score-feats span{background:rgba(248,245,238,.1);border:1px solid rgba(248,245,238,.16);border-radius:999px;padding:9px 16px;font-size:13.5px;color:#DDE7DC}
+
+/* ---------- voices ---------- */
+.voices{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:64px}
+@media(max-width:980px){.voices{grid-template-columns:1fr;max-width:520px;margin-inline:auto}}
+.voice{
+  background:var(--card);border:1px solid var(--ring);border-radius:30px 30px 30px 6px;padding:30px 28px;
+  transform:rotate(var(--r,0deg));transition:transform .35s;position:relative;
+  box-shadow:0 16px 36px -22px rgba(30,58,43,.3);
+}
+.voice:hover{transform:rotate(0) translateY(-5px)}
+.voice .q{font-family:"Fraunces",serif;font-size:19px;font-style:italic;font-weight:480;color:var(--pine);line-height:1.45}
+.voice .who{display:flex;align-items:center;gap:12px;margin-top:22px}
+.voice .av{width:40px;height:40px;border-radius:50% 50% 50% 10px;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700}
+.voice .who b{display:block;font-size:14px;color:var(--pine)}
+.voice .who span{font-size:12.5px;color:var(--mut)}
+
+/* ---------- CTA ---------- */
+.cta-panel{
+  background:linear-gradient(150deg,var(--pine-2),var(--pine) 60%);
+  border-radius:56px;padding:96px 40px;text-align:center;color:var(--cream);
+  position:relative;overflow:hidden;
+}
+.cta-panel .orb1{position:absolute;width:380px;height:380px;border-radius:50%;background:rgba(222,143,63,.22);filter:blur(70px);bottom:-140px;left:-80px;animation:drift 13s ease-in-out infinite alternate}
+.cta-panel .orb2{position:absolute;width:300px;height:300px;border-radius:50%;background:rgba(169,191,172,.25);filter:blur(60px);top:-100px;right:-60px;animation:drift 17s ease-in-out infinite alternate-reverse}
+.cta-panel h2{color:var(--cream);font-size:clamp(38px,4.8vw,66px);position:relative}
+.cta-panel h2 em{color:var(--honey-soft)}
+.cta-panel p{margin:20px auto 0;max-width:46ch;color:#C6D4C6;position:relative}
+.cta-panel .btn{margin-top:36px;position:relative;font-size:16.5px;padding:17px 32px}
+.cta-panel .fine{margin-top:18px;font-size:13px;color:#9DB5A0;position:relative}
+
+/* ---------- footer ---------- */
+footer{padding:70px 0 50px;color:var(--mut);font-size:14px}
+footer .top{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap;padding-bottom:28px;border-bottom:1px solid rgba(30,58,43,.12)}
+footer .links{display:flex;gap:26px;flex-wrap:wrap}
+footer .links a{transition:.2s}
+footer .links a:hover{color:var(--pine)}
+footer .base{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;padding-top:24px;font-size:13px}
+footer .demo a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}
+}
+</style>
+</head>
+<body>
+
+<div class="glow g1"></div>
+<div class="glow g2"></div>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html"><span class="leaf"></span>HomeKept</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#services">What's included</a>
+      <a href="#plans">Plans</a>
+      <a href="dashboard.html">Your dashboard</a>
+    </div>
+    <a class="btn honey sm" href="book.html">Book free walk-through</a>
+  </nav>
+</header>
+
+<main>
+
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="pill"><span class="dot"></span>Serving Oakville · Mississauga · Milton</span>
+      <h1>
+        <span class="line"><span>Home maintenance</span></span>
+        <span class="line"><span>on <em>autopilot.
+          <svg class="squiggle" viewBox="0 0 220 14" preserveAspectRatio="none"><path d="M3 9 Q 28 2, 55 8 T 110 8 T 165 8 T 217 7" pathLength="1"/></svg>
+        </em></span></span>
+      </h1>
+      <p class="lede">
+        A monthly subscription for homeowners who'd rather not spend weekends on filters,
+        gutters, and inspections. We schedule the visits, send the same vetted technician,
+        and report back with photos — so your home stays cared for without sitting on your to-do list.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn pine" href="book.html">Book free walk-through <span class="arr">→</span></a>
+        <div class="hero-note"><b>90 minutes, no obligation</b>Written plan within a week</div>
+      </div>
+      <div class="trust">
+        <div class="faces">
+          <span class="face" style="background:#5E7D62">SK</span>
+          <span class="face" style="background:#DE8F3F;color:#1E3A2B">JM</span>
+          <span class="face" style="background:#2A4D39">PR</span>
+          <span class="face" style="background:#A9BFAC;color:#1E3A2B">+</span>
+        </div>
+        <p><span class="stars">★★★★★</span><br/>Trusted by <b>300+ GTA homeowners</b></p>
+      </div>
+    </div>
+
+    <div class="hero-vis">
+      <div class="blob"></div>
+      <div class="arch">
+        <img src="../../frontend/src/assets/hero-home.jpg" alt="A calm, sunlit modern home interior" onerror="this.remove()" />
+      </div>
+      <div class="mini-pill">Home health <span>84 ↑</span></div>
+      <div class="float-card">
+        <div class="top"><span class="lab">Your next visit</span><span class="tagchip">Scheduled</span></div>
+        <h4 id="fc-date">Thursday, Nov 14</h4>
+        <p>Furnace filter · Smoke detector test · Gutter clearing</p>
+        <div class="tech"><span class="av">M</span>Marcus — your lead technician</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= MARQUEE ================= -->
+<div class="marq wrap" aria-hidden="true">
+  <div class="inner">
+    <div class="track">
+      <span>Furnace filters <i>✿</i> Gutter clearing <i>✿</i> Smoke &amp; CO tests <i>✿</i> Water heater flush <i>✿</i> Thermostat tune-up <i>✿</i> Leak inspections <i>✿</i> Dryer vents <i>✿</i> Seasonal checks <i>✿</i></span>
+      <span>Furnace filters <i>✿</i> Gutter clearing <i>✿</i> Smoke &amp; CO tests <i>✿</i> Water heater flush <i>✿</i> Thermostat tune-up <i>✿</i> Leak inspections <i>✿</i> Dryer vents <i>✿</i> Seasonal checks <i>✿</i></span>
+    </div>
+  </div>
+</div>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section id="how">
+  <div class="wrap steps-zone">
+    <div data-reveal style="text-align:center;max-width:620px;margin:0 auto">
+      <span class="eyebrow">How it works</span>
+      <h2>Three steps, then we <em>take it from there.</em></h2>
+    </div>
+    <svg class="path-svg" viewBox="0 0 1100 120" preserveAspectRatio="none">
+      <path d="M 130 80 C 320 10, 420 110, 560 60 C 700 10, 820 100, 980 50"/>
+    </svg>
+    <div class="steps">
+      <div class="step" data-reveal style="--i:0">
+        <div class="num">1</div>
+        <h3>We walk the home.</h3>
+        <p>A 90-minute, no-obligation visit. We catalog every system — HVAC, plumbing, exterior, electrical — and ask how you live in the space.</p>
+      </div>
+      <div class="step" data-reveal style="--i:1">
+        <div class="num">2</div>
+        <h3>We build your plan.</h3>
+        <p>A written maintenance plan tailored to your home: what we'll do, when we'll be there, and what it costs. No surprise upsells, ever.</p>
+      </div>
+      <div class="step" data-reveal style="--i:2">
+        <div class="num">3</div>
+        <h3>We carry it out.</h3>
+        <p>Visits appear in the app. After each one, you get a photo report — what we did, what we noticed, and what's coming next.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= WHAT'S INCLUDED ================= -->
+<section id="services" style="padding-top:0">
+  <div class="wrap">
+    <div class="inc-zone">
+      <div class="wrap">
+        <div data-reveal>
+          <span class="eyebrow">What's included</span>
+          <h2>The routine work, <em>handled.</em></h2>
+        </div>
+        <div class="inc-grid">
+          <div class="inc" data-reveal style="--i:0">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.5"/></svg></div>
+            <h3>HVAC &amp; filters</h3>
+            <ul><li>Furnace filter swaps</li><li>Coil &amp; vent checks</li><li>Humidifier service</li></ul>
+          </div>
+          <div class="inc" data-reveal style="--i:1">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3c3.5 4.5 6 7.5 6 11a6 6 0 0 1-12 0c0-3.5 2.5-6.5 6-11z"/><path d="M9.5 14a2.5 2.5 0 0 0 2.5 2.5"/></svg></div>
+            <h3>Plumbing &amp; seasonal</h3>
+            <ul><li>Leak inspections</li><li>Outdoor tap shut-down</li><li>Water heater flush</li></ul>
+          </div>
+          <div class="inc" data-reveal style="--i:2">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9h13v-9"/><path d="M10 19v-5h4v5"/></svg></div>
+            <h3>Exterior &amp; gutters</h3>
+            <ul><li>Gutter clearing</li><li>Roof &amp; siding scan</li><li>Walkway check</li></ul>
+          </div>
+          <div class="inc" data-reveal style="--i:3">
+            <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.9.7 1.5 1.2 1.5 2.1h4c0-.9.6-1.4 1.5-2.1A6 6 0 0 0 12 3z"/></svg></div>
+            <h3>Smart-home &amp; electrical</h3>
+            <ul><li>Smoke &amp; CO tests</li><li>Thermostat tune-up</li><li>Smart device setup</li></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLANS ================= -->
+<section id="plans" style="padding-top:40px">
+  <div class="wrap">
+    <div data-reveal style="text-align:center;max-width:620px;margin:0 auto">
+      <span class="eyebrow">Plans</span>
+      <h2>Simple, monthly <em>peace of mind.</em></h2>
+    </div>
+    <div class="plans">
+      <div class="plan" data-reveal style="--i:0">
+        <div class="name">Essential</div>
+        <div class="cad">4 visits per year · quarterly</div>
+        <div class="price"><span class="d">$129</span><span class="per">/mo</span></div>
+        <ul>
+          <li>Quarterly HVAC filter swaps</li>
+          <li>Smoke &amp; CO detector tests</li>
+          <li>Seasonal exterior check</li>
+          <li>Photo report after every visit</li>
+        </ul>
+        <a class="btn ghost" href="book.html">Choose Essential</a>
+      </div>
+      <div class="plan feat" data-reveal style="--i:1">
+        <span class="badge">Most chosen ✿</span>
+        <div class="name">Complete</div>
+        <div class="cad">12 visits per year · monthly</div>
+        <div class="price"><span class="d">$189</span><span class="per">/mo</span></div>
+        <ul>
+          <li>Everything in Essential</li>
+          <li>Monthly visits, year-round</li>
+          <li>Plumbing &amp; leak inspections</li>
+          <li>Gutter clearing &amp; exterior work</li>
+          <li>Priority emergency scheduling</li>
+        </ul>
+        <a class="btn honey" href="book.html">Choose Complete</a>
+      </div>
+      <div class="plan" data-reveal style="--i:2">
+        <div class="name">Premier</div>
+        <div class="cad">24 visits per year · bi-monthly</div>
+        <div class="price"><span class="d">$289</span><span class="per">/mo</span></div>
+        <ul>
+          <li>Everything in Complete</li>
+          <li>Dedicated lead technician</li>
+          <li>Smart-home setup &amp; support</li>
+          <li>Minor repairs included</li>
+        </ul>
+        <a class="btn ghost" href="book.html">Choose Premier</a>
+      </div>
+    </div>
+    <p class="plans-note" data-reveal>All prices in CAD · Annual billing saves ~17% (two months free)</p>
+  </div>
+</section>
+
+<!-- ================= HEALTH SCORE ================= -->
+<section style="padding-top:30px">
+  <div class="wrap">
+    <div class="score-zone" data-reveal>
+      <div class="orb"></div>
+      <div class="inner">
+        <div class="ringwrap">
+          <svg viewBox="0 0 240 240">
+            <circle class="tr" cx="120" cy="120" r="105"/>
+            <circle class="pr" id="ring" cx="120" cy="120" r="105"/>
+          </svg>
+          <div class="mid">
+            <div>
+              <div class="n"><span id="ringnum">0</span></div>
+              <div class="l">HOME HEALTH</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <span class="eyebrow">Always-on insight</span>
+          <h2>Every home gets a <em>health score.</em></h2>
+          <p class="sub">
+            After each visit, your score updates — a single number for how well your home's
+            systems are doing, with anything that needs attention flagged and scheduled automatically.
+          </p>
+          <div class="score-feats">
+            <span>📷 Photo reports</span>
+            <span>🍂 Seasonal checklists</span>
+            <span>🔔 Gentle reminders</span>
+            <span>🧰 Same technician, every time</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= VOICES ================= -->
+<section>
+  <div class="wrap">
+    <div data-reveal style="text-align:center;max-width:620px;margin:0 auto">
+      <span class="eyebrow">For every kind of homeowner</span>
+      <h2>We fit the home — <em>and the people in it.</em></h2>
+    </div>
+    <div class="voices">
+      <div class="voice" style="--r:-1.4deg" data-reveal>
+        <p class="q">“We stopped pretending we'd get to it. Now we just don't think about it — and the house is actually in better shape.”</p>
+        <div class="who"><span class="av" style="background:#5E7D62">S</span><div><b>Sarah</b><span>Busy family · Oakville</span></div></div>
+      </div>
+      <div class="voice" style="--r:1.1deg;--i:1" data-reveal>
+        <p class="q">“It feels like having a really competent nephew in the trades — except he actually shows up.”</p>
+        <div class="who"><span class="av" style="background:#DE8F3F;color:#1E3A2B">J</span><div><b>James</b><span>Empty-nester · Mississauga</span></div></div>
+      </div>
+      <div class="voice" style="--r:-0.8deg;--i:2" data-reveal>
+        <p class="q">“I had no idea water heaters needed flushing. Now I do — and I haven't had to lift a wrench.”</p>
+        <div class="who"><span class="av" style="background:#2A4D39">P</span><div><b>Priya</b><span>First-time owner · Milton</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section id="cta" style="padding-top:20px">
+  <div class="wrap">
+    <div class="cta-panel" data-reveal>
+      <div class="orb1"></div><div class="orb2"></div>
+      <h2>Let's walk your <em>home together.</em></h2>
+      <p>Ninety minutes, no obligation. You'll get a written maintenance plan within a week — keep it or don't. Either way, you'll finally know your house.</p>
+      <a class="btn honey" href="book.html">Book your free walk-through <span class="arr">→</span></a>
+      <p class="fine">No credit card · Cancel anytime · Proudly local to the GTA</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="top">
+      <a class="logo" href="index.html"><span class="leaf"></span>HomeKept</a>
+      <div class="links">
+        <a href="#how">How it works</a>
+        <a href="#plans">Plans</a>
+        <a href="dashboard.html">Dashboard</a>
+        <a href="tech.html">Technician app</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+    <div class="base">
+      <span>© <span id="yr"></span> HomeKept · Oakville, ON · hello@homekept.ca</span>
+      <span class="demo">Mockup v2 · <a href="dashboard.html">View owner dashboard →</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* scroll reveals */
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+}), { threshold: .16 });
+document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+/* health ring sweeps when visible (r=105 → C≈659.7) */
+const ring = document.getElementById('ring'), num = document.getElementById('ringnum');
+const rIO = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  ring.style.strokeDashoffset = (660 * (1 - .84)).toFixed(1);
+  const t0 = performance.now();
+  (function tick(t) {
+    const p = Math.min((t - t0) / 1800, 1);
+    num.textContent = Math.round(84 * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+  rIO.unobserve(e.target);
+}), { threshold: .5 });
+rIO.observe(ring);
+
+/* floating card shows a real upcoming date (next Thursday) */
+const d = new Date();
+d.setDate(d.getDate() + (((4 - d.getDay() + 7) % 7) || 7));
+document.getElementById('fc-date').textContent =
+  d.toLocaleDateString('en-CA', { weekday: 'long', month: 'long', day: 'numeric' });
+
+document.getElementById('yr').textContent = new Date().getFullYear();
+</script>
+</body>
+</html>

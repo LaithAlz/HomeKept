@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Your home — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT v2 — Owner dashboard, "Soft Keeping" */
+:root{
+  --cream:#F8F5EE;--cream-2:#F0EBDF;--card:#FFFEFA;
+  --pine:#1E3A2B;--pine-2:#2A4D39;--moss:#5E7D62;--sage:#A9BFAC;
+  --honey:#DE8F3F;--honey-soft:#F4D9B8;--ink:#22312A;--mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--ink);font-family:"Figtree",sans-serif;line-height:1.6;overflow-x:hidden}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.serif{font-family:"Fraunces",serif;font-optical-sizing:auto}
+.wrap{max-width:1200px;margin:0 auto;padding:0 32px}
+@media(max-width:680px){.wrap{padding:0 20px}}
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:520px;height:520px;background:rgba(169,191,172,.35);top:-160px;right:-120px;animation:drift 16s ease-in-out infinite alternate}
+.glow.g2{width:420px;height:420px;background:rgba(244,217,184,.45);top:50vh;left:-180px;animation:drift 20s ease-in-out infinite alternate-reverse}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(36px,28px) scale(1.06)}}
+main,header{position:relative;z-index:1}
+
+/* nav */
+.nav{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:rgba(255,254,250,.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--ring);border-radius:999px;padding:8px 8px 8px 20px;
+  box-shadow:0 10px 30px -12px rgba(30,58,43,.18);width:min(1100px,calc(100% - 40px));
+  animation:navin .8s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes navin{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translate(-50%,0)}}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;color:var(--pine)}
+.leaf{width:26px;height:26px;background:var(--pine);border-radius:50% 50% 50% 6px;position:relative;flex:none}
+.leaf::after{content:"";position:absolute;inset:8px;border-radius:50% 50% 50% 4px;background:var(--honey)}
+.tabs{display:flex;gap:4px;font-size:14px;font-weight:500;color:var(--mut)}
+.tabs a{padding:9px 15px;border-radius:999px;transition:.25s}
+.tabs a:hover{background:var(--cream-2);color:var(--pine)}
+.tabs a.on{background:var(--pine);color:var(--cream)}
+@media(max-width:860px){.tabs{display:none}}
+.avatar{width:40px;height:40px;border-radius:50%;background:var(--pine);color:var(--cream);display:grid;place-items:center;font-size:13px;font-weight:700}
+
+/* entrance */
+.up{opacity:0;transform:translateY(24px);animation:up .8s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+
+.greet{padding:140px 0 36px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.greet h1{font-family:"Fraunces",serif;font-size:clamp(36px,4.4vw,58px);font-weight:560;letter-spacing:-.02em;color:var(--pine);line-height:1.05}
+.greet h1 em{font-style:italic;font-weight:480;color:var(--moss)}
+.greet .where{margin-top:10px;color:var(--mut);font-size:15px;display:flex;align-items:center;gap:8px}
+.greet .where .pin{color:var(--honey)}
+.greet .planchip{
+  background:var(--card);border:1px solid var(--ring);border-radius:999px;padding:10px 18px;
+  font-size:13.5px;font-weight:600;color:var(--pine);box-shadow:0 6px 16px -8px rgba(30,58,43,.2);
+}
+.greet .planchip span{color:var(--honey)}
+
+/* grid */
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:24px;padding-bottom:90px}
+.card{
+  background:var(--card);border:1px solid var(--ring);border-radius:30px;padding:30px;
+  box-shadow:0 18px 40px -28px rgba(30,58,43,.3);
+  transition:transform .3s cubic-bezier(.25,1,.4,1),box-shadow .3s;
+}
+.card:hover{transform:translateY(-4px);box-shadow:0 26px 50px -28px rgba(30,58,43,.38)}
+.c-visit{grid-column:span 7;background:var(--pine);color:var(--cream);border:0}
+.c-score{grid-column:span 5}
+.c-tasks{grid-column:span 5}
+.c-feed{grid-column:span 7}
+.c-bill{grid-column:span 12}
+@media(max-width:980px){.card{grid-column:span 12 !important}}
+.card .lab{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+.c-visit .lab{color:var(--sage)}
+
+/* next visit */
+.c-visit{position:relative;overflow:hidden}
+.c-visit .orb{position:absolute;width:300px;height:300px;border-radius:50%;background:rgba(222,143,63,.18);filter:blur(60px);top:-100px;right:-80px}
+.c-visit .inner{position:relative;display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap}
+.dateblock{
+  background:rgba(248,245,238,.1);border:1px solid rgba(248,245,238,.18);border-radius:24px;
+  padding:20px 24px;text-align:center;min-width:120px;
+}
+.dateblock .mo{font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--honey-soft)}
+.dateblock .dy{font-family:"Fraunces",serif;font-size:52px;font-weight:600;line-height:1.05}
+.dateblock .wd{font-size:12.5px;color:var(--sage)}
+.dateblock .count{margin-top:10px;font-size:11.5px;font-weight:700;color:var(--honey);background:rgba(222,143,63,.15);border-radius:999px;padding:4px 10px;display:inline-block}
+.c-visit h2{font-family:"Fraunces",serif;font-size:26px;font-weight:600;margin:10px 0 4px}
+.c-visit .win{color:var(--sage);font-size:14px}
+.vlist{margin-top:16px;display:flex;flex-direction:column;gap:9px;min-width:240px;flex:1}
+.vlist li{display:flex;align-items:center;gap:11px;font-size:14.5px;background:rgba(248,245,238,.08);border-radius:14px;padding:10px 14px;opacity:0;transform:translateX(-12px);animation:slidein .5s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.6s)}
+@keyframes slidein{to{opacity:1;transform:none}}
+.vlist .bub{width:18px;height:18px;border-radius:50%;border:2px solid var(--sage);flex:none}
+.vlist .flag{margin-left:auto;font-size:11px;font-weight:700;color:var(--honey)}
+.techrow{display:flex;align-items:center;gap:11px;margin-top:18px;font-size:14px;color:#D7E2D5}
+.techrow .av{width:32px;height:32px;border-radius:50% 50% 50% 10px;background:var(--honey);color:var(--pine);display:grid;place-items:center;font-size:12px;font-weight:700}
+
+/* score */
+.scorebox{display:flex;align-items:center;gap:26px;margin-top:18px;flex-wrap:wrap}
+.ringwrap{position:relative;width:150px;height:150px;flex:none}
+.ringwrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ringwrap .tr{stroke:var(--cream-2);stroke-width:13;fill:none}
+.ringwrap .pr{stroke:var(--moss);stroke-width:13;fill:none;stroke-linecap:round;stroke-dasharray:408;stroke-dashoffset:408;transition:stroke-dashoffset 1.8s cubic-bezier(.3,.7,.2,1) .5s}
+.ringwrap .mid{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ringwrap .n{font-family:"Fraunces",serif;font-size:42px;font-weight:600;color:var(--pine);line-height:1}
+.ringwrap .d{font-size:11px;font-weight:700;color:var(--moss)}
+.scoreinfo .delta{display:inline-flex;align-items:center;gap:6px;background:rgba(94,125,98,.13);color:var(--moss);font-size:12.5px;font-weight:700;border-radius:999px;padding:5px 12px}
+.scoreinfo p{margin-top:12px;font-size:14px;color:var(--mut);max-width:30ch}
+.scoreinfo .flagline{margin-top:12px;font-size:13.5px;color:var(--ink);background:var(--honey-soft);border-radius:14px;padding:10px 14px}
+
+/* seasonal tasks */
+.tasklist{margin-top:20px;display:flex;flex-direction:column;gap:14px}
+.taskrow .t{display:flex;justify-content:space-between;font-size:14px;margin-bottom:7px}
+.taskrow .t b{color:var(--pine)}
+.taskrow .t span{color:var(--mut);font-size:13px}
+.bar{height:9px;border-radius:99px;background:var(--cream-2);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--moss);width:0;transition:width 1.2s cubic-bezier(.3,.7,.2,1);transition-delay:var(--d,.6s)}
+.bar i.honey{background:var(--honey)}
+
+/* feed */
+.feed{margin-top:14px}
+.feeditem{
+  display:flex;gap:15px;padding:15px 6px;border-bottom:1px solid var(--cream-2);
+  opacity:0;transform:translateY(14px);animation:up .6s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.5s);
+  border-radius:14px;transition:background .2s;
+}
+.feeditem:hover{background:var(--cream)}
+.feeditem:last-child{border-bottom:0}
+.fico{width:40px;height:40px;border-radius:50% 50% 50% 12px;display:grid;place-items:center;font-size:16px;flex:none;background:rgba(94,125,98,.13)}
+.feeditem .t{font-weight:600;color:var(--pine);font-size:15px}
+.feeditem .dd{font-size:13.5px;color:var(--mut)}
+.feeditem .when{margin-left:auto;font-size:12px;color:var(--mut);white-space:nowrap;padding-top:3px}
+
+/* billing */
+.c-bill{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.c-bill .plan{font-family:"Fraunces",serif;font-size:26px;font-weight:600;color:var(--pine)}
+.c-bill .plan em{font-style:italic;font-weight:480;color:var(--moss)}
+.c-bill .meta{font-size:14px;color:var(--mut)}
+.c-bill .meta b{color:var(--pine)}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;font-weight:600;font-size:14.5px;
+  padding:12px 22px;border-radius:999px;cursor:pointer;border:0;
+  transition:transform .25s cubic-bezier(.3,1.4,.5,1),box-shadow .25s;
+}
+.btn.honey{background:var(--honey);color:var(--pine);box-shadow:0 8px 20px -8px rgba(222,143,63,.7)}
+.btn.honey:hover{transform:translateY(-2px);box-shadow:0 14px 28px -10px rgba(222,143,63,.8)}
+.btn.ghost{background:transparent;color:var(--pine);border:1.5px solid rgba(30,58,43,.25)}
+.btn.ghost:hover{border-color:var(--pine);transform:translateY(-2px)}
+
+footer{padding:30px 0 50px;color:var(--mut);font-size:13.5px;position:relative;z-index:1}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+
+<div class="glow g1"></div>
+<div class="glow g2"></div>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html"><span class="leaf"></span>HomeKept</a>
+    <div class="tabs">
+      <a class="on" href="#">Home</a>
+      <a href="#">Visits</a>
+      <a href="#">Reports</a>
+      <a href="#">Billing</a>
+      <a href="tech.html">Tech app</a>
+    </div>
+    <span class="avatar">PS</span>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <div class="greet">
+    <div class="up">
+      <h1>Good <em id="tod">evening</em>, Priya.</h1>
+      <p class="where"><span class="pin">⌂</span>14 Maple Ridge Crt, Erin Mills · Mississauga</p>
+    </div>
+    <div class="planchip up" style="--d:.15s">Complete plan <span>✿</span> 14 visits in</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- next visit -->
+    <section class="card c-visit up" style="--d:.2s">
+      <div class="orb"></div>
+      <div class="inner">
+        <div>
+          <span class="lab">Your next visit</span>
+          <div class="dateblock" style="margin-top:14px">
+            <div class="mo" id="nv-mo">—</div>
+            <div class="dy" id="nv-dy">—</div>
+            <div class="wd">Wednesday</div>
+            <div class="count" id="nv-count">in — days</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:250px">
+          <h2>Spring readiness check</h2>
+          <p class="win">1:00 – 4:00 PM · about 90 minutes</p>
+          <ul class="vlist">
+            <li style="--d:.55s"><span class="bub"></span>Furnace filter swap</li>
+            <li style="--d:.65s"><span class="bub"></span>AC startup check</li>
+            <li style="--d:.75s"><span class="bub"></span>Gutter clearing</li>
+            <li style="--d:.85s"><span class="bub"></span>Dryer vent cleaning<span class="flag">✿ added for you</span></li>
+          </ul>
+          <div class="techrow"><span class="av">M</span>Marcus — your lead technician, 14th visit</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- health score -->
+    <section class="card c-score up" style="--d:.28s">
+      <span class="lab">Home health</span>
+      <div class="scorebox">
+        <div class="ringwrap">
+          <svg viewBox="0 0 150 150">
+            <circle class="tr" cx="75" cy="75" r="65"/>
+            <circle class="pr" id="ring" cx="75" cy="75" r="65"/>
+          </svg>
+          <div class="mid"><div><div class="n" id="ringnum">0</div><div class="d">of 100</div></div></div>
+        </div>
+        <div class="scoreinfo">
+          <span class="delta">▲ +6 this quarter</span>
+          <p>Your home is in great shape and trending up.</p>
+          <div class="flagline">✿ One item flagged: dryer vent — already added to Wednesday's visit.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- seasonal checklist -->
+    <section class="card c-tasks up" style="--d:.36s">
+      <span class="lab">Spring checklist</span>
+      <div class="tasklist">
+        <div class="taskrow">
+          <div class="t"><b>HVAC &amp; filters</b><span>done</span></div>
+          <div class="bar"><i data-w="100" style="--d:.7s"></i></div>
+        </div>
+        <div class="taskrow">
+          <div class="t"><b>Exterior &amp; gutters</b><span>2 of 3</span></div>
+          <div class="bar"><i data-w="66" style="--d:.85s"></i></div>
+        </div>
+        <div class="taskrow">
+          <div class="t"><b>Plumbing &amp; seasonal</b><span>1 of 2</span></div>
+          <div class="bar"><i data-w="50" style="--d:1s"></i></div>
+        </div>
+        <div class="taskrow">
+          <div class="t"><b>Safety &amp; detectors</b><span>flagged</span></div>
+          <div class="bar"><i class="honey" data-w="80" style="--d:1.15s"></i></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- activity -->
+    <section class="card c-feed up" style="--d:.44s">
+      <span class="lab">Recent activity</span>
+      <div class="feed">
+        <div class="feeditem" style="--d:.7s">
+          <span class="fico">🔔</span>
+          <div><div class="t">Reminder sent</div><div class="dd">We confirmed your Wednesday visit with Marcus.</div></div>
+          <span class="when" data-ago="1"></span>
+        </div>
+        <div class="feeditem" style="--d:.8s">
+          <span class="fico">📋</span>
+          <div><div class="t">Visit report uploaded</div><div class="dd">Spring readiness report — 12 checkpoints, 1 flagged.</div></div>
+          <span class="when" data-ago="6"></span>
+        </div>
+        <div class="feeditem" style="--d:.9s">
+          <span class="fico">📷</span>
+          <div><div class="t">12 photos added</div><div class="dd">Roof, gutters, and exterior trim from the walkaround.</div></div>
+          <span class="when" data-ago="6"></span>
+        </div>
+        <div class="feeditem" style="--d:1s">
+          <span class="fico">✅</span>
+          <div><div class="t">Visit completed</div><div class="dd">2 filters replaced, 4 detectors tested, gutters cleared.</div></div>
+          <span class="when" data-ago="6"></span>
+        </div>
+        <div class="feeditem" style="--d:1.1s">
+          <span class="fico">💳</span>
+          <div><div class="t">Payment processed</div><div class="dd">Complete plan — $189.00 CAD to Visa •• 4321.</div></div>
+          <span class="when" data-ago="12"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- billing -->
+    <section class="card c-bill up" style="--d:.52s">
+      <div>
+        <div class="plan">Complete <em>· $189/mo</em></div>
+        <p class="meta">Next invoice <b id="next-inv">—</b> · Visa •• 4321 · member since Jan 2026</p>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn ghost" href="#">Manage billing</a>
+        <a class="btn honey" href="#">Request extra visit ✿</a>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Owner dashboard · Mockup v2</span>
+    <span><a href="index.html">← Landing</a> &nbsp;·&nbsp; <a href="tech.html">Technician app →</a></span>
+  </div>
+</footer>
+
+<script>
+const now = new Date();
+const h = now.getHours();
+document.getElementById('tod').textContent = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+
+/* next Wednesday */
+const nv = new Date(now);
+nv.setDate(nv.getDate() + (((3 - nv.getDay() + 7) % 7) || 7));
+document.getElementById('nv-mo').textContent = nv.toLocaleDateString('en-CA', { month: 'short' }).toUpperCase();
+document.getElementById('nv-dy').textContent = nv.getDate();
+document.getElementById('nv-count').textContent = 'in ' + Math.ceil((nv - now) / 86400000) + ' days';
+
+/* next invoice */
+const inv = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+document.getElementById('next-inv').textContent = inv.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+
+/* relative dates */
+document.querySelectorAll('.when[data-ago]').forEach(el => {
+  const d = new Date(now); d.setDate(d.getDate() - +el.dataset.ago);
+  el.textContent = el.dataset.ago === '1' ? 'yesterday'
+    : d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+});
+
+/* ring sweep (r=65 → C≈408.4) + count */
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  document.getElementById('ring').style.strokeDashoffset = (408 * (1 - .84)).toFixed(1);
+}));
+const numEl = document.getElementById('ringnum'); const t0 = performance.now();
+(function tick(t) {
+  const p = Math.min((t - t0) / 1900, 1);
+  numEl.textContent = Math.round(84 * (1 - Math.pow(1 - p, 3)));
+  if (p < 1) requestAnimationFrame(tick);
+})(t0);
+
+/* progress bars */
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  document.querySelectorAll('.bar i').forEach(i => i.style.width = i.dataset.w + '%');
+}));
+</script>
+</body>
+</html>

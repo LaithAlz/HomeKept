@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HomeKept — Your home, drawn to plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Spline+Sans+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=Caveat:wght@600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   HOMEKEPT — DRAWING SET / SHEET 1 OF 3
+   Aesthetic: architect's blueprint on warm drafting paper.
+   ============================================================ */
+:root{
+  --paper:#F2EDDF;
+  --paper-2:#EAE3CE;
+  --ink:#1C2B45;
+  --line:#2A4690;
+  --line-soft:rgba(42,70,144,.16);
+  --line-faint:rgba(42,70,144,.08);
+  --blue:#15306E;
+  --blue-line:rgba(244,240,228,.18);
+  --orange:#FF4D00;
+  --cream:#F6F2E6;
+  --hand:#C93A00;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Bricolage Grotesque",sans-serif;
+  font-optical-sizing:auto;
+  overflow-x:hidden;
+}
+::selection{background:var(--orange);color:var(--cream)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+img,svg{display:block}
+
+/* drafting-grid ground */
+.grid-bg{
+  background-image:
+    linear-gradient(var(--line-faint) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line-faint) 1px,transparent 1px),
+    linear-gradient(var(--line-soft) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);
+  background-size:24px 24px,24px 24px,120px 120px,120px 120px;
+}
+
+/* grain overlay */
+body::after{
+  content:"";position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.5;
+  mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.mono{font-family:"Spline Sans Mono",monospace}
+.serif-i{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400}
+.hand{font-family:"Caveat",cursive;color:var(--hand)}
+
+.wrap{max-width:1280px;margin:0 auto;padding:0 40px}
+@media(max-width:720px){.wrap{padding:0 20px}}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:50;background:var(--paper);
+  border-bottom:1.5px solid var(--ink);
+}
+.bar{
+  display:flex;align-items:center;justify-content:space-between;
+  height:64px;gap:24px;
+}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.logo .sq{width:14px;height:14px;background:var(--orange);transform:rotate(45deg);flex:none}
+.bar nav{display:flex;gap:2px;font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.1em}
+.bar nav a{padding:8px 14px;border:1px solid transparent;transition:.2s}
+.bar nav a:hover{border-color:var(--ink)}
+.bar nav a.now{background:var(--ink);color:var(--paper)}
+.bar .meta{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.12em;color:var(--line);display:none}
+@media(min-width:1100px){.bar .meta{display:block}}
+.btn{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:"Spline Sans Mono",monospace;font-size:12px;font-weight:600;letter-spacing:.1em;
+  padding:13px 22px;border:1.5px solid var(--ink);cursor:pointer;
+  transition:transform .2s,box-shadow .2s,background .2s,color .2s;
+  background:transparent;color:var(--ink);
+}
+.btn.solid{background:var(--orange);border-color:var(--orange);color:#fff}
+.btn:hover{transform:translate(-2px,-2px);box-shadow:4px 4px 0 var(--ink)}
+.btn.solid:hover{box-shadow:4px 4px 0 var(--ink)}
+.btn.sm{padding:9px 16px;font-size:11px}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:72px 0 96px;overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:1.04fr .96fr;gap:56px;align-items:center}
+@media(max-width:980px){.hero .wrap{grid-template-columns:1fr}}
+.kicker{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:"Spline Sans Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.18em;
+  border:1px solid var(--ink);padding:8px 14px;margin-bottom:28px;background:var(--cream);
+}
+.kicker .dot{width:7px;height:7px;background:var(--orange);animation:blink 2.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+h1{
+  font-size:clamp(52px,6.4vw,96px);font-weight:800;line-height:.98;letter-spacing:-.035em;
+  font-optical-sizing:auto;
+}
+h1 .row{display:block;overflow:hidden}
+h1 .row span{display:inline-block;transform:translateY(110%);animation:rise .9s cubic-bezier(.2,.75,.2,1) forwards}
+h1 .row:nth-child(2) span{animation-delay:.12s}
+@keyframes rise{to{transform:translateY(0)}}
+h1 em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--orange);letter-spacing:-.01em}
+.lede{
+  max-width:46ch;margin-top:26px;font-size:17px;line-height:1.65;font-weight:400;
+  color:#3A4660;opacity:0;animation:fade .8s .45s forwards;
+}
+@keyframes fade{to{opacity:1}}
+.cta-row{display:flex;align-items:center;gap:28px;margin-top:36px;opacity:0;animation:fade .8s .6s forwards}
+.spec-strip{
+  display:flex;gap:0;margin-top:48px;border:1px solid var(--ink);background:var(--cream);
+  font-family:"Spline Sans Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+  opacity:0;animation:fade .8s .75s forwards;
+}
+.spec-strip div{flex:1;padding:14px 16px;border-right:1px solid var(--ink)}
+.spec-strip div:last-child{border-right:0}
+.spec-strip b{display:block;color:var(--orange);margin-bottom:5px;font-size:12px}
+@media(max-width:720px){.spec-strip{flex-direction:column}.spec-strip div{border-right:0;border-bottom:1px solid var(--ink)}.spec-strip div:last-child{border-bottom:0}}
+
+/* rotating stamp */
+.stamp{width:96px;height:96px;flex:none;animation:spin 14s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.stamp text{font-family:"Spline Sans Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.22em;fill:var(--ink)}
+
+/* drawing frame */
+.fig{
+  position:relative;border:1.5px solid var(--ink);background:var(--cream);
+  padding:28px 22px 18px;
+}
+.fig .corner{position:absolute;width:15px;height:15px;pointer-events:none}
+.fig .corner::before,.fig .corner::after{content:"";position:absolute;background:var(--ink)}
+.fig .corner::before{width:15px;height:1px;top:7px}
+.fig .corner::after{width:1px;height:15px;left:7px}
+.fig .c1{top:-8px;left:-8px}.fig .c2{top:-8px;right:-8px}.fig .c3{bottom:-8px;left:-8px}.fig .c4{bottom:-8px;right:-8px}
+.fig-tag{
+  position:absolute;top:-1px;left:-1px;background:var(--ink);color:var(--paper);
+  font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.16em;padding:6px 12px;
+}
+.fig-cap{margin-top:10px;font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.14em;color:var(--line);display:flex;justify-content:space-between}
+
+/* blueprint svg */
+.bp{width:100%;height:auto;cursor:crosshair}
+.bp .s{stroke:var(--line);stroke-width:1.6;fill:none;stroke-linecap:square}
+.bp .thin{stroke-width:1;opacity:.85}
+.bp .dash{stroke-dasharray:5 5;animation:none}
+.bp .draw{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.3s cubic-bezier(.45,0,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes draw{to{stroke-dashoffset:0}}
+.bp .pt{fill:var(--orange);transform-box:fill-box;transform-origin:center;transform:scale(0);animation:pop .5s cubic-bezier(.3,1.6,.5,1) forwards;animation-delay:var(--d,1.6s)}
+@keyframes pop{to{transform:scale(1)}}
+.bp .pulse{fill:none;stroke:var(--orange);stroke-width:1.4;transform-box:fill-box;transform-origin:center;animation:pulse 2.4s ease-out infinite;animation-delay:var(--d,2s);opacity:0}
+@keyframes pulse{0%{transform:scale(.4);opacity:.9}70%{transform:scale(2.6);opacity:0}100%{opacity:0}}
+.bp .lbl{font-family:"Spline Sans Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.1em;fill:var(--ink);opacity:0;animation:fade .6s forwards;animation-delay:var(--d,1.9s)}
+.bp .lbl.sub{font-weight:400;fill:var(--line)}
+.bp .leader{stroke:var(--ink);stroke-width:1;fill:none;stroke-dasharray:1;stroke-dashoffset:1;animation:draw .5s forwards;animation-delay:var(--d,1.7s)}
+.bp .dim{stroke:var(--line);stroke-width:1}
+.bp .dimtxt{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.18em;fill:var(--line)}
+
+/* ---------- marquee ---------- */
+.marquee{background:var(--ink);color:var(--paper);overflow:hidden;border-block:1.5px solid var(--ink);padding:15px 0}
+.marquee .track{display:flex;width:max-content;animation:scroll 30s linear infinite;gap:0}
+.marquee:hover .track{animation-play-state:paused}
+@keyframes scroll{to{transform:translateX(-50%)}}
+.marquee span{font-family:"Spline Sans Mono",monospace;font-size:12px;letter-spacing:.22em;padding:0 26px;white-space:nowrap;display:flex;align-items:center;gap:26px}
+.marquee i{width:8px;height:8px;background:var(--orange);transform:rotate(45deg);flex:none;font-style:normal}
+
+/* ---------- reveal util ---------- */
+[data-reveal]{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1);transition-delay:calc(var(--i,0)*.1s)}
+[data-reveal].in{opacity:1;transform:none}
+
+/* ---------- sections ---------- */
+section{padding:104px 0}
+.sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:32px;margin-bottom:64px;flex-wrap:wrap}
+.eyebrow{font-family:"Spline Sans Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.22em;color:var(--orange);display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.eyebrow::before{content:"";width:34px;height:1.5px;background:var(--orange)}
+h2{font-size:clamp(36px,4.4vw,62px);font-weight:800;letter-spacing:-.03em;line-height:1.02}
+h2 em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--line)}
+.sec-head .note{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.12em;color:var(--line);max-width:260px;line-height:1.8;text-align:right}
+@media(max-width:720px){.sec-head .note{text-align:left}}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1.5px solid var(--ink)}
+@media(max-width:900px){.steps{grid-template-columns:1fr}}
+.step{
+  position:relative;padding:38px 32px 110px;background:var(--cream);
+  border-right:1.5px solid var(--ink);transition:background .25s;
+}
+.step:last-child{border-right:0}
+@media(max-width:900px){.step{border-right:0;border-bottom:1.5px solid var(--ink)}.step:last-child{border-bottom:0}}
+.step:hover{background:#fff}
+.step .figno{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.18em;color:var(--orange);font-weight:600}
+.step h3{font-size:27px;font-weight:800;letter-spacing:-.02em;margin:16px 0 14px}
+.step p{font-size:15px;line-height:1.7;color:#3A4660}
+.step .glyph{position:absolute;bottom:26px;left:32px}
+.step .glyph svg{width:54px;height:54px;stroke:var(--line);stroke-width:1.5;fill:none}
+.step .idx{
+  position:absolute;bottom:18px;right:24px;font-family:"Spline Sans Mono",monospace;
+  font-size:62px;font-weight:600;color:transparent;-webkit-text-stroke:1px var(--line-soft);
+}
+.step:hover .idx{-webkit-text-stroke:1px var(--orange)}
+
+/* ---------- blueprint (dark) section ---------- */
+.bluep{
+  background:var(--blue);color:var(--cream);
+  background-image:
+    linear-gradient(var(--blue-line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--blue-line) 1px,transparent 1px);
+  background-size:48px 48px;
+  border-block:1.5px solid var(--ink);
+}
+.bluep .eyebrow{color:var(--orange)}
+.bluep h2 em{color:#8FA8E8}
+.bluep .sec-head .note{color:#8FA8E8}
+.sched{border:1px solid rgba(244,240,228,.4);font-family:"Spline Sans Mono",monospace;overflow-x:auto}
+.sched .row{display:grid;grid-template-columns:170px repeat(12,minmax(44px,1fr));border-bottom:1px solid rgba(244,240,228,.25);min-width:760px}
+.sched .row:last-child{border-bottom:0}
+.sched .cell{padding:14px 10px;text-align:center;font-size:10.5px;letter-spacing:.14em;border-right:1px solid rgba(244,240,228,.12);position:relative;display:flex;align-items:center;justify-content:center}
+.sched .cell:first-child{justify-content:flex-start;padding-left:18px;font-weight:600;border-right:1px solid rgba(244,240,228,.4)}
+.sched .head .cell{font-weight:600;color:#8FA8E8;background:rgba(0,0,0,.18)}
+.sched .dot{width:9px;height:9px;border-radius:50%;background:var(--cream);transform:scale(0);transition:transform .45s cubic-bezier(.3,1.6,.5,1);transition-delay:var(--d,0s)}
+.sched.in .dot{transform:scale(1)}
+.sched .dot.sm{width:5px;height:5px;opacity:.75}
+.sched .cell.now{background:rgba(255,77,0,.16);box-shadow:inset 0 0 0 1px var(--orange)}
+.youare{margin-top:14px;font-size:10.5px;letter-spacing:.18em;color:var(--orange);display:flex;align-items:center;gap:10px}
+.youare::before{content:"";width:9px;height:9px;background:var(--orange);transform:rotate(45deg)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(244,240,228,.35);border:1px solid rgba(244,240,228,.35);margin-top:72px}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--blue);padding:30px 26px}
+.stat .n{font-size:clamp(34px,3.6vw,52px);font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat .n s{text-decoration:none;color:var(--orange)}
+.stat .l{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.2em;color:#8FA8E8;margin-top:8px}
+
+/* ---------- plans ---------- */
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;align-items:stretch}
+@media(max-width:980px){.plans{grid-template-columns:1fr;max-width:520px;margin:0 auto}}
+.plan{
+  position:relative;border:1.5px solid var(--ink);background:var(--cream);padding:34px 30px;
+  display:flex;flex-direction:column;transition:transform .25s,box-shadow .25s;
+}
+.plan:hover{transform:translate(-3px,-3px);box-shadow:6px 6px 0 var(--ink)}
+.plan .tier{font-family:"Spline Sans Mono",monospace;font-size:10.5px;letter-spacing:.2em;color:var(--line);display:flex;justify-content:space-between}
+.plan h3{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:14px 0 4px}
+.plan .price{display:flex;align-items:baseline;gap:6px;margin:18px 0 6px}
+.plan .price .d{font-size:60px;font-weight:800;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.plan .price .per{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.12em;color:var(--line)}
+.plan .cad{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.16em;color:var(--line)}
+.plan ul{margin:26px 0;padding-top:24px;border-top:1px dashed var(--line);flex:1;display:flex;flex-direction:column;gap:13px}
+.plan li{display:flex;justify-content:space-between;gap:14px;font-size:14.5px}
+.plan li .f{font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.1em;color:var(--orange);white-space:nowrap;padding-top:3px}
+.plan.feat{background:var(--ink);color:var(--paper);transform:scale(1.03)}
+.plan.feat:hover{transform:scale(1.03) translate(-3px,-3px);box-shadow:6px 6px 0 var(--orange)}
+.plan.feat .tier,.plan.feat .cad,.plan.feat .price .per{color:#9FB2DE}
+.plan.feat ul{border-top-color:#46598A}
+.plan .stamp2{
+  position:absolute;top:-16px;right:18px;background:var(--orange);color:#fff;
+  font-family:"Spline Sans Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.18em;
+  padding:8px 14px;transform:rotate(6deg);box-shadow:3px 3px 0 var(--ink);
+}
+
+/* ---------- field notes ---------- */
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:34px}
+@media(max-width:980px){.notes{grid-template-columns:1fr;max-width:560px;margin:0 auto}}
+.note-card{
+  position:relative;background:#FFFDF6;border:1px solid #D8CFB4;padding:44px 28px 28px;
+  box-shadow:0 14px 30px -18px rgba(28,43,69,.4);
+  transform:rotate(var(--r,0deg));transition:transform .3s;
+}
+.note-card:hover{transform:rotate(0deg) translateY(-4px)}
+.note-card .tape{
+  position:absolute;top:-13px;left:50%;width:96px;height:26px;background:rgba(255,77,0,.85);
+  transform:translateX(-50%) rotate(-2deg);mix-blend-mode:multiply;
+}
+.note-card blockquote{font-size:17px;line-height:1.6;font-weight:500;letter-spacing:-.01em}
+.note-card .who{margin-top:22px;font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.18em;color:var(--line)}
+.note-card .hand{font-size:21px;margin-top:10px;transform:rotate(-2deg);display:inline-block}
+
+/* ---------- CTA ---------- */
+.cta{background:var(--ink);color:var(--paper);border-block:1.5px solid var(--ink);position:relative;overflow:hidden}
+.cta .wrap{display:grid;grid-template-columns:1.4fr .6fr;gap:48px;align-items:center}
+@media(max-width:900px){.cta .wrap{grid-template-columns:1fr}}
+.cta h2{font-size:clamp(44px,5.4vw,84px)}
+.cta h2 .ul{position:relative;white-space:nowrap}
+.cta h2 .ul::after{
+  content:"";position:absolute;left:0;bottom:6px;height:7px;width:100%;background:var(--orange);
+  transform:scaleX(0);transform-origin:left;transition:transform .9s cubic-bezier(.2,.7,.2,1) .35s;
+}
+.cta.in h2 .ul::after{transform:scaleX(1)}
+.cta p{margin-top:22px;color:#9FB2DE;font-size:16px;line-height:1.7;max-width:48ch}
+.cta .right{display:flex;flex-direction:column;align-items:flex-start;gap:22px}
+.cta .mono-list{font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.14em;line-height:2.3;color:#9FB2DE}
+.cta .mono-list b{color:var(--paper)}
+
+/* ---------- footer / title block ---------- */
+footer{padding:70px 0 56px}
+.tblock{border:1.5px solid var(--ink);display:grid;grid-template-columns:2.2fr 1fr 1fr 1fr 1fr;font-family:"Spline Sans Mono",monospace}
+@media(max-width:900px){.tblock{grid-template-columns:1fr 1fr}}
+.tblock div{padding:16px 18px;border-right:1px solid var(--ink);border-bottom:1px solid var(--ink);font-size:11px;letter-spacing:.1em}
+.tblock div b{display:block;font-size:9px;letter-spacing:.2em;color:var(--line);margin-bottom:7px;font-weight:600}
+.tblock div:nth-child(5n),.tblock div:last-child{border-right:0}
+@media(max-width:900px){.tblock div:nth-child(5n){border-right:1px solid var(--ink)}.tblock div:nth-child(2n){border-right:0}}
+.tblock .row2{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;border-bottom:0;flex-wrap:wrap;gap:12px}
+.tblock .sheets a{padding:4px 10px;border:1px solid var(--ink);margin-left:6px;transition:.2s;display:inline-block}
+.tblock .sheets a:hover,.tblock .sheets a.now{background:var(--orange);border-color:var(--orange);color:#fff}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}
+}
+</style>
+</head>
+<body class="grid-bg">
+
+<!-- ================= HEADER ================= -->
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="index.html"><span class="sq"></span>HomeKept</a>
+    <nav>
+      <a class="now" href="index.html">SHEET 1 — SITE</a>
+      <a href="dashboard.html">SHEET 2 — OWNER</a>
+      <a href="tech.html">SHEET 3 — FIELD</a>
+    </nav>
+    <div class="meta">DWG № HK-001 · REV C · GTA WEST</div>
+    <a class="btn solid sm" href="#cta">BOOK WALK-THROUGH ↗</a>
+  </div>
+</header>
+
+<!-- ================= HERO ================= -->
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <div class="kicker"><span class="dot"></span>SERVING OAKVILLE · MISSISSAUGA · MILTON</div>
+      <h1>
+        <span class="row"><span>Your home,</span></span>
+        <span class="row"><span>drawn <em>to plan.</em></span></span>
+      </h1>
+      <p class="lede">
+        HomeKept is a monthly subscription that keeps every system in your house on
+        schedule — filters, gutters, plumbing, detectors — performed by the same vetted
+        technician and documented like a drawing set.
+      </p>
+      <div class="cta-row">
+        <a class="btn solid" href="#cta">BOOK THE WALK-THROUGH →</a>
+        <svg class="stamp" viewBox="0 0 100 100" aria-hidden="true">
+          <defs><path id="ring" d="M50,50 m-37,0 a37,37 0 1,1 74,0 a37,37 0 1,1 -74,0"/></defs>
+          <circle cx="50" cy="50" r="48" fill="none" stroke="#1C2B45" stroke-width="1.5"/>
+          <circle cx="50" cy="50" r="26" fill="none" stroke="#FF4D00" stroke-width="1.5"/>
+          <text><textPath href="#ring">FREE · 90 MIN · NO OBLIGATION · FREE · 90 MIN ·</textPath></text>
+        </svg>
+      </div>
+      <div class="spec-strip">
+        <div><b>01</b>90-MINUTE ASSESSMENT</div>
+        <div><b>02</b>WRITTEN PLAN IN 7 DAYS</div>
+        <div><b>03</b>CANCEL ANYTIME</div>
+      </div>
+    </div>
+
+    <!-- FIG.00 — animated house elevation -->
+    <figure class="fig">
+      <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+      <span class="fig-tag">FIG. 00 — ELEVATION, FRONT</span>
+      <svg class="bp" viewBox="0 0 660 560" role="img" aria-label="Line drawing of a house with maintenance callouts">
+        <!-- ground -->
+        <line class="s draw" x1="30" y1="430" x2="630" y2="430" pathLength="1" style="--d:.1s"/>
+        <!-- walls -->
+        <line class="s draw" x1="160" y1="200" x2="160" y2="430" pathLength="1" style="--d:.35s"/>
+        <line class="s draw" x1="500" y1="200" x2="500" y2="430" pathLength="1" style="--d:.35s"/>
+        <line class="s draw thin" x1="160" y1="200" x2="500" y2="200" pathLength="1" style="--d:.5s"/>
+        <!-- roof -->
+        <path class="s draw" d="M135 200 L330 78 L525 200" pathLength="1" style="--d:.6s"/>
+        <!-- chimney -->
+        <path class="s draw thin" d="M430 141 V96 H462 V161" pathLength="1" style="--d:.8s"/>
+        <!-- floor line -->
+        <line class="s thin dash draw" x1="160" y1="320" x2="500" y2="320" pathLength="1" style="--d:.85s"/>
+        <!-- door -->
+        <rect class="s draw thin" x="305" y="340" width="52" height="90" pathLength="1" style="--d:.95s"/>
+        <circle class="s thin" cx="347" cy="388" r="2"/>
+        <!-- windows -->
+        <rect class="s draw thin" x="205" y="230" width="55" height="60" pathLength="1" style="--d:1s"/>
+        <line class="s thin draw" x1="232.5" y1="230" x2="232.5" y2="290" pathLength="1" style="--d:1.15s"/>
+        <line class="s thin draw" x1="205" y1="260" x2="260" y2="260" pathLength="1" style="--d:1.15s"/>
+        <rect class="s draw thin" x="400" y="230" width="55" height="60" pathLength="1" style="--d:1.05s"/>
+        <line class="s thin draw" x1="427.5" y1="230" x2="427.5" y2="290" pathLength="1" style="--d:1.2s"/>
+        <line class="s thin draw" x1="400" y1="260" x2="455" y2="260" pathLength="1" style="--d:1.2s"/>
+        <!-- gutter + downspout -->
+        <line class="s draw" x1="500" y1="206" x2="512" y2="206" pathLength="1" style="--d:1.25s"/>
+        <line class="s thin draw" x1="512" y1="206" x2="512" y2="430" pathLength="1" style="--d:1.3s"/>
+        <!-- basement (x-ray) -->
+        <path class="s thin dash draw" d="M160 430 V505 H500 V430" pathLength="1" style="--d:1.2s"/>
+        <!-- furnace -->
+        <rect class="s thin draw" x="300" y="445" width="48" height="55" pathLength="1" style="--d:1.35s"/>
+        <line class="s thin draw" x1="324" y1="445" x2="324" y2="430" pathLength="1" style="--d:1.45s"/>
+        <line class="s thin draw" x1="308" y1="460" x2="340" y2="460" pathLength="1" style="--d:1.45s"/>
+        <line class="s thin draw" x1="308" y1="470" x2="340" y2="470" pathLength="1" style="--d:1.5s"/>
+        <!-- water heater -->
+        <rect class="s thin draw" x="392" y="448" width="34" height="52" rx="9" pathLength="1" style="--d:1.4s"/>
+        <line class="s thin draw" x1="409" y1="448" x2="409" y2="430" pathLength="1" style="--d:1.5s"/>
+        <!-- smoke detector -->
+        <circle class="s thin draw" cx="330" cy="160" r="6" pathLength="1" style="--d:1.5s"/>
+
+        <!-- dimension line -->
+        <line class="dim draw" x1="160" y1="535" x2="500" y2="535" pathLength="1" style="--d:1.6s"/>
+        <line class="dim" x1="160" y1="528" x2="160" y2="542"/>
+        <line class="dim" x1="500" y1="528" x2="500" y2="542"/>
+        <text class="dimtxt" x="330" y="527" text-anchor="middle">LOT 14 — MAPLE RIDGE CRT</text>
+
+        <!-- callouts -->
+        <circle class="pt" cx="512" cy="210" r="5" style="--d:1.7s"/>
+        <circle class="pulse" cx="512" cy="210" r="6" style="--d:1.9s"/>
+        <polyline class="leader" points="517,205 560,168 600,168" pathLength="1" style="--d:1.8s"/>
+        <text class="lbl" x="560" y="150" style="--d:2s">GUTTER RUN</text>
+        <text class="lbl sub" x="560" y="162" style="--d:2s">CLEAR 2×/YR</text>
+
+        <circle class="pt" cx="330" cy="160" r="5" style="--d:1.85s"/>
+        <circle class="pulse" cx="330" cy="160" r="6" style="--d:2.1s"/>
+        <polyline class="leader" points="324,155 230,106 150,106" pathLength="1" style="--d:1.95s"/>
+        <text class="lbl" x="44" y="98" style="--d:2.15s">DETECTORS</text>
+        <text class="lbl sub" x="44" y="110" style="--d:2.15s">TEST MONTHLY</text>
+
+        <circle class="pt" cx="324" cy="472" r="5" style="--d:2s"/>
+        <circle class="pulse" cx="324" cy="472" r="6" style="--d:2.3s"/>
+        <polyline class="leader" points="318,478 230,516 150,516" pathLength="1" style="--d:2.1s"/>
+        <text class="lbl" x="44" y="508" style="--d:2.3s">FURNACE</text>
+        <text class="lbl sub" x="44" y="520" style="--d:2.3s">FILTER 4×/YR</text>
+
+        <circle class="pt" cx="409" cy="476" r="5" style="--d:2.15s"/>
+        <circle class="pulse" cx="409" cy="476" r="6" style="--d:2.45s"/>
+        <polyline class="leader" points="415,481 530,512 596,512" pathLength="1" style="--d:2.25s"/>
+        <text class="lbl" x="530" y="498" style="--d:2.45s">TANK</text>
+        <text class="lbl sub" x="530" y="510" style="--d:2.45s">FLUSH 1×/YR</text>
+      </svg>
+      <figcaption class="fig-cap"><span>SCALE 1 : 96</span><span>ALL SYSTEMS SHOWN</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= MARQUEE ================= -->
+<div class="marquee" aria-hidden="true">
+  <div class="track">
+    <span>FURNACE FILTERS <i></i> GUTTER CLEARING <i></i> SMOKE &amp; CO TESTS <i></i> WATER HEATER FLUSH <i></i> HOSE BIB SHUT-OFF <i></i> THERMOSTAT TUNE-UP <i></i> LEAK INSPECTION <i></i> DRYER VENT <i></i></span>
+    <span>FURNACE FILTERS <i></i> GUTTER CLEARING <i></i> SMOKE &amp; CO TESTS <i></i> WATER HEATER FLUSH <i></i> HOSE BIB SHUT-OFF <i></i> THERMOSTAT TUNE-UP <i></i> LEAK INSPECTION <i></i> DRYER VENT <i></i></span>
+  </div>
+</div>
+
+<!-- ================= HOW IT WORKS ================= -->
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <div>
+        <p class="eyebrow">PROCEDURE</p>
+        <h2>Three figures.<br/>Then it's <em>handled.</em></h2>
+      </div>
+      <p class="note">REFER TO SHEET 2 FOR OWNER CONSOLE.<br/>NO ACTION REQ'D BY OWNER AFTER FIG. 03.</p>
+    </div>
+    <div class="steps">
+      <article class="step" data-reveal style="--i:0">
+        <p class="figno">FIG. 01 — SURVEY</p>
+        <h3>We walk the home.</h3>
+        <p>A 90-minute, no-obligation visit. We catalog every system — HVAC, plumbing, exterior, electrical — and ask how you live in the space.</p>
+        <div class="glyph"><svg viewBox="0 0 54 54"><circle cx="23" cy="23" r="13"/><line x1="33" y1="33" x2="46" y2="46"/><line x1="17" y1="23" x2="29" y2="23"/><line x1="23" y1="17" x2="23" y2="29"/></svg></div>
+        <span class="idx">01</span>
+      </article>
+      <article class="step" data-reveal style="--i:1">
+        <p class="figno">FIG. 02 — DRAWING SET</p>
+        <h3>We draft the plan.</h3>
+        <p>A written maintenance plan tailored to your home: what we'll do, when we'll be there, and exactly what it costs. No surprise upsells.</p>
+        <div class="glyph"><svg viewBox="0 0 54 54"><rect x="10" y="6" width="34" height="42"/><line x1="17" y1="16" x2="37" y2="16"/><line x1="17" y1="24" x2="37" y2="24"/><line x1="17" y1="32" x2="30" y2="32"/><line x1="17" y1="40" x2="26" y2="40"/></svg></div>
+        <span class="idx">02</span>
+      </article>
+      <article class="step" data-reveal style="--i:2">
+        <p class="figno">FIG. 03 — STANDING ORDER</p>
+        <h3>We keep the schedule.</h3>
+        <p>Visits appear in the app. After each one you get a photo report: what we did, what we noticed, and what's coming next.</p>
+        <div class="glyph"><svg viewBox="0 0 54 54"><rect x="8" y="10" width="38" height="36"/><line x1="8" y1="20" x2="46" y2="20"/><line x1="18" y1="6" x2="18" y2="14"/><line x1="36" y1="6" x2="36" y2="14"/><path d="M18 32 l5 5 l11 -11"/></svg></div>
+        <span class="idx">03</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SEASONAL PROGRAM (CYANOTYPE) ================= -->
+<section class="bluep" id="program">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <div>
+        <p class="eyebrow">THE STANDING ORDER</p>
+        <h2>A year of upkeep,<br/><em>drawn to schedule.</em></h2>
+      </div>
+      <p class="note">COMPLETE PLAN SHOWN. CADENCE ADJUSTS PER DWELLING AGE &amp; SYSTEMS.</p>
+    </div>
+
+    <div class="sched" id="sched" data-reveal>
+      <div class="row head">
+        <div class="cell">SYSTEM</div>
+        <div class="cell">J</div><div class="cell">F</div><div class="cell">M</div><div class="cell">A</div><div class="cell">M</div><div class="cell">J</div><div class="cell">J</div><div class="cell">A</div><div class="cell">S</div><div class="cell">O</div><div class="cell">N</div><div class="cell">D</div>
+      </div>
+      <div class="row" data-months="0,3,6,9"><div class="cell">HVAC FILTERS</div></div>
+      <div class="row" data-months="3,10"><div class="cell">GUTTERS</div></div>
+      <div class="row" data-months="2,8"><div class="cell">PLUMBING</div></div>
+      <div class="row" data-months="0,1,2,3,4,5,6,7,8,9,10,11" data-small="1"><div class="cell">DETECTORS</div></div>
+      <div class="row" data-months="4,9"><div class="cell">EXTERIOR</div></div>
+      <div class="row" data-months="7"><div class="cell">TANK FLUSH</div></div>
+    </div>
+    <p class="youare mono" id="youare" style="margin-top:14px;font-size:10.5px;letter-spacing:.18em;color:var(--orange);display:flex;align-items:center;gap:10px"></p>
+
+    <div class="stats" data-reveal>
+      <div class="stat"><div class="n"><span data-count="1248">0</span><s>+</s></div><div class="l">VISITS LOGGED</div></div>
+      <div class="stat"><div class="n"><span data-count="9310">0</span><s>+</s></div><div class="l">PHOTOS FILED</div></div>
+      <div class="stat"><div class="n"><span data-count="312">0</span></div><div class="l">HOMES KEPT</div></div>
+      <div class="stat"><div class="n"><span data-count="87">0</span><s>/100</s></div><div class="l">AVG HOME HEALTH</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PLANS ================= -->
+<section id="plans">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <div>
+        <p class="eyebrow">SPECIFICATIONS</p>
+        <h2>Pick your <em>spec.</em></h2>
+      </div>
+      <p class="note">ALL PRICES CAD. ANNUAL BILLING SAVES ~17% (TWO MONTHS FREE).</p>
+    </div>
+    <div class="plans">
+      <article class="plan" data-reveal style="--i:0">
+        <p class="tier"><span>TIER 01</span><span>4 VISITS/YR</span></p>
+        <h3>Essential</h3>
+        <div class="price"><span class="d">$129</span><span class="per">/MO</span></div>
+        <p class="cad">QUARTERLY · TOWNHOMES &amp; CONDOS</p>
+        <ul>
+          <li><span>HVAC filter swaps</span><span class="f">4×/YR</span></li>
+          <li><span>Smoke &amp; CO detector tests</span><span class="f">4×/YR</span></li>
+          <li><span>Seasonal exterior check</span><span class="f">2×/YR</span></li>
+          <li><span>Photo report, every visit</span><span class="f">INCL.</span></li>
+        </ul>
+        <a class="btn" href="#cta">SPECIFY ESSENTIAL</a>
+      </article>
+
+      <article class="plan feat" data-reveal style="--i:1">
+        <span class="stamp2">★ MOST SPECIFIED</span>
+        <p class="tier"><span>TIER 02</span><span>12 VISITS/YR</span></p>
+        <h3>Complete</h3>
+        <div class="price"><span class="d">$189</span><span class="per">/MO</span></div>
+        <p class="cad">MONTHLY · MOST DETACHED HOMES</p>
+        <ul>
+          <li><span>Everything in Essential</span><span class="f">INCL.</span></li>
+          <li><span>Monthly visits, year-round</span><span class="f">12×/YR</span></li>
+          <li><span>Plumbing &amp; leak inspections</span><span class="f">2×/YR</span></li>
+          <li><span>Gutter clearing &amp; exterior</span><span class="f">2×/YR</span></li>
+          <li><span>Priority emergency scheduling</span><span class="f">24 HR</span></li>
+        </ul>
+        <a class="btn solid" href="#cta">SPECIFY COMPLETE</a>
+      </article>
+
+      <article class="plan" data-reveal style="--i:2">
+        <p class="tier"><span>TIER 03</span><span>24 VISITS/YR</span></p>
+        <h3>Premier</h3>
+        <div class="price"><span class="d">$289</span><span class="per">/MO</span></div>
+        <p class="cad">BI-MONTHLY · LARGER HOMES</p>
+        <ul>
+          <li><span>Everything in Complete</span><span class="f">INCL.</span></li>
+          <li><span>Dedicated lead technician</span><span class="f">NAMED</span></li>
+          <li><span>Smart-home setup &amp; support</span><span class="f">INCL.</span></li>
+          <li><span>Minor repairs included</span><span class="f">≤1 HR</span></li>
+        </ul>
+        <a class="btn" href="#cta">SPECIFY PREMIER</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FIELD NOTES ================= -->
+<section id="notes" style="padding-top:40px">
+  <div class="wrap">
+    <div class="sec-head" data-reveal>
+      <div>
+        <p class="eyebrow">FIELD NOTES</p>
+        <h2>From the <em>file.</em></h2>
+      </div>
+    </div>
+    <div class="notes">
+      <article class="note-card" style="--r:-1.6deg" data-reveal>
+        <span class="tape"></span>
+        <blockquote>“We stopped pretending we'd get to it. Now we just don't think about it — and the house is actually in better shape.”</blockquote>
+        <p class="who">SARAH — OAKVILLE · COMPLETE, YR 2</p>
+        <span class="hand">verified ✓ — M.T.</span>
+      </article>
+      <article class="note-card" style="--r:1.2deg;--i:1" data-reveal>
+        <span class="tape"></span>
+        <blockquote>“It feels like having a really competent nephew in the trades — except he actually shows up.”</blockquote>
+        <p class="who">JAMES — MISSISSAUGA · PREMIER, YR 1</p>
+        <span class="hand">same tech, 14 visits</span>
+      </article>
+      <article class="note-card" style="--r:2deg;--i:2" data-reveal>
+        <span class="tape"></span>
+        <blockquote>“I had no idea water heaters needed flushing. Now I do — and I haven't had to lift a wrench.”</blockquote>
+        <p class="who">PRIYA — MILTON · ESSENTIAL, YR 1</p>
+        <span class="hand">score 84 → climbing</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA ================= -->
+<section class="cta" id="cta" data-reveal>
+  <div class="wrap">
+    <div>
+      <h2>Let's walk <span class="ul">your home.</span></h2>
+      <p>Ninety minutes, no obligation. You'll get a written maintenance plan within a week — keep it or don't. Either way, you'll finally know your house.</p>
+    </div>
+    <div class="right">
+      <div class="mono-list">
+        <b>NEXT AVAILABLE:</b> THIS WEEK<br/>
+        <b>DURATION:</b> 90 MIN<br/>
+        <b>COST:</b> $0.00 CAD<br/>
+        <b>OBLIGATION:</b> NONE
+      </div>
+      <a class="btn solid" href="#" style="font-size:13px;padding:18px 30px">BOOK THE WALK-THROUGH →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FOOTER / TITLE BLOCK ================= -->
+<footer>
+  <div class="wrap">
+    <div class="tblock">
+      <div><b>PROJECT</b>HOMEKEPT — RESIDENTIAL MAINTENANCE, GTA WEST</div>
+      <div><b>DRAWN BY</b>HK STUDIO</div>
+      <div><b>CHECKED</b>M. T.</div>
+      <div><b>DATE</b><span id="fdate"></span></div>
+      <div><b>SCALE</b>1 : 1</div>
+      <div class="row2">
+        <span>© <span id="fyear"></span> HOMEKEPT · OAKVILLE ON · HELLO@HOMEKEPT.CA</span>
+        <span class="sheets">SHEET
+          <a class="now" href="index.html">1</a><a href="dashboard.html">2</a><a href="tech.html">3</a>
+          OF 3</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* scroll reveals */
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+}), { threshold: .18 });
+document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
+
+/* seasonal schedule dots */
+const sched = document.getElementById('sched');
+sched.querySelectorAll('.row[data-months]').forEach((row, ri) => {
+  const months = row.dataset.months.split(',').map(Number);
+  const small = row.dataset.small === '1';
+  for (let m = 0; m < 12; m++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    if (m === new Date().getMonth()) cell.classList.add('now');
+    if (months.includes(m)) {
+      const dot = document.createElement('span');
+      dot.className = 'dot' + (small ? ' sm' : '');
+      dot.style.setProperty('--d', (ri * .12 + m * .05) + 's');
+      cell.appendChild(dot);
+    }
+    row.appendChild(cell);
+  }
+});
+const schedIO = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { sched.classList.add('in'); schedIO.unobserve(sched); }
+}), { threshold: .3 });
+schedIO.observe(sched);
+const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE','JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+document.getElementById('youare').textContent = 'YOU ARE HERE — ' + MONTHS[new Date().getMonth()];
+
+/* counters */
+const counters = document.querySelectorAll('[data-count]');
+const cIO = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  const el = e.target, target = +el.dataset.count, t0 = performance.now();
+  const tick = now => {
+    const p = Math.min((now - t0) / 1400, 1), eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(target * eased).toLocaleString('en-CA');
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  cIO.unobserve(el);
+}), { threshold: .6 });
+counters.forEach(el => cIO.observe(el));
+
+/* footer date */
+const now = new Date();
+document.getElementById('fdate').textContent = now.toISOString().slice(0, 10);
+document.getElementById('fyear').textContent = now.getFullYear();
+</script>
+</body>
+</html>
