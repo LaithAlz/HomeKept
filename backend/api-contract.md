@@ -43,7 +43,8 @@ Walk-through booking form submission (frontend `book` wizard).
   "timeOfDay": "AFTERNOON",           // MORNING | AFTERNOON | EVENING
   "dayPreferences": ["WED", "THU"],
   "notes": "Friendly dog in the yard",
-  "leadSource": "WEBSITE_ORGANIC"     // optional, defaults WEBSITE_DIRECT
+  "leadSource": "WEBSITE_ORGANIC",    // optional, defaults WEBSITE_DIRECT
+  "contactConsent": true              // required true (CASL); consent timestamp recorded server-side
 }
 ```
 → `201 { "id": 123, "status": "PENDING" }` · Rate limit: 3/IP/hour. Triggers
@@ -62,13 +63,19 @@ Plan tiers for the pricing page.
 
 Magic-link flow: walk-through → subscriber. Token is single-use, HMAC-signed, 7-day expiry.
 
+Both endpoints are IP rate-limited (10/IP/hour) — magic links leak via forwarded emails.
+
 ### `POST /api/activation/validate`
-`{ "token": "..." }` → `200 { "valid": true, "bookingId": 123, "fullName": "Priya Sharma", "email": "priya@example.com" }`
+`{ "token": "..." }` → `200 { "valid": true, "bookingId": 123, "firstName": "Priya" }`
 or `200 { "valid": false, "reason": "EXPIRED" | "USED" | "INVALID" }`
+(First name only — a token holder shouldn't learn the full identity.)
 
 ### `POST /api/activation/complete`
-`{ "token": "...", "password": "..." }` → creates `User` (CUSTOMER, PENDING_ACTIVATION)
-+ `Property` from booking data, consumes token, sets auth cookies.
+`{ "token": "...", "password": "..." }` → in one transaction: creates `User` (CUSTOMER,
+PENDING_ACTIVATION), `Property` from booking data, and the `Subscriber` row in
+`PENDING_ACTIVATION` (so `property.subscriber_id` is never orphaned); consumes the token;
+sets auth cookies. The Stripe `checkout.session.completed` webhook later flips the
+subscriber to `ACTIVE`.
 → `201 { "userId": 9, "next": "CHECKOUT" }`
 
 ---
@@ -82,8 +89,10 @@ or `200 { "valid": false, "reason": "EXPIRED" | "USED" | "INVALID" }`
 | `POST /api/auth/logout` | — | `204`, revokes all refresh tokens |
 | `GET /api/auth/me` | — | `200 { id, firstName, lastName, email, role }` |
 
-`POST /api/auth/register` exists for admin/technician bootstrap only at MVP — customers
-enter via activation. Not exposed in the UI.
+There is **no** `POST /api/auth/register` at MVP. Customer accounts are created only via
+the activation flow; the first ADMIN (and any TECHNICIAN) users are created by seed
+migration. Self-serve registration gets added — behind a deliberate design — only when a
+real need appears.
 
 ---
 
@@ -140,5 +149,5 @@ All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).
 ## Status codes
 
 `200/201/204` success · `400` validation (envelope above) · `401` missing/expired token ·
-`403` wrong role / not owner · `404` not found or not yours (don't leak existence) ·
-`409` illegal state transition · `429` rate limited · `5xx` + Sentry.
+`403` wrong role · `404` not found *or not yours* (ownership failures return 404, never 403 —
+don't leak existence) · `409` illegal state transition · `429` rate limited · `5xx` + Sentry.

@@ -492,11 +492,15 @@ Each state machine class lives next to its entity (`subscription/SubscriberState
 ## 5.1 Security
 
 **Authentication:** JWT in httpOnly cookies (see `identity`). All `/api/*` endpoints require a valid access token except:
-- `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`
+- `/api/auth/login`, `/api/auth/refresh`
 - `/api/bookings/walkthrough` (public form submission)
+- `/api/catalog/plans` (public pricing data)
 - `/api/webhooks/stripe` (signed by Stripe, not session-authed)
-- `/api/activation/validate` (token-authed, not session)
+- `/api/activation/*` (token-authed, not session — see api-contract.md)
 - `/api/health` (no auth)
+
+There is no self-serve `/api/auth/register` at MVP — customers enter via activation;
+the first ADMIN is created by seed migration.
 
 **Authorization:** `@PreAuthorize` annotations on every protected endpoint, explicitly. Don't rely on filter-based auth alone. Pattern:
 - `@PreAuthorize("hasRole('CUSTOMER')")` for `/app/*`
@@ -518,8 +522,8 @@ Each state machine class lives next to its entity (`subscription/SubscriberState
 **Cross-origin auth (frontend on Cloudflare, API on Render):**
 - Serve the API at `api.homekept.ca` (CNAME to Render), never at the raw `*.onrender.com` URL. `homekept.ca` and `api.homekept.ca` are different *origins* but the same *site*, so `SameSite=Lax` cookies still flow on `fetch` calls made with `credentials: "include"`.
 - Auth cookies are host-only on `api.homekept.ca` (no `Domain` attribute), `HttpOnly`, `Secure`, `SameSite=Lax`.
-- CORS config allows exactly `https://homekept.ca` (plus the localhost dev origin) with `Access-Control-Allow-Credentials: true` — credentialed CORS cannot use wildcards.
-- Local dev mirrors this: frontend on `localhost:5173`, API on `localhost:8080` — same-site, same cookie rules.
+- CORS config allows exactly `https://homekept.ca` (plus the localhost dev origin) with `Access-Control-Allow-Credentials: true` — credentialed CORS cannot use wildcards. Redirect `www.homekept.ca` → apex at Cloudflare so `www` never needs to be in the allowlist.
+- Local dev mirrors this: frontend on `localhost:5173`, API on `localhost:8080` — same-site, same cookie rules, except the dev profile drops the `Secure` cookie attribute (Safari won't send `Secure` cookies over plain-http localhost).
 - Escape hatch if cookie friction ever appears: proxy `/api/*` through the Cloudflare Worker to Render so the browser sees a single origin. Don't build this preemptively.
 
 **Input validation:** Bean Validation (`@NotNull`, `@Email`, `@Size`, `@Pattern`) on every DTO. Centralized error handler that returns structured error responses.
