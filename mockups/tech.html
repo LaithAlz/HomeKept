@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Field Sheet — HomeKept Tech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=Spline+Sans+Mono:wght@400;500;600&family=Instrument+Serif:ital@1&family=Caveat:wght@600&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT — DRAWING SET / SHEET 3 OF 3 — FIELD UNIT, SCALE 1:1 */
+:root{
+  --paper:#F2EDDF;--ink:#1C2B45;--line:#2A4690;
+  --line-soft:rgba(42,70,144,.16);--line-faint:rgba(42,70,144,.08);
+  --blue:#15306E;--orange:#FF4D00;--cream:#F6F2E6;--ok:#1E7A4D;--hand:#C93A00;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:"Bricolage Grotesque",sans-serif;font-optical-sizing:auto;
+  background-image:
+    linear-gradient(var(--line-faint) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line-faint) 1px,transparent 1px);
+  background-size:24px 24px;
+}
+::selection{background:var(--orange);color:var(--cream)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+body::after{content:"";position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .04 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");}
+.mono{font-family:"Spline Sans Mono",monospace}
+.wrap{max-width:1280px;margin:0 auto;padding:0 40px}
+@media(max-width:720px){.wrap{padding:0 20px}}
+
+header{position:sticky;top:0;z-index:50;background:var(--paper);border-bottom:1.5px solid var(--ink)}
+.bar{display:flex;align-items:center;justify-content:space-between;height:64px;gap:24px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:-.02em}
+.logo .sq{width:14px;height:14px;background:var(--orange);transform:rotate(45deg);flex:none}
+.bar nav{display:flex;gap:2px;font-family:"Spline Sans Mono",monospace;font-size:11px;letter-spacing:.1em}
+.bar nav a{padding:8px 14px;border:1px solid transparent;transition:.2s}
+.bar nav a:hover{border-color:var(--ink)}
+.bar nav a.now{background:var(--ink);color:var(--paper)}
+
+/* stage */
+.stage{position:relative;display:grid;grid-template-columns:1fr auto 1fr;gap:40px;align-items:center;padding:70px 0 100px;min-height:calc(100vh - 64px)}
+@media(max-width:1080px){.stage{grid-template-columns:1fr;justify-items:center}}
+.side-note{font-family:"Spline Sans Mono",monospace;font-size:10.5px;letter-spacing:.16em;color:var(--line);line-height:2.4}
+.side-note b{color:var(--ink)}
+.side-note .o{color:var(--orange)}
+.side-note.r{text-align:right}
+@media(max-width:1080px){.side-note{display:none}}
+.hand{font-family:"Caveat",cursive;color:var(--hand);font-size:22px;letter-spacing:0;transform:rotate(-3deg);display:inline-block}
+
+/* dimension annotations around the phone */
+.phone-rig{position:relative;animation:rigup .8s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rigup{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
+.dim-top{position:absolute;top:-34px;left:0;right:0;display:flex;align-items:center;gap:10px;font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.2em;color:var(--line)}
+.dim-top::before,.dim-top::after{content:"";flex:1;height:1px;background:var(--line)}
+.dim-side{position:absolute;right:-34px;top:0;bottom:0;display:flex;align-items:center;writing-mode:vertical-rl;gap:10px;font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.2em;color:var(--line)}
+.dim-side::before,.dim-side::after{content:"";flex:1;width:1px;background:var(--line)}
+.cross{position:absolute;width:18px;height:18px;color:var(--line)}
+.cross::before,.cross::after{content:"";position:absolute;background:currentColor}
+.cross::before{width:18px;height:1px;top:8.5px}
+.cross::after{width:1px;height:18px;left:8.5px}
+.cx1{top:-26px;left:-26px}.cx2{bottom:-26px;right:-26px}
+
+/* the phone */
+.phone{
+  width:392px;height:800px;background:var(--cream);border:2.5px solid var(--ink);
+  border-radius:46px;overflow:hidden;display:flex;flex-direction:column;
+  box-shadow:14px 14px 0 rgba(28,43,69,.12);position:relative;
+}
+@media(max-width:480px){.phone{width:100%;max-width:392px;height:760px}}
+.notch{height:30px;display:flex;align-items:center;justify-content:center;flex:none}
+.notch i{width:110px;height:8px;background:var(--ink);border-radius:99px}
+.app{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+.app-head{padding:14px 22px 16px;border-bottom:1.5px solid var(--ink);flex:none}
+.app-head .row1{display:flex;justify-content:space-between;align-items:center;font-family:"Spline Sans Mono",monospace;font-size:9.5px;letter-spacing:.18em;color:var(--line)}
+.app-head h1{font-size:30px;font-weight:800;letter-spacing:-.03em;margin-top:8px}
+.app-head h1 em{font-family:"Instrument Serif",serif;font-style:italic;font-weight:400;color:var(--orange)}
+.routebar{display:flex;align-items:center;gap:12px;margin-top:12px}
+.routebar .track{flex:1;height:5px;background:var(--line-soft);position:relative}
+.routebar .fill{position:absolute;inset:0;right:auto;width:0;background:var(--ink);transition:width .9s cubic-bezier(.2,.7,.2,1)}
+.routebar .pct{font-family:"Spline Sans Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.1em;min-width:74px;text-align:right}
+
+.feed{flex:1;overflow-y:auto;padding:18px 18px 90px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin}
+
+.stop{border:1.5px solid var(--ink);background:#fff;animation:cardin .6s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,.2s)}
+@keyframes cardin{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+.stop .head{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.stop .n{width:30px;height:30px;border:1.5px solid var(--ink);display:grid;place-items:center;font-family:"Spline Sans Mono",monospace;font-size:11px;font-weight:600;flex:none}
+.stop .who{flex:1;min-width:0}
+.stop .who b{display:block;font-size:15.5px;letter-spacing:-.01em}
+.stop .who span{font-family:"Spline Sans Mono",monospace;font-size:9px;letter-spacing:.14em;color:var(--line)}
+.stop .st{font-family:"Spline Sans Mono",monospace;font-size:8.5px;font-weight:600;letter-spacing:.16em;padding:5px 9px;border:1px solid;flex:none}
+.stop.done{opacity:.62}
+.stop.done .n{background:var(--ink);color:var(--cream)}
+.stop.done .st{color:var(--ok);border-color:var(--ok)}
+.stop.next .st{color:var(--line);border-color:var(--line)}
+.stop.live{border-width:2px;box-shadow:6px 6px 0 rgba(255,77,0,.85)}
+.stop.live .n{background:var(--orange);border-color:var(--orange);color:#fff}
+.stop.live .st{color:var(--orange);border-color:var(--orange);animation:blink 1.8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+.checklist{border-top:1.5px solid var(--ink)}
+.task{display:flex;align-items:center;gap:13px;width:100%;padding:13px 16px;background:none;border:0;border-bottom:1px solid var(--line-faint);font:inherit;font-size:14.5px;text-align:left;cursor:pointer;color:var(--ink);transition:background .15s}
+.task:hover{background:var(--paper)}
+.task:last-of-type{border-bottom:0}
+.task .bx{width:17px;height:17px;border:1.5px solid var(--ink);flex:none;display:grid;place-items:center;transition:.2s}
+.task .bx svg{width:11px;height:11px;stroke:#fff;stroke-width:3;fill:none;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .3s .05s}
+.task.on .bx{background:var(--ink);border-color:var(--ink)}
+.task.on .bx svg{stroke-dashoffset:0}
+.task.on .label{text-decoration:line-through;text-decoration-color:var(--orange);text-decoration-thickness:1.5px;color:#6B7690}
+.task .min{margin-left:auto;font-family:"Spline Sans Mono",monospace;font-size:9px;letter-spacing:.12em;color:var(--line);flex:none}
+.stop .foot{display:flex;gap:10px;padding:13px 16px;border-top:1.5px solid var(--ink);background:var(--cream)}
+.chip{font-family:"Spline Sans Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.12em;padding:9px 13px;border:1.5px solid var(--ink);background:none;cursor:pointer;color:var(--ink);transition:.2s}
+.chip:hover{background:var(--ink);color:var(--cream)}
+.chip.go{margin-left:auto;background:var(--line-soft);border-color:var(--line-soft);color:#8A93AA;pointer-events:none}
+.chip.go.ready{background:var(--orange);border-color:var(--orange);color:#fff;pointer-events:auto;animation:readypulse 1.6s infinite}
+@keyframes readypulse{0%,100%{box-shadow:0 0 0 0 rgba(255,77,0,.5)}55%{box-shadow:0 0 0 9px rgba(255,77,0,0)}}
+.note-line{padding:11px 16px;font-size:13px;border-top:1px dashed var(--line);background:#FFFDF6;display:flex;gap:9px;align-items:baseline}
+.note-line .hand{font-size:18px;transform:rotate(-1.5deg)}
+
+.tabbar{position:absolute;bottom:0;left:0;right:0;display:flex;border-top:1.5px solid var(--ink);background:var(--cream);flex:none}
+.tabbar a{flex:1;text-align:center;padding:15px 0 17px;font-family:"Spline Sans Mono",monospace;font-size:8.5px;letter-spacing:.18em;color:var(--line);transition:.2s}
+.tabbar a.on{background:var(--ink);color:var(--cream)}
+.tabbar a:hover{color:var(--ink)}
+.tabbar a.on:hover{color:var(--cream)}
+
+footer{border-top:1.5px solid var(--ink);padding:22px 0;font-family:"Spline Sans Mono",monospace;font-size:10px;letter-spacing:.14em;color:var(--line)}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{border-bottom:1px solid var(--line)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="index.html"><span class="sq"></span>HomeKept</a>
+    <nav>
+      <a href="index.html">SHEET 1 — SITE</a>
+      <a href="dashboard.html">SHEET 2 — OWNER</a>
+      <a class="now" href="tech.html">SHEET 3 — FIELD</a>
+    </nav>
+    <span class="mono" style="font-size:10px;letter-spacing:.12em;color:var(--line)">FIELD UNIT — SCALE 1:1</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="stage">
+
+    <div class="side-note">
+      <b>FIG. 3.0 — FIELD UNIT</b><br/>
+      OPERATOR: MARCUS T.<br/>
+      ROUTE: GTA-W / THURSDAY<br/>
+      STOPS: 3 · EST 4.5 HR<br/><br/>
+      <span class="o">▣ TAP THE CHECKLIST —</span><br/>
+      <span class="o">IT'S LIVE.</span><br/><br/>
+      <span class="hand">try checking everything off →</span>
+    </div>
+
+    <div class="phone-rig">
+      <span class="cross cx1"></span><span class="cross cx2"></span>
+      <div class="dim-top">392 PT</div>
+      <div class="dim-side">800 PT</div>
+
+      <div class="phone">
+        <div class="notch"><i></i></div>
+        <div class="app">
+
+          <div class="app-head">
+            <div class="row1"><span id="t-date">THURSDAY</span><span>MARCUS T. · GTA-W</span></div>
+            <h1>Today's <em>route.</em></h1>
+            <div class="routebar">
+              <div class="track"><div class="fill" id="routefill"></div></div>
+              <div class="pct" id="routepct">0% DONE</div>
+            </div>
+          </div>
+
+          <div class="feed">
+
+            <!-- stop 1 — done -->
+            <article class="stop done" style="--d:.25s">
+              <div class="head">
+                <span class="n">✓</span>
+                <div class="who"><b>Chen Residence</b><span>27 BRONTE CREEK DR · OAKVILLE · PREMIER</span></div>
+                <span class="st">COMPLETE 10:42</span>
+              </div>
+            </article>
+
+            <!-- stop 2 — live, interactive -->
+            <article class="stop live" style="--d:.4s">
+              <div class="head">
+                <span class="n">2</span>
+                <div class="who"><b>Sharma Residence</b><span>14 MAPLE RIDGE CRT · MISSISSAUGA · COMPLETE</span></div>
+                <span class="st">● ON SITE</span>
+              </div>
+              <div class="checklist" id="list">
+                <button class="task on"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7 6,11 12,3" pathLength="1"/></svg></span><span class="label">Furnace filter swap — 16×25×1</span><span class="min">8 MIN</span></button>
+                <button class="task on"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7 6,11 12,3" pathLength="1"/></svg></span><span class="label">AC startup check</span><span class="min">15 MIN</span></button>
+                <button class="task"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7 6,11 12,3" pathLength="1"/></svg></span><span class="label">Gutter clearing — front run</span><span class="min">25 MIN</span></button>
+                <button class="task"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7 6,11 12,3" pathLength="1"/></svg></span><span class="label">Dryer vent cleaning ⚑</span><span class="min">20 MIN</span></button>
+                <button class="task"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7 6,11 12,3" pathLength="1"/></svg></span><span class="label">Photo report — 8+ shots</span><span class="min">5 MIN</span></button>
+              </div>
+              <div class="note-line"><span class="hand">note:</span><span>lockbox code in app · dog (friendly) in yard</span></div>
+              <div class="foot">
+                <button class="chip">+ PHOTO</button>
+                <button class="chip">+ NOTE</button>
+                <button class="chip go" id="complete">COMPLETE VISIT →</button>
+              </div>
+            </article>
+
+            <!-- stop 3 — upcoming -->
+            <article class="stop next" style="--d:.55s">
+              <div class="head">
+                <span class="n">3</span>
+                <div class="who"><b>Nguyen Residence</b><span>8 WHITEHORN PL · MILTON · ESSENTIAL · FIRST VISIT</span></div>
+                <span class="st">ETA 3:30 PM</span>
+              </div>
+            </article>
+
+          </div>
+
+          <nav class="tabbar">
+            <a class="on" href="#">ROUTE</a>
+            <a href="#">SCHEDULE</a>
+            <a href="#">PHOTOS</a>
+            <a href="#">PROFILE</a>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-note r">
+      MATERIAL: GLASS / INK<br/>
+      RADIUS: 46 PT<br/>
+      SHADOW: 14 / 14 / 0<br/><br/>
+      STATUS KEY —<br/>
+      <b>✓ COMPLETE</b><br/>
+      <span class="o">● ON SITE</span><br/>
+      ETA UPCOMING<br/><br/>
+      REF. SHEET 2 FOR<br/>OWNER-SIDE VIEW
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>FIELD APPLICATION — SHEET 3 OF 3</span>
+    <span><a href="index.html">← SHEET 1</a> · <a href="dashboard.html">SHEET 2</a></span>
+  </div>
+</footer>
+
+<script>
+/* live date in phone header */
+document.getElementById('t-date').textContent =
+  new Date().toLocaleDateString('en-CA', { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase();
+
+/* interactive checklist drives route progress */
+const tasks = [...document.querySelectorAll('#list .task')];
+const fill = document.getElementById('routefill');
+const pct = document.getElementById('routepct');
+const complete = document.getElementById('complete');
+
+function update() {
+  const done = tasks.filter(t => t.classList.contains('on')).length;
+  /* stop 1 of 3 complete = 33% baseline; this stop contributes up to another 33% */
+  const overall = Math.round(33 + (done / tasks.length) * 34);
+  fill.style.width = overall + '%';
+  pct.textContent = overall + '% DONE';
+  complete.classList.toggle('ready', done === tasks.length);
+}
+tasks.forEach(t => t.addEventListener('click', () => { t.classList.toggle('on'); update(); }));
+complete.addEventListener('click', () => {
+  pct.textContent = '67% DONE';
+  complete.textContent = '✓ LOGGED 1:54 PM';
+  complete.classList.remove('ready');
+});
+requestAnimationFrame(() => requestAnimationFrame(update));
+</script>
+</body>
+</html>

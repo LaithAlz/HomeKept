@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Book your free walk-through — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT v2 — Booking wizard, "Soft Keeping" */
+:root{
+  --cream:#F8F5EE;--cream-2:#F0EBDF;--card:#FFFEFA;
+  --pine:#1E3A2B;--pine-2:#2A4D39;--moss:#5E7D62;--sage:#A9BFAC;
+  --honey:#DE8F3F;--honey-soft:#F4D9B8;--ink:#22312A;--mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);--err:#B5482F;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--ink);font-family:"Figtree",sans-serif;line-height:1.6;overflow-x:hidden}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.serif{font-family:"Fraunces",serif}
+.wrap{max-width:1100px;margin:0 auto;padding:0 32px}
+@media(max-width:680px){.wrap{padding:0 20px}}
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:520px;height:520px;background:rgba(169,191,172,.35);top:-160px;right:-120px;animation:drift 16s ease-in-out infinite alternate}
+.glow.g2{width:420px;height:420px;background:rgba(244,217,184,.45);bottom:-120px;left:-160px;animation:drift 20s ease-in-out infinite alternate-reverse}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(36px,28px) scale(1.06)}}
+main,header{position:relative;z-index:1}
+
+.nav{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:rgba(255,254,250,.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--ring);border-radius:999px;padding:8px 20px;
+  box-shadow:0 10px 30px -12px rgba(30,58,43,.18);width:min(1100px,calc(100% - 40px));
+  animation:navin .8s cubic-bezier(.2,.8,.2,1) both;font-size:14px;
+}
+@keyframes navin{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translate(-50%,0)}}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;color:var(--pine)}
+.leaf{width:26px;height:26px;background:var(--pine);border-radius:50% 50% 50% 6px;position:relative;flex:none}
+.leaf::after{content:"";position:absolute;inset:8px;border-radius:50% 50% 50% 4px;background:var(--honey)}
+.nav .free{font-size:13px;font-weight:600;color:var(--mut)}
+.nav .free b{color:var(--moss)}
+
+/* layout */
+.stage{display:grid;grid-template-columns:1.5fr 1fr;gap:44px;align-items:start;padding:140px 0 90px}
+@media(max-width:920px){.stage{grid-template-columns:1fr}}
+.up{opacity:0;transform:translateY(24px);animation:up .8s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+
+.head h1{font-family:"Fraunces",serif;font-size:clamp(32px,3.8vw,46px);font-weight:560;letter-spacing:-.02em;color:var(--pine);line-height:1.1}
+.head h1 em{font-style:italic;font-weight:480;color:var(--moss)}
+.head p{margin-top:10px;color:var(--mut);font-size:15px}
+
+/* stepper */
+.stepper{display:flex;align-items:center;gap:0;margin:30px 0 26px}
+.snode{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;color:var(--mut)}
+.snode .dot{
+  width:36px;height:36px;border-radius:50% 50% 50% 11px;display:grid;place-items:center;
+  background:var(--cream-2);color:var(--mut);font-family:"Fraunces",serif;font-size:15px;font-weight:600;
+  transition:.35s cubic-bezier(.3,1.4,.5,1);
+}
+.snode.on{color:var(--pine)}
+.snode.on .dot{background:var(--pine);color:var(--cream);transform:scale(1.1) rotate(-6deg)}
+.snode.done .dot{background:var(--moss);color:#fff}
+.sline{flex:1;height:2.5px;background:var(--cream-2);margin:0 14px;border-radius:2px;position:relative;overflow:hidden;min-width:30px}
+.sline i{position:absolute;inset:0;background:var(--moss);transform:scaleX(0);transform-origin:left;transition:transform .5s cubic-bezier(.2,.8,.2,1)}
+.sline.fill i{transform:scaleX(1)}
+@media(max-width:560px){.snode span.lbl{display:none}}
+
+/* wizard card */
+.wcard{
+  background:var(--card);border:1px solid var(--ring);border-radius:34px;padding:38px;
+  box-shadow:0 24px 50px -30px rgba(30,58,43,.35);position:relative;overflow:hidden;
+}
+@media(max-width:560px){.wcard{padding:26px 22px}}
+.panel{display:none}
+.panel.on{display:block;animation:panelin .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes panelin{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+.panel.back{animation:panelback .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes panelback{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}
+.panel h2{font-family:"Fraunces",serif;font-size:25px;font-weight:600;color:var(--pine)}
+.panel .ph{font-size:14px;color:var(--mut);margin-top:5px}
+
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:26px}
+.fgrid .full{grid-column:1/-1}
+@media(max-width:560px){.fgrid{grid-template-columns:1fr}}
+label.fl{display:block;font-size:13px;font-weight:600;color:var(--pine);margin-bottom:7px}
+label.fl .opt{color:var(--mut);font-weight:500}
+input[type=text],input[type=email],input[type=tel],textarea,select{
+  width:100%;font:inherit;font-size:15px;color:var(--ink);
+  background:var(--cream);border:1.5px solid transparent;border-radius:16px;padding:13px 16px;
+  outline:none;transition:.25s;
+}
+input:focus,textarea:focus,select:focus{background:#fff;border-color:var(--moss);box-shadow:0 0 0 4px rgba(94,125,98,.15)}
+textarea{resize:vertical;min-height:88px}
+.field.invalid input,.field.invalid select{border-color:var(--err);background:#FDF6F3}
+.errmsg{display:none;font-size:12.5px;color:var(--err);margin-top:5px;font-weight:600}
+.field.invalid .errmsg{display:block}
+
+/* chips & cards */
+.chips{display:flex;flex-wrap:wrap;gap:9px}
+.chip{
+  font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);
+  background:var(--cream);border:1.5px solid transparent;border-radius:999px;padding:9px 17px;
+  cursor:pointer;transition:.22s cubic-bezier(.3,1.3,.5,1);
+}
+.chip:hover{transform:translateY(-2px);border-color:var(--sage)}
+.chip.on{background:var(--pine);color:var(--cream);transform:translateY(-2px)}
+.optcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:560px){.optcards{grid-template-columns:1fr}}
+.optcard{
+  font:inherit;text-align:left;background:var(--cream);border:1.5px solid transparent;border-radius:20px;
+  padding:16px;cursor:pointer;transition:.25s cubic-bezier(.3,1.2,.5,1);
+}
+.optcard:hover{transform:translateY(-3px);border-color:var(--sage)}
+.optcard.on{background:var(--pine);transform:translateY(-3px)}
+.optcard .big{font-size:22px}
+.optcard b{display:block;font-size:14.5px;color:var(--pine);margin-top:7px}
+.optcard span{font-size:12.5px;color:var(--mut)}
+.optcard.on b{color:var(--cream)}
+.optcard.on span{color:var(--sage)}
+.group{margin-top:26px}
+.group.invalid .chips .chip,.group.invalid .optcards .optcard{border-color:rgba(181,72,47,.45)}
+
+/* consent */
+.consent{display:flex;gap:13px;align-items:flex-start;margin-top:26px;background:var(--cream);border-radius:18px;padding:16px;cursor:pointer;border:1.5px solid transparent;transition:.2s}
+.consent.invalid{border-color:var(--err)}
+.consent input{display:none}
+.consent .bx{width:24px;height:24px;border-radius:8px;border:2px solid var(--sage);background:#fff;flex:none;display:grid;place-items:center;transition:.25s cubic-bezier(.3,1.5,.5,1);margin-top:2px}
+.consent .bx svg{width:13px;height:13px;stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .3s .05s}
+.consent.on .bx{background:var(--moss);border-color:var(--moss);transform:scale(1.08) rotate(-5deg)}
+.consent.on .bx svg{stroke-dashoffset:0}
+.consent p{font-size:13.5px;color:var(--mut)}
+
+/* wizard footer */
+.wfoot{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:34px;padding-top:24px;border-top:1px dashed rgba(30,58,43,.15)}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;font:inherit;font-weight:600;font-size:15px;
+  padding:13px 26px;border-radius:999px;cursor:pointer;border:0;
+  transition:transform .25s cubic-bezier(.3,1.4,.5,1),box-shadow .25s;
+}
+.btn.honey{background:var(--honey);color:var(--pine);box-shadow:0 8px 20px -8px rgba(222,143,63,.7)}
+.btn.honey:hover{transform:translateY(-2px) scale(1.02);box-shadow:0 14px 28px -10px rgba(222,143,63,.8)}
+.btn.ghost{background:transparent;color:var(--mut);border:1.5px solid rgba(30,58,43,.18)}
+.btn.ghost:hover{color:var(--pine);border-color:var(--pine);transform:translateY(-2px)}
+.btn .arr{transition:transform .25s}
+.btn:hover .arr{transform:translateX(4px)}
+.shake{animation:shake .45s cubic-bezier(.3,.1,.3,1)}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}45%{transform:translateX(7px)}70%{transform:translateX(-4px)}}
+
+/* summary sidecard */
+.summary{
+  position:sticky;top:104px;background:var(--pine);color:var(--cream);border-radius:30px;padding:30px;
+  box-shadow:0 28px 56px -28px rgba(30,58,43,.55);overflow:hidden;
+}
+.summary .orb{position:absolute;width:240px;height:240px;border-radius:50%;background:rgba(222,143,63,.18);filter:blur(54px);top:-80px;right:-60px}
+.summary .lab{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--sage);position:relative}
+.summary h3{font-family:"Fraunces",serif;font-size:24px;font-weight:600;margin-top:8px;position:relative}
+.summary h3 em{font-style:italic;color:var(--honey-soft)}
+.sumlist{margin-top:20px;display:flex;flex-direction:column;gap:1px;position:relative}
+.sumrow{display:flex;justify-content:space-between;gap:14px;background:rgba(248,245,238,.07);padding:11px 15px;font-size:13.5px}
+.sumrow:first-child{border-radius:16px 16px 4px 4px}
+.sumrow:last-child{border-radius:4px 4px 16px 16px}
+.sumrow .k{color:var(--sage)}
+.sumrow .v{font-weight:600;text-align:right;transition:.3s}
+.sumrow .v.empty{color:rgba(248,245,238,.35);font-weight:400}
+.sumfacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;position:relative}
+.sumfacts span{background:rgba(248,245,238,.1);border:1px solid rgba(248,245,238,.16);border-radius:999px;padding:7px 13px;font-size:12.5px;color:#DDE7DC}
+@media(max-width:920px){.summary{position:static}}
+
+/* success */
+.success{display:none;text-align:center;padding:30px 10px}
+.success.on{display:block;animation:panelin .6s cubic-bezier(.2,.8,.2,1)}
+.bigcheck{width:110px;height:110px;margin:0 auto}
+.bigcheck circle{stroke:var(--moss);stroke-width:3;fill:rgba(94,125,98,.1);stroke-dasharray:1;stroke-dashoffset:1;animation:draw .8s ease forwards}
+.bigcheck polyline{stroke:var(--moss);stroke-width:5;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:draw .5s ease .55s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.success h2{font-family:"Fraunces",serif;font-size:30px;font-weight:600;color:var(--pine);margin-top:22px}
+.success h2 em{font-style:italic;color:var(--moss)}
+.success .p{color:var(--mut);max-width:42ch;margin:12px auto 0;font-size:15px}
+.nextsteps{max-width:380px;margin:28px auto 0;text-align:left;display:flex;flex-direction:column;gap:12px}
+.nextsteps li{display:flex;gap:13px;align-items:flex-start;font-size:14px;color:var(--ink);opacity:0;transform:translateY(12px);animation:up .5s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,1s)}
+.nextsteps .nn{width:26px;height:26px;border-radius:50% 50% 50% 9px;background:var(--honey-soft);color:var(--pine);font-weight:700;font-size:12px;display:grid;place-items:center;flex:none;margin-top:1px}
+
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+
+<div class="glow g1"></div>
+<div class="glow g2"></div>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html"><span class="leaf"></span>HomeKept</a>
+    <span class="free">Free walk-through · <b>90 min · no obligation</b></span>
+  </nav>
+</header>
+
+<main class="wrap">
+  <div class="stage">
+
+    <!-- ============ WIZARD ============ -->
+    <div>
+      <div class="head up">
+        <h1>Let's walk <em>your home.</em></h1>
+        <p>Three quick steps — about a minute. We'll confirm your time within one business day.</p>
+      </div>
+
+      <div class="stepper up" style="--d:.1s" id="stepper">
+        <div class="snode on" data-s="1"><span class="dot">1</span><span class="lbl">Your home</span></div>
+        <div class="sline"><i></i></div>
+        <div class="snode" data-s="2"><span class="dot">2</span><span class="lbl">Timing</span></div>
+        <div class="sline"><i></i></div>
+        <div class="snode" data-s="3"><span class="dot">3</span><span class="lbl">You</span></div>
+      </div>
+
+      <div class="wcard up" style="--d:.18s" id="wcard">
+
+        <!-- STEP 1 -->
+        <section class="panel on" data-step="1">
+          <h2>Tell us about the home.</h2>
+          <p class="ph">Just enough to plan the visit — no measuring tape required.</p>
+          <div class="fgrid">
+            <div class="field full" data-f="address">
+              <label class="fl">Street address</label>
+              <input type="text" id="f-address" placeholder="14 Maple Ridge Crt" autocomplete="street-address" />
+              <p class="errmsg">Please enter your street address</p>
+            </div>
+            <div class="field" data-f="city">
+              <label class="fl">City</label>
+              <select id="f-city">
+                <option value="">Choose…</option>
+                <option>Oakville</option><option>Mississauga</option><option>Milton</option><option>Other</option>
+              </select>
+              <p class="errmsg">Please pick a city</p>
+            </div>
+            <div class="field" data-f="postal">
+              <label class="fl">Postal code</label>
+              <input type="text" id="f-postal" placeholder="L6H 1A1" autocomplete="postal-code" />
+              <p class="errmsg">Use a valid Canadian postal code</p>
+            </div>
+          </div>
+          <div class="group" data-f="ptype">
+            <label class="fl">Property type</label>
+            <div class="optcards" data-single="1" id="ptype">
+              <button class="optcard"><span class="big">🏡</span><b>Detached</b><span>Stands on its own</span></button>
+              <button class="optcard"><span class="big">🏠</span><b>Semi</b><span>Shares one wall</span></button>
+              <button class="optcard"><span class="big">🏘️</span><b>Townhouse</b><span>Row or condo town</span></button>
+            </div>
+            <p class="errmsg">Pick the closest match</p>
+          </div>
+          <div class="group">
+            <label class="fl">Roughly how big? <span class="opt">(optional)</span></label>
+            <div class="chips" data-single="1" id="sqft">
+              <button class="chip">&lt; 1,500 sq ft</button>
+              <button class="chip">1,500 – 2,500</button>
+              <button class="chip">2,500 – 4,000</button>
+              <button class="chip">4,000+</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- STEP 2 -->
+        <section class="panel" data-step="2">
+          <h2>When suits you?</h2>
+          <p class="ph">Pick a week and the times that usually work — we'll confirm an exact slot.</p>
+          <div class="group" data-f="week" style="margin-top:22px">
+            <label class="fl">Preferred week</label>
+            <div class="chips" data-single="1" id="weeks"></div>
+            <p class="errmsg">Pick a week that could work</p>
+          </div>
+          <div class="group" data-f="tod">
+            <label class="fl">Time of day</label>
+            <div class="optcards" data-single="1" id="tod">
+              <button class="optcard"><span class="big">🌅</span><b>Morning</b><span>8 – 11 AM</span></button>
+              <button class="optcard"><span class="big">☀️</span><b>Afternoon</b><span>12 – 4 PM</span></button>
+              <button class="optcard"><span class="big">🌆</span><b>Evening</b><span>5 – 7 PM</span></button>
+            </div>
+            <p class="errmsg">Pick a time of day</p>
+          </div>
+          <div class="group" data-f="days">
+            <label class="fl">Days that usually work <span class="opt">(pick any)</span></label>
+            <div class="chips" id="days">
+              <button class="chip">Mon</button><button class="chip">Tue</button><button class="chip">Wed</button>
+              <button class="chip">Thu</button><button class="chip">Fri</button><button class="chip">Sat</button><button class="chip">Sun</button>
+            </div>
+            <p class="errmsg">Pick at least one day</p>
+          </div>
+          <div class="group">
+            <label class="fl">Anything we should know? <span class="opt">(optional)</span></label>
+            <textarea id="f-notes" placeholder="Gate code, a dog who loves visitors, the furnace that makes that noise…"></textarea>
+          </div>
+        </section>
+
+        <!-- STEP 3 -->
+        <section class="panel" data-step="3">
+          <h2>And you are…</h2>
+          <p class="ph">So we know who's opening the door.</p>
+          <div class="fgrid">
+            <div class="field full" data-f="name">
+              <label class="fl">Full name</label>
+              <input type="text" id="f-name" placeholder="Priya Sharma" autocomplete="name" />
+              <p class="errmsg">Please enter your name</p>
+            </div>
+            <div class="field" data-f="email">
+              <label class="fl">Email</label>
+              <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" />
+              <p class="errmsg">Enter a valid email</p>
+            </div>
+            <div class="field" data-f="phone">
+              <label class="fl">Phone</label>
+              <input type="tel" id="f-phone" placeholder="(905) 555-0123" autocomplete="tel" />
+              <p class="errmsg">Enter a valid phone number</p>
+            </div>
+          </div>
+          <label class="consent" id="consent">
+            <input type="checkbox" />
+            <span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5" pathLength="1"/></svg></span>
+            <p>It's okay for HomeKept to contact me about my walk-through. No spam, no third parties — just scheduling.</p>
+          </label>
+        </section>
+
+        <!-- SUCCESS -->
+        <section class="success" id="success">
+          <svg class="bigcheck" viewBox="0 0 110 110">
+            <circle cx="55" cy="55" r="50" pathLength="1"/>
+            <polyline points="34,57 49,72 78,40" pathLength="1"/>
+          </svg>
+          <h2>Request received, <em id="s-name">friend.</em></h2>
+          <p class="p" id="s-detail">We'll confirm your walk-through shortly.</p>
+          <ul class="nextsteps">
+            <li style="--d:.9s"><span class="nn">1</span>We confirm your exact time within one business day.</li>
+            <li style="--d:1.05s"><span class="nn">2</span>Your technician walks the home with you — 90 minutes.</li>
+            <li style="--d:1.2s"><span class="nn">3</span>Your written maintenance plan arrives within a week.</li>
+          </ul>
+        </section>
+
+        <div class="wfoot" id="wfoot">
+          <button class="btn ghost" id="back" style="visibility:hidden">← Back</button>
+          <button class="btn honey" id="next">Continue <span class="arr">→</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LIVE SUMMARY ============ -->
+    <aside class="summary up" style="--d:.26s">
+      <div class="orb"></div>
+      <span class="lab">Your walk-through</span>
+      <h3>Building your <em>visit…</em></h3>
+      <div class="sumlist">
+        <div class="sumrow"><span class="k">Home</span><span class="v empty" id="sum-home">—</span></div>
+        <div class="sumrow"><span class="k">Type</span><span class="v empty" id="sum-type">—</span></div>
+        <div class="sumrow"><span class="k">Week</span><span class="v empty" id="sum-week">—</span></div>
+        <div class="sumrow"><span class="k">Time</span><span class="v empty" id="sum-time">—</span></div>
+        <div class="sumrow"><span class="k">Days</span><span class="v empty" id="sum-days">—</span></div>
+        <div class="sumrow"><span class="k">For</span><span class="v empty" id="sum-name">—</span></div>
+      </div>
+      <div class="sumfacts">
+        <span>💸 $0 — completely free</span>
+        <span>⏱️ About 90 minutes</span>
+        <span>🤝 No obligation</span>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+<script>
+/* ---------- build week chips (next 4 weeks, Mondays) ---------- */
+const weeksEl = document.getElementById('weeks');
+const mon = new Date();
+mon.setDate(mon.getDate() + ((8 - mon.getDay()) % 7 || 7));
+for (let i = 0; i < 4; i++) {
+  const d = new Date(mon); d.setDate(d.getDate() + i * 7);
+  const b = document.createElement('button');
+  b.className = 'chip';
+  b.textContent = 'Week of ' + d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  weeksEl.appendChild(b);
+}
+
+/* ---------- chip / card selection ---------- */
+document.querySelectorAll('.chips, .optcards').forEach(group => {
+  group.addEventListener('click', e => {
+    const btn = e.target.closest('.chip, .optcard');
+    if (!btn) return;
+    e.preventDefault();
+    if (group.dataset.single) {
+      group.querySelectorAll('.on').forEach(x => x !== btn && x.classList.remove('on'));
+      btn.classList.add('on');
+    } else {
+      btn.classList.toggle('on');
+    }
+    group.closest('.group')?.classList.remove('invalid');
+    syncSummary();
+  });
+});
+
+/* consent toggle */
+const consent = document.getElementById('consent');
+consent.addEventListener('click', e => {
+  e.preventDefault();
+  consent.classList.toggle('on');
+  consent.classList.remove('invalid');
+});
+
+/* clear field errors on input */
+document.querySelectorAll('.field input, .field select').forEach(el => {
+  el.addEventListener('input', () => { el.closest('.field').classList.remove('invalid'); syncSummary(); });
+  el.addEventListener('change', () => { el.closest('.field').classList.remove('invalid'); syncSummary(); });
+});
+
+/* ---------- helpers ---------- */
+const v = id => document.getElementById(id).value.trim();
+const sel = id => document.querySelector('#' + id + ' .on');
+const postalRe = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+const emailRe = /^\S+@\S+\.\S+$/;
+const phoneRe = /^[\d\s()+\-.]{10,}$/;
+
+function setSum(id, val) {
+  const el = document.getElementById(id);
+  el.textContent = val || '—';
+  el.classList.toggle('empty', !val);
+}
+function syncSummary() {
+  setSum('sum-home', v('f-address') && (v('f-address') + (v('f-city') ? ', ' + v('f-city') : '')));
+  setSum('sum-type', sel('ptype')?.querySelector('b')?.textContent);
+  setSum('sum-week', sel('weeks')?.textContent);
+  setSum('sum-time', sel('tod')?.querySelector('b')?.textContent);
+  const days = [...document.querySelectorAll('#days .on')].map(x => x.textContent).join(' · ');
+  setSum('sum-days', days);
+  setSum('sum-name', v('f-name'));
+}
+
+/* ---------- step machine ---------- */
+let step = 1;
+const panels = [...document.querySelectorAll('.panel')];
+const nodes = [...document.querySelectorAll('.snode')];
+const lines = [...document.querySelectorAll('.sline')];
+const back = document.getElementById('back');
+const next = document.getElementById('next');
+const wcard = document.getElementById('wcard');
+
+function show(n, dir) {
+  panels.forEach(p => {
+    p.classList.toggle('on', +p.dataset.step === n);
+    p.classList.toggle('back', dir === 'back' && +p.dataset.step === n);
+  });
+  nodes.forEach((nd, i) => {
+    nd.classList.toggle('on', i + 1 === n);
+    nd.classList.toggle('done', i + 1 < n);
+    nd.querySelector('.dot').textContent = i + 1 < n ? '✓' : i + 1;
+  });
+  lines.forEach((l, i) => l.classList.toggle('fill', i + 1 < n));
+  back.style.visibility = n === 1 ? 'hidden' : 'visible';
+  next.innerHTML = n === 3 ? 'Book my walk-through ✿' : 'Continue <span class="arr">→</span>';
+  wcard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function markField(name, bad) {
+  const f = document.querySelector('[data-f="' + name + '"]');
+  f.classList.toggle('invalid', bad);
+  return !bad;
+}
+function validate(n) {
+  let ok = true;
+  if (n === 1) {
+    ok = markField('address', v('f-address').length < 3) & ok;
+    ok = markField('city', !v('f-city')) & ok;
+    ok = markField('postal', !postalRe.test(v('f-postal'))) & ok;
+    ok = markField('ptype', !sel('ptype')) & ok;
+  }
+  if (n === 2) {
+    ok = markField('week', !sel('weeks')) & ok;
+    ok = markField('tod', !sel('tod')) & ok;
+    ok = markField('days', !document.querySelector('#days .on')) & ok;
+  }
+  if (n === 3) {
+    ok = markField('name', v('f-name').length < 2) & ok;
+    ok = markField('email', !emailRe.test(v('f-email'))) & ok;
+    ok = markField('phone', !phoneRe.test(v('f-phone'))) & ok;
+    if (!consent.classList.contains('on')) { consent.classList.add('invalid'); ok = false; }
+  }
+  return !!ok;
+}
+
+next.addEventListener('click', () => {
+  if (!validate(step)) {
+    wcard.classList.remove('shake'); void wcard.offsetWidth; wcard.classList.add('shake');
+    return;
+  }
+  if (step < 3) { step++; show(step); }
+  else finish();
+});
+back.addEventListener('click', () => { if (step > 1) { step--; show(step, 'back'); } });
+
+function finish() {
+  panels.forEach(p => p.classList.remove('on'));
+  document.getElementById('wfoot').style.display = 'none';
+  document.getElementById('stepper').style.opacity = '.45';
+  nodes.forEach(nd => { nd.classList.add('done'); nd.classList.remove('on'); nd.querySelector('.dot').textContent = '✓'; });
+  lines.forEach(l => l.classList.add('fill'));
+  document.getElementById('s-name').textContent = v('f-name').split(' ')[0] + '.';
+  document.getElementById('s-detail').textContent =
+    'We’ll email ' + v('f-email') + ' to confirm a ' +
+    (sel('tod')?.querySelector('b')?.textContent.toLowerCase() || '') + ' slot during the ' +
+    (sel('weeks')?.textContent.toLowerCase() || 'week you picked') + '.';
+  document.getElementById('success').classList.add('on');
+  document.querySelector('.summary h3').innerHTML = 'See you <em>soon ✿</em>';
+}
+</script>
+</body>
+</html>
