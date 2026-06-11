@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 
 const links = [
   { to: "/#how", label: "How it works" },
+  { to: "/#services", label: "What's included" },
   { to: "/plans", label: "Plans" },
   { to: "/signin", label: "Sign in" },
 ] as const;
@@ -14,59 +15,63 @@ export function SiteNav() {
   const [open, setOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6 md:h-20">
-        <Link to="/" className="flex items-center" aria-label="HomeKept home">
-          <Wordmark size="md" />
-        </Link>
+    <header className="sticky top-4 z-50 px-4 sm:px-5">
+      <nav className="mx-auto w-full max-w-6xl rounded-3xl border border-border bg-card/85 shadow-soft backdrop-blur-xl">
+        <div className="flex h-14 items-center justify-between gap-3 pl-5 pr-2">
+          <Link to="/" className="flex items-center" aria-label="HomeKept home">
+            <Wordmark size="sm" />
+          </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
-          {links.map((l) => (
-            <a
-              key={l.to}
-              href={l.to}
-              className="text-sm font-medium text-foreground/80 transition-colors hover:text-accent"
-            >
-              {l.label}
-            </a>
-          ))}
-          <Button asChild>
-            <Link to="/book">Book walk-through</Link>
-          </Button>
-        </div>
-
-        <button
-          type="button"
-          className="inline-flex size-11 items-center justify-center rounded-full text-foreground md:hidden"
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
-      </div>
-
-      {open && (
-        <div className="border-t border-border bg-background md:hidden">
-          <div className="mx-auto flex max-w-7xl flex-col gap-1 px-6 py-4">
+          <div className="hidden items-center gap-1 md:flex">
             {links.map((l) => (
               <a
                 key={l.to}
                 href={l.to}
-                className="rounded-xl px-3 py-3 text-base font-medium hover:bg-surface"
-                onClick={() => setOpen(false)}
+                className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-surface hover:text-primary"
               >
                 {l.label}
               </a>
             ))}
-            <Button asChild className="mt-2 w-full" size="lg">
-              <Link to="/book" onClick={() => setOpen(false)}>
-                Book walk-through
-              </Link>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button asChild variant="accent" size="sm" className="hidden sm:inline-flex">
+              <Link to="/book">Book free walk-through</Link>
             </Button>
+            <button
+              type="button"
+              className="inline-flex size-10 items-center justify-center rounded-full text-foreground md:hidden"
+              aria-label={open ? "Close menu" : "Open menu"}
+              aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}
+            >
+              {open ? <X className="size-5" /> : <Menu className="size-5" />}
+            </button>
           </div>
         </div>
-      )}
-    </nav>
+
+        {open && (
+          <div className="border-t border-border px-3 py-3 md:hidden">
+            <div className="flex flex-col gap-1">
+              {links.map((l) => (
+                <a
+                  key={l.to}
+                  href={l.to}
+                  className="rounded-2xl px-4 py-3 text-base font-medium hover:bg-surface"
+                  onClick={() => setOpen(false)}
+                >
+                  {l.label}
+                </a>
+              ))}
+              <Button asChild variant="accent" className="mt-2 w-full" size="lg">
+                <Link to="/book" onClick={() => setOpen(false)}>
+                  Book free walk-through
+                </Link>
+              </Button>
+            </div>
+          </div>
+        )}
+      </nav>
+    </header>
   );
 }

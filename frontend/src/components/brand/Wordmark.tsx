@@ -4,6 +4,7 @@ interface WordmarkProps {
   className?: string;
   size?: "sm" | "md" | "lg" | "xl";
   as?: "span" | "div" | "h1";
+  withMark?: boolean;
 }
 
 const sizeMap = {
@@ -13,17 +14,45 @@ const sizeMap = {
   xl: "text-6xl md:text-7xl",
 };
 
-export function Wordmark({ className, size = "md", as: As = "span" }: WordmarkProps) {
+const markSizeMap = {
+  sm: "size-5",
+  md: "size-6",
+  lg: "size-9",
+  xl: "size-14",
+};
+
+/** Leaf brand mark: a circle with one clipped corner, honey core. */
+export function LeafMark({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative inline-block shrink-0 bg-primary [border-radius:50%_50%_50%_22%]",
+        className,
+      )}
+    >
+      <span className="absolute inset-[30%] bg-accent [border-radius:50%_50%_50%_22%]" />
+    </span>
+  );
+}
+
+export function Wordmark({
+  className,
+  size = "md",
+  as: As = "span",
+  withMark = true,
+}: WordmarkProps) {
   return (
     <As
       className={cn(
-        "font-display font-extrabold tracking-tight text-foreground select-none",
+        "inline-flex select-none items-center gap-2 font-bold tracking-tight text-primary",
         sizeMap[size],
         className,
       )}
-      aria-label="HomeKept."
+      aria-label="HomeKept"
     >
-      HomeKept<span className="text-accent">.</span>
+      {withMark && <LeafMark className={markSizeMap[size]} />}
+      HomeKept
     </As>
   );
 }

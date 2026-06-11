@@ -14,9 +14,7 @@ function NotFoundComponent() {
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-accent">
-          404
-        </p>
+        <p className="font-display text-xs font-bold uppercase tracking-[0.2em] text-accent">404</p>
         <h1 className="mt-4 font-display text-4xl font-extrabold tracking-tight text-foreground">
           Page not found
         </h1>
@@ -83,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "A monthly subscription that handles routine home maintenance for homeowners in Oakville, Mississauga, and Milton. Vetted technicians, scheduled visits, photo reports.",
       },
       { name: "author", content: "HomeKept" },
-      { name: "theme-color", content: "#F9F8F3" },
+      { name: "theme-color", content: "#F8F5EE" },
       { property: "og:title", content: "HomeKept — Proactive home maintenance for the GTA" },
       {
         property: "og:description",
@@ -99,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..900&family=Figtree:wght@400;500;600;700&display=swap",
       },
     ],
   }),
