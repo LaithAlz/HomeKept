@@ -72,7 +72,7 @@ and leaves out of your gutters; Premier is a house manager.*
 | Extra filter visit | Extra water heater flush | Extra full gutter clear |
 | Weatherstripping touch-up | Dryer vent deep clean | Roof & exterior inspection w/ report |
 | Garage door tune & lube | Caulking refresh (one area) | Smart-home package install |
-| Faucet/showerhead descale | Smart thermostat install | Pre-winter full-home inspection |
+| Faucet/showerhead descale | Smart thermostat install *(low-voltage only; line-voltage referred — ESA)* | Pre-winter full-home inspection |
 | Detector battery sweep | Toilet internals refresh | |
 
 Picks fold into scheduled visits where possible. Beyond allowance = à la carte
@@ -92,9 +92,14 @@ Picks fold into scheduled visits where possible. Beyond allowance = à la carte
 - **Inspection items use binary observable criteria** ("crack wider than a nickel /
   horizontal / stair-step → photograph & flag"), never judgment. Reports state: visual,
   non-invasive observations — not a certified inspection.
-- **No contracts at the door** (Ontario CPA door-to-door rules) — door-knocking invites
-  people to book online only. Subscription terms carry CPA future-performance
-  disclosures + cancellation rights; auto-renewal gets advance notice.
+- **No contracts at the door** — door-knocking invites people to book online only.
+  (The CPA's door-to-door *ban* covers a prescribed appliance list our bundle sits
+  adjacent to; treating it as binding is deliberate best practice, not strictly
+  required.) Subscription terms carry CPA future-performance disclosures + cancellation
+  rights incl. the 10-day cooling-off where applicable; auto-renewal gets advance notice.
+- **CASL:** booking consent already captured server-side; every marketing email/SMS
+  carries sender identification + unsubscribe; outreach to realtors/property managers
+  needs its own consent basis.
 - Before customer #1: CGL insurance, working-at-heights training ×2, terms + privacy
   policy (#41), fixed-fee lawyer review.
 
@@ -115,8 +120,8 @@ Picks fold into scheduled visits where possible. Beyond allowance = à la carte
 | | Essential | Complete | Premier |
 |---|---|---|---|
 | Revenue/yr | $1,068 | $1,788 | $2,988 |
-| Direct cost/yr | ~$400 | ~$810 + picks | ~$1,310 + capped repair exposure |
-| Gross margin | ~62% | ~55% (worst-case picks ~45%) | ~50% |
+| Direct cost/yr | ~$415 + 1 pick | ~$810 + picks | ~$1,310 + picks + repair hour |
+| Gross margin | ~58% | ~55% (worst-case picks ~45%) | ~50% (worst-case picks + full repair usage ~40%) |
 
 Capacity: one full-time tech ≈ 80 visits/mo ≈ ~120 Complete subscribers ≈ $18K MRR.
 
@@ -141,6 +146,9 @@ magnets $200–400 · brand basics $400–600 · starter materials $300–500.
 Operating breakeven ≈ customer 4–5. Cash to launch ~$5–7K; cushion $10K ($5K per
 founder). Materials are ~6.6% of revenue at 30 customers and billed-before-consumed —
 labor is the only cost that ever scales against us, and it's founder sweat until Stage 3.
+
+> With the first 15 customers on the founding rate ($129), 30-customer MRR is ≈ $4.2K
+> rather than $4.5K until their 12-month locks roll off. Plan cash to the lower number.
 
 ## Roles
 

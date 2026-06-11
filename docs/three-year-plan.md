@@ -27,6 +27,14 @@ never skip a gate.
 | 3 — Workforce | 100 → 200 | M24–M30 | Tech hires #1–2, COO off tools | Technician platform (Stage 3) |
 | 4 — Scale | 200 → 400+ | M30–M36 | GTA-West brand, partnerships engine | Multi-area & self-serve (Stage 4) |
 
+> **Supersession note:** the customer-count anchors in this table supersede the
+> architecture doc's Part 10 stage anchors (Stage 2 = 10–50, Stage 3 = 50–150, etc.),
+> which were drafted before the pricing spec and real capacity math existed. The arch
+> doc's stage *contents* still apply and are cited per phase below; a few items are
+> deliberately re-sequenced (self-serve basics and Health Score v1 pulled into Phases
+> 1–2; the read replica pushed to Phase 4). Follow-up: update arch doc Part 10 to
+> these anchors.
+
 ---
 
 ## Phase 0 — Build & launch (0 → 5 customers, ~M0–M3)
@@ -166,7 +174,7 @@ wins — decide deliberately.)
 - Team: techs #3–4, part-time admin/dispatcher; org is COO→field, CEO→product+growth
 - Referral program formalized (give-a-month/get-a-month) with attribution
 - Multi-property subscribers (landlords, the property-manager pipeline)
-- Year-3 exit state: ~300–400 customers, $45–60K MRR ($550–700K ARR), team of 6–7,
+- Year-3 exit state: ~300–400 customers, $45–60K MRR ($540–720K ARR), team of 6–7,
   founders on full salaries, profitable
 - The Phase-4 decision (make it explicitly, in writing): (a) deepen — push to 800–1,000
   in GTA-West, stay private and profitable; (b) replicate — second metro with a hired
@@ -208,7 +216,7 @@ Cash: $10K founder float at M0; no external capital in the base plan.
 | Founder unit economics were wrong | Blended margin <45% with paid labor | Reprice at renewal (grandfathered), cadence trim, route density push |
 | Key-person (either founder) | — | Cross-training rule (both can run visits; deploy runbook documented); key-person clauses in agreement |
 | Winter demand spike | Oct–Nov overload | Pre-booking 6 wks out; seasonal part-time helper before full hire |
-| Regulatory (CPA/TSSA) | Complaint or rule change | Lawyer on retainer relationship from Phase 0; scope rails in spec are the defense |
+| Regulatory (CPA/TSSA/CASL) | Complaint or rule change | Lawyer on retainer relationship from Phase 0; scope rails in spec are the defense; every marketing email carries sender ID + unsubscribe |
 
 ## What this plan deliberately does NOT include
 
