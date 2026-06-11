@@ -51,8 +51,12 @@ Walk-through booking form submission (frontend `book` wizard).
 booking-confirmation email.
 
 ### `GET /api/catalog/plans`
-Plan tiers for the pricing page.
-→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 18900, "annualPriceCents": 188900, "visitsPerYear": 12, "description": "...", "services": [ { "name": "Furnace filter swap", "frequencyPerYear": 4 } ] } ]`
+Plan tiers for the pricing page (prices per docs/pricing-and-visits.md).
+→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 14900, "annualPriceCents": 149000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "foundingRateAvailable": true, "foundingMonthlyPriceCents": 12900, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
+
+### `GET /api/catalog/picks`
+The pickable services menu, grouped by tier class, with à la carte prices
+(`BASIC` 4900 / `MEDIUM` 8900 / `PREMIUM` 14900).
 
 ### `GET /api/health`
 → `200 { "status": "UP" }` (UptimeRobot target)
@@ -118,14 +122,34 @@ acknowledged and ignored.
 
 ## Owner app (role: CUSTOMER — or ADMIN via ownership check)
 
-| Endpoint | Returns |
+| Endpoint | Returns / does |
 |---|---|
-| `GET /api/app/subscription` | `{ status, planCode, billingCycle, currentPeriodEnd, property: { streetAddress, city, ... } }` |
-| `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, completed }] }` |
-| `GET /api/app/visits/{id}` | full visit incl. `completionNotes`, notes list |
+| `GET /api/app/subscription` | `{ status, planCode, billingCycle, currentPeriodEnd, picksRemaining, premiumPicksRemaining, property: { streetAddress, city, ... } }` |
+| `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }] }` |
+| `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
+| `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [...] }` — v1 rubric (weighted checklist outcomes) |
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
+| `GET /api/app/todos` · `POST /api/app/todos` · `DELETE /api/app/todos/{id}` | "your list" — `{ body }`; OPEN items fold into the next scheduled visit |
+| `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
+| `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [...] }` — admin confirms; visit state machine handles the swap |
+| `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe payment for a pick beyond the allowance (à la carte price) |
+| `POST /api/app/subscription/pause` · `POST /api/app/subscription/cancel` | self-serve via Stripe (webhooks sync state); cancel asks a reason (churn data) |
 
-Home Health Score is post-MVP (Stage 3) — the dashboard renders without it until then.
+Plan change + payment method = Stripe customer portal (`POST /api/billing/portal-session`).
+
+---
+
+## Technician app (role: TECHNICIAN — at MVP, the two founders)
+
+| Endpoint | Returns / does |
+|---|---|
+| `GET /api/tech/visits/today` | day sheet: assigned visits w/ address, access notes, checklist (template + picks + todos + flagged) |
+| `POST /api/tech/visits/{id}/start` | → IN_PROGRESS |
+| `PATCH /api/tech/visits/{id}/services/{visitServiceId}` | `{ completed, technicianNotes }` — checklist tick |
+| `POST /api/tech/visits/{id}/photos/upload-url` | `{ contentType }` → `{ uploadUrl, storageKey }` (R2 signed PUT, 15-min) |
+| `POST /api/tech/visits/{id}/photos` | `{ storageKey, caption }` — confirm upload, attach to visit |
+| `POST /api/tech/visits/{id}/complete` | `{ completionNotes, actualDurationMinutes, materialsCostCents, materialsNotes }` — → COMPLETED, fires report email |
+| `POST /api/tech/visits/{id}/incomplete` | `{ reason }` — → INCOMPLETE, auto-creates follow-up SCHEDULED visit |
 
 ---
 
