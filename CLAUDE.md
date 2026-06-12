@@ -23,12 +23,13 @@ In order, as relevant to the task:
 Follow `.claude/skills/homekept-feature.md` for every change: branch from main
 (kebab-case, descriptive) → implement → focused commits (no AI attribution, no
 Co-Authored-By) → PR with What/Why → wait for CI → subagent review → fix blockers →
-squash-merge. Never `git add -A`.
+squash-merge. Never `git add -A` or `git add .`.
 
 ## Non-negotiables
 
-- **Hand-write boundary:** anything labeled `hand-write` (SQL migrations,
-  `application.yml`, auth/security core) is written by the founder, never generated.
+- **Hand-write boundary:** anything labeled `hand-write` (SQL migrations, application
+  config (`application.properties`/`.yml`), auth/security core) is written by the
+  founder, never generated.
   If your task needs a migration that doesn't exist, stop and say so.
 - **Money is integer cents.** Never floats, never BigDecimal-as-float.
 - **Timestamps:** `TIMESTAMPTZ` in SQL, `Instant` in Java, UTC stored,
