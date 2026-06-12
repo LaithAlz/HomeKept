@@ -219,7 +219,7 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 **Owns:** `walkthrough_booking` table.
 
-**Key entity:** `WalkthroughBooking` — id, full_name, email, phone, street_address, city, postal_code, year_built, square_footage_range, property_type, preferred_week, time_of_day, day_preferences, notes, status, scheduled_for, performed_at, converted_to_subscriber_id, activation_token_id, lead_source, created_at, updated_at.
+**Key entity:** `WalkthroughBooking` — id, full_name, email, phone, street_address, city, postal_code, year_built, square_footage_range, property_type, preferred_week, time_of_day, day_preferences, notes, status, scheduled_for, performed_at, converted_to_subscriber_id, activation_token_id, lead_source, posthog_distinct_id (nullable — funnel stitching, §5.7), created_at, updated_at.
 
 **Status enum:**
 - `PENDING` — booked, not yet contacted
@@ -652,6 +652,70 @@ The string `America/Toronto` is configured in one place (`application.yml`) and 
 - *MVP:* none beyond inline JavaDoc.
 - *Post-MVP:* OpenAPI / Swagger auto-generated from controllers via `springdoc-openapi`. Hosted at `/api/docs`, admin-only.
 
+## 5.7 Product analytics — PostHog (MVP)
+
+Sentry answers "is it broken?"; PostHog answers "is it working?" — funnel conversion,
+feature engagement, churn signals. PostHog Cloud (US region; PIPEDA requires protection,
+not residency — note it in the privacy policy), free tier covers this business for years.
+
+**Frontend (`posthog-js`):**
+- Marketing site + booking wizard: **cookieless mode** (memory persistence) — funnel
+  analytics without a consent banner blocking the highest-stakes pages
+- Customer app + tech app: identified after login via `posthog.identify(userId)` —
+  internal IDs only, never email/name as the distinct ID
+- Autocapture ON, plus the canonical events below
+- Session replay ON for the **booking wizard only**, with `maskAllInputs` (the default)
+  **plus `maskTextSelector: "*"`** — we want interaction patterns (where people stall,
+  what they re-type), not content. No replay in the customer or tech apps: they render
+  addresses, access notes, and photos as page text, which input-masking does not cover.
+- **Identity stitching** (the acquisition funnel crosses three identities): the booking
+  POST carries the wizard's anonymous `posthogDistinctId` (optional field; stored on
+  `walkthrough_booking.posthog_distinct_id`); `walkthrough_booked` is captured against
+  that anonymous ID (it's a lead — no user exists yet); at `activation_completed` the
+  backend aliases the stored anonymous ID to the new internal user ID, unifying the
+  funnel. Caveat of cookieless/memory persistence: the anonymous leg only survives
+  within one page load — a visitor who leaves and returns starts a new funnel entry.
+  That undercount is the accepted price of no consent banner.
+
+**Backend (`posthog-java`):** business-truth events captured server-side where the state
+actually changes (state machines, webhook handlers) — never trust the client for revenue
+events. Keyed by user/subscriber internal ID. Wrapped in a thin `AnalyticsService` in
+`shared/` (same encapsulation rule as `notification/`): callers say
+`analytics.capture(userId, event, props)` and don't know PostHog exists.
+
+**Canonical event taxonomy (v1 — additions are fine, renames are migrations):**
+
+| Event | Source | Key properties |
+|---|---|---|
+| `booking_step_completed` | frontend | step (1–3) |
+| `walkthrough_booked` | backend | lead_source, city (form enum), property_type |
+| `activation_completed` | backend | days_since_walkthrough |
+| `checkout_started` | backend | plan_code, billing_cycle, founding_rate |
+| `subscription_activated` | backend (webhook) | plan_code, billing_cycle, founding_rate |
+| `visit_completed` | backend | visit_template, duration_actual, services_count, photos_count |
+| `report_viewed` | frontend | visit_id |
+| `todo_added` | backend | — (todos are free text; the text itself is never sent) |
+| `pick_selected` / `extra_purchased` | backend | service tier_class |
+| `flag_created` | backend | severity |
+| `reschedule_requested` / `subscription_paused` / `subscription_resumed` | backend | — |
+| `subscription_cancelled` | backend (webhook) | reason (enum — the cancel form's free-text detail stays in the DB, never in analytics), months_subscribed, plan_code |
+
+The two funnels that matter: **acquisition** (`booking_step_completed (step=1)` →
+walkthrough_booked → activation_completed → subscription_activated) and **retention
+proxy** (report_viewed rate per visit — customers who read reports renew).
+
+**Rules:** no PII in event properties (IDs, enums, counts only) · event names are
+snake_case, past tense, owned by this table · feature flags/A-B testing exist in PostHog
+but get NO process until Phase 2+ (don't build experimentation culture before traffic) ·
+analytics keys are publishable, not secrets, but still env-config, not hardcoded ·
+account deletion (PIPEDA requests) includes a PostHog person deletion.
+
+**Scale considerations:**
+- *MVP:* exactly the above. The taxonomy is the work; the integration is an afternoon.
+- *Post-MVP:* funnels/dashboards wired to the Phase-1 exit gates (close rate,
+  report-view rate); cancel-reason analysis feeds the churn risk response.
+- *Scale:* consider EU cloud/self-host only if a real data-residency requirement appears.
+
 ---
 
 # Part 6 — Integration boundaries
@@ -897,7 +961,8 @@ Apps live at launch:
 
 Integrations live: Stripe Checkout + customer portal + one-off payments for extra
 picks, Stripe webhooks (per the §2.4 handler table, incl. mode-split handling of
-`checkout.session.completed`), SendGrid, Cloudflare R2 (signed URLs).
+`checkout.session.completed`), SendGrid, Cloudflare R2 (signed URLs), PostHog (§5.7 —
+canonical event taxonomy from day 1).
 
 Unit economics from visit #1: notional fully-loaded hourly cost per technician row ×
 actual duration + logged materials = per-visit and per-subscriber margin reporting.

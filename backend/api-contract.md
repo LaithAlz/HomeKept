@@ -45,7 +45,8 @@ Walk-through booking form submission (frontend `book` wizard).
   "dayPreferences": ["WED", "THU"],
   "notes": "Friendly dog in the yard",
   "leadSource": "WEBSITE_ORGANIC",    // optional, defaults WEBSITE_DIRECT
-  "contactConsent": true              // required true (CASL); consent timestamp recorded server-side
+  "contactConsent": true,             // required true (CASL); consent timestamp recorded server-side
+  "posthogDistinctId": "0190..."      // optional — anonymous analytics ID for funnel stitching (arch §5.7)
 }
 ```
 → `201 { "id": 123, "status": "PENDING" }` · Rate limit: 3/IP/hour. Triggers

@@ -67,7 +67,8 @@ Stage 1, June 2026 revision):
   materials + duration entry, complete/incomplete flow
 - Admin: pipeline, scheduling (template-generated), founding-rate management
 - Frontend: v2 design system (done — #48/#49) across all three apps
-- Deploy: Render + Cloudflare + Sentry + UptimeRobot (#12)
+- Deploy: Render + Cloudflare + Sentry + UptimeRobot (#12); PostHog wired with the
+  canonical event taxonomy (arch §5.7) — funnels measurable from customer #1
 - Walk-through capture includes the SKU sheet (filter sizes, detector models, water
   heater age) → property record
 
@@ -89,7 +90,7 @@ nothing else in this plan matters until retention is proven.
 - Founding rate retired at 15; public pricing from #16
 - Realtor seed: 3–5 agents get a "first 60 days on us for your buyers" offer — pipeline
   for Phase 2 partnerships
-- Track from day 1: lead source (already in schema), close rate, churn, NPS-ish
+- Track from day 1 (PostHog funnels + DB): lead source, close rate, churn, NPS-ish
   ("would you recommend?" in the app after each report), per-visit material cost
 - Year-end: ~30–35 customers, ~$4.5K MRR, ~$30–35K cumulative revenue, cash-positive
 
