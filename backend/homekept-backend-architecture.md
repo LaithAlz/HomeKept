@@ -306,7 +306,7 @@ IN_PROGRESS → COMPLETED
 - `TechnicianRegion` — id, technician_id, fsa, priority (1 = primary region, 2 = secondary, 3 = overflow)
 - `TechnicianAvailability` — id, technician_id, day_of_week, start_time, end_time, effective_from, effective_until
 
-**Why hourly cost in cents lives here:** because unit economics analysis needs to know "Marcus costs $43/hr fully-loaded, this visit took him 1.5 hours, the customer pays $189/month for 12 visits — what's the margin?" Don't store the hourly cost in HR/payroll only. The backend needs it for cost reporting.
+**Why hourly cost in cents lives here:** because unit economics analysis needs to know "Marcus costs $43/hr fully-loaded, this visit took him 1.5 hours, the customer pays $149/month for 8 visits — what's the margin?" Don't store the hourly cost in HR/payroll only. The backend needs it for cost reporting.
 
 **Scale considerations:**
 - *MVP:* the founders are the technicians — two `technician_profile` rows with notional
