@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT v2 — Admin console (founder ops) */
+:root{
+  --cream:#F8F5EE;--cream-2:#F0EBDF;--card:#FFFEFA;
+  --pine:#1E3A2B;--pine-2:#2A4D39;--moss:#5E7D62;--sage:#A9BFAC;
+  --honey:#DE8F3F;--honey-soft:#F4D9B8;--ink:#22312A;--mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);--err:#B5482F;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--ink);font-family:"Figtree",sans-serif;line-height:1.55;overflow-x:hidden}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+@media(max-width:680px){.wrap{padding:0 16px}}
+main,header{position:relative;z-index:1}
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:480px;height:480px;background:rgba(169,191,172,.3);top:-150px;right:-110px}
+
+.nav{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:rgba(255,254,250,.88);backdrop-filter:blur(14px);
+  border:1px solid var(--ring);border-radius:999px;padding:8px 8px 8px 20px;
+  box-shadow:0 10px 30px -12px rgba(30,58,43,.18);width:min(1200px,calc(100% - 36px));
+  font-size:14px;animation:navin .8s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes navin{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translate(-50%,0)}}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;color:var(--pine)}
+.leaf{width:26px;height:26px;background:var(--pine);border-radius:50% 50% 50% 6px;position:relative;flex:none}
+.leaf::after{content:"";position:absolute;inset:8px;border-radius:50% 50% 50% 4px;background:var(--honey)}
+.tabs{display:flex;gap:3px;font-size:13.5px;font-weight:500;color:var(--mut)}
+.tabs a{padding:8px 13px;border-radius:999px;transition:.2s}
+.tabs a:hover{background:var(--cream-2);color:var(--pine)}
+.tabs a.on{background:var(--pine);color:var(--cream)}
+@media(max-width:900px){.tabs{display:none}}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--honey);color:var(--pine);display:grid;place-items:center;font-size:12px;font-weight:700}
+
+.up{opacity:0;transform:translateY(22px);animation:up .7s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+
+.greet{padding:120px 0 24px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap}
+.greet h1{font-family:"Fraunces",serif;font-size:clamp(30px,3.6vw,44px);font-weight:560;letter-spacing:-.02em;color:var(--pine)}
+.greet h1 em{font-style:italic;font-weight:480;color:var(--moss)}
+.greet .date{font-size:13.5px;color:var(--mut)}
+
+/* stat strip */
+.strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
+@media(max-width:1000px){.strip{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--card);border:1px solid var(--ring);border-radius:22px;padding:16px 20px;transition:transform .25s}
+.stat:hover{transform:translateY(-3px)}
+.stat .n{font-family:"Fraunces",serif;font-size:30px;font-weight:600;color:var(--pine);line-height:1.1}
+.stat .n small{font-size:15px;color:var(--moss);font-weight:600}
+.stat .l{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-top:3px}
+.stat.founding{background:var(--honey-soft);border-color:transparent}
+.stat.founding .n{color:#8a5a1e}
+.stat .bar{height:6px;border-radius:99px;background:rgba(138,90,30,.18);margin-top:8px;overflow:hidden}
+.stat .bar i{display:block;height:100%;width:0;border-radius:99px;background:var(--honey);transition:width 1.2s cubic-bezier(.3,.7,.2,1) .5s}
+
+/* layout */
+.grid{display:grid;grid-template-columns:1.25fr .75fr;gap:20px;padding-bottom:80px;align-items:start}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--ring);border-radius:26px;padding:24px;box-shadow:0 16px 36px -26px rgba(30,58,43,.3)}
+.card h2{font-family:"Fraunces",serif;font-size:20px;font-weight:600;color:var(--pine);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card h2 .count{font-family:"Figtree",sans-serif;font-size:12px;font-weight:700;background:var(--cream-2);color:var(--mut);border-radius:999px;padding:4px 11px}
+
+/* pipeline */
+.pipe{margin-top:14px;display:flex;flex-direction:column;gap:9px}
+.lead{display:flex;align-items:center;gap:13px;background:var(--cream);border-radius:16px;padding:12px 14px;opacity:0;transform:translateX(-12px);animation:slidein .5s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.4s)}
+@keyframes slidein{to{opacity:1;transform:none}}
+.lead .who b{display:block;font-size:14.5px;color:var(--pine)}
+.lead .who span{font-size:12px;color:var(--mut)}
+.lead .src{margin-left:auto;font-size:11px;font-weight:700;border-radius:999px;padding:4px 10px;background:var(--cream-2);color:var(--mut);flex:none}
+.lead .st{font-size:11px;font-weight:700;border-radius:999px;padding:5px 11px;flex:none}
+.lead .st.pending{background:var(--honey-soft);color:#8a5a1e}
+.lead .st.confirmed{background:rgba(94,125,98,.14);color:var(--moss)}
+.lead .st.performed{background:var(--pine);color:var(--cream)}
+.lead .act{font-size:12px;font-weight:700;color:var(--pine);border:1.5px solid rgba(30,58,43,.2);border-radius:999px;padding:6px 12px;cursor:pointer;background:none;transition:.2s;flex:none}
+.lead .act:hover{background:var(--pine);color:var(--cream)}
+.lead .act.send{border-color:var(--honey);background:var(--honey);color:var(--pine)}
+
+/* week schedule */
+.sched{margin-top:14px;display:flex;flex-direction:column;gap:9px}
+.day{display:flex;gap:13px;align-items:flex-start;opacity:0;transform:translateY(12px);animation:up .5s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.4s)}
+.day .d{width:46px;flex:none;text-align:center;background:var(--cream-2);border-radius:13px;padding:7px 0}
+.day .d b{display:block;font-family:"Fraunces",serif;font-size:18px;color:var(--pine);line-height:1.1}
+.day .d span{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--mut)}
+.day .visits{flex:1;display:flex;flex-direction:column;gap:6px}
+.v{display:flex;align-items:center;gap:10px;background:var(--cream);border-radius:13px;padding:9px 12px;font-size:13px}
+.v b{color:var(--pine)}
+.v .tname{font-size:11.5px;color:var(--mut)}
+.v .tech{margin-left:auto;width:26px;height:26px;border-radius:50% 50% 50% 9px;display:grid;place-items:center;font-size:10px;font-weight:700;flex:none;background:var(--pine);color:var(--cream)}
+.v .tech.b{background:var(--moss)}
+.v .tech.un{background:var(--honey);color:var(--pine);animation:throb 1.8s infinite}
+@keyframes throb{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.v.flag{border:1px solid rgba(222,143,63,.45);background:#FFFCF4}
+
+/* attention list */
+.attn{margin-top:14px;display:flex;flex-direction:column;gap:9px}
+.aitem{display:flex;gap:12px;align-items:flex-start;background:var(--cream);border-radius:16px;padding:12px 14px;font-size:13.5px;opacity:0;transform:translateY(12px);animation:up .5s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.5s)}
+.aitem .ic{width:34px;height:34px;border-radius:50% 50% 50% 11px;display:grid;place-items:center;flex:none;font-size:15px}
+.aitem.pay .ic{background:rgba(181,72,47,.12)}
+.aitem.flagd .ic{background:var(--honey-soft)}
+.aitem.resch .ic{background:rgba(94,125,98,.13)}
+.aitem b{color:var(--pine)}
+.aitem .dd{color:var(--mut);font-size:12.5px}
+
+footer{border-top:1px solid var(--ring);padding:22px 0 44px;font-size:13px;color:var(--mut);position:relative;z-index:1}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+<div class="glow g1"></div>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html"><span class="leaf"></span>HomeKept <span style="font-size:11px;font-weight:700;color:var(--mut);background:var(--cream-2);border-radius:999px;padding:3px 10px;margin-left:4px">ADMIN</span></a>
+    <div class="tabs">
+      <a class="on" href="#">Today</a><a href="#">Pipeline</a><a href="#">Subscribers</a><a href="#">Visits</a><a href="#">Catalog</a><a href="#">Reports</a>
+    </div>
+    <span class="avatar">LA</span>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <div class="greet up">
+    <h1>The shop floor, <em>Laith.</em></h1>
+    <p class="date" id="today">—</p>
+  </div>
+
+  <div class="strip">
+    <div class="stat up" style="--d:.05s"><div class="n">11</div><div class="l">Active subscribers</div></div>
+    <div class="stat up" style="--d:.1s"><div class="n">$1,459<small>/mo</small></div><div class="l">MRR</div></div>
+    <div class="stat up" style="--d:.15s"><div class="n">7</div><div class="l">Visits this week</div></div>
+    <div class="stat up" style="--d:.2s"><div class="n">42%</div><div class="l">Walk-through close rate</div></div>
+    <div class="stat founding up" style="--d:.25s"><div class="n">9 <small>of 15</small></div><div class="l">Founding members</div><div class="bar"><i data-w="60"></i></div></div>
+  </div>
+
+  <div class="grid">
+    <div style="display:flex;flex-direction:column;gap:20px">
+
+      <!-- pipeline -->
+      <section class="card up" style="--d:.2s">
+        <h2>Walk-through pipeline <span class="count">5 open</span></h2>
+        <div class="pipe">
+          <div class="lead" style="--d:.4s">
+            <div class="who"><b>Jamal Wright</b><span>Erin Mills · Nextdoor · tomorrow 10:00</span></div>
+            <span class="src">NEXTDOOR</span><span class="st confirmed">Confirmed</span>
+            <button class="act">Open</button>
+          </div>
+          <div class="lead" style="--d:.5s">
+            <div class="who"><b>Sandra Caruso</b><span>Iroquois Ridge · referral · Thu 2:00</span></div>
+            <span class="src">REFERRAL</span><span class="st confirmed">Confirmed</span>
+            <button class="act">Open</button>
+          </div>
+          <div class="lead" style="--d:.6s">
+            <div class="who"><b>Hossein Karimi</b><span>Beaty · door hanger · awaiting time</span></div>
+            <span class="src">DOORHANGER</span><span class="st pending">Pending</span>
+            <button class="act">Propose times</button>
+          </div>
+          <div class="lead" style="--d:.7s">
+            <div class="who"><b>Emma &amp; Jack Reid</b><span>Erin Mills · walked Tuesday — plan sent</span></div>
+            <span class="src">GBP</span><span class="st performed">Performed</span>
+            <button class="act send">Send activation invite →</button>
+          </div>
+          <div class="lead" style="--d:.8s">
+            <div class="who"><b>Kwame Boateng</b><span>Old Oakville · FB group · awaiting time</span></div>
+            <span class="src">FB</span><span class="st pending">Pending</span>
+            <button class="act">Propose times</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- this week -->
+      <section class="card up" style="--d:.3s">
+        <h2>This week's visits <span class="count">7 scheduled · 1 unassigned</span></h2>
+        <div class="sched">
+          <div class="day" style="--d:.5s">
+            <div class="d"><b>15</b><span>MON</span></div>
+            <div class="visits">
+              <div class="v"><b>Sharma</b><span class="tname">June — Summer prep</span><span class="tech">MT</span></div>
+              <div class="v"><b>Chen</b><span class="tname">June — Summer prep + picks: thermostat</span><span class="tech b">DK</span></div>
+            </div>
+          </div>
+          <div class="day" style="--d:.6s">
+            <div class="d"><b>17</b><span>WED</span></div>
+            <div class="visits">
+              <div class="v"><b>Nguyen</b><span class="tname">June — Summer prep · first visit</span><span class="tech">MT</span></div>
+              <div class="v flag"><b>Tanaka</b><span class="tname">June + flagged: dryer vent re-check</span><span class="tech b">DK</span></div>
+            </div>
+          </div>
+          <div class="day" style="--d:.7s">
+            <div class="d"><b>19</b><span>FRI</span></div>
+            <div class="visits">
+              <div class="v"><b>Park</b><span class="tname">June — Summer prep</span><span class="tech">MT</span></div>
+              <div class="v"><b>Lemieux</b><span class="tname">EXTRA — gutter clear (paid pick)</span><span class="tech un">?</span></div>
+              <div class="v"><b>Ward</b><span class="tname">June — Summer prep</span><span class="tech b">DK</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- needs attention -->
+    <section class="card up" style="--d:.35s">
+      <h2>Needs you <span class="count">4</span></h2>
+      <div class="attn">
+        <div class="aitem pay" style="--d:.5s"><span class="ic">💳</span><div><b>Tanaka — payment failed</b><div class="dd">Visa ••8821 declined Jun 10 · Stripe retrying · status PAYMENT_ISSUE</div></div></div>
+        <div class="aitem flagd" style="--d:.6s"><span class="ic">⚑</span><div><b>2 open flags</b><div class="dd">Sharma: water-heater valve (Sep re-check) · Ward: caulking, NE window</div></div></div>
+        <div class="aitem resch" style="--d:.7s"><span class="ic">📅</span><div><b>Reschedule request — Park</b><div class="dd">Prefers Jun 22–24 afternoons · visit currently Fri 19</div></div></div>
+        <div class="aitem flagd" style="--d:.8s"><span class="ic">🪣</span><div><b>Unassigned: Lemieux EXTRA</b><div class="dd">Paid gutter clear · Friday · assign MT or DK</div></div></div>
+      </div>
+      <div style="margin-top:18px;border-top:1px dashed var(--ring);padding-top:14px;font-size:12.5px;color:var(--mut)">
+        Route order, materials per route, and the week's filter sizes print from <b>Visits → Route sheet</b>.
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Admin console · Mockup v2</span>
+    <span><a href="dashboard.html">Customer view</a> · <a href="tech.html">Tech app</a> · <a href="report.html">Sample report</a></span>
+  </div>
+</footer>
+
+<script>
+document.getElementById('today').textContent = new Date().toLocaleDateString('en-CA',
+  { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  document.querySelectorAll('.bar i').forEach(i => i.style.width = i.dataset.w + '%');
+}));
+</script>
+</body>
+</html>

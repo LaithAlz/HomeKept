@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Visit report — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT v2 — Visit photo report (the product's hero artifact) */
+:root{
+  --cream:#F8F5EE;--cream-2:#F0EBDF;--card:#FFFEFA;
+  --pine:#1E3A2B;--pine-2:#2A4D39;--moss:#5E7D62;--sage:#A9BFAC;
+  --honey:#DE8F3F;--honey-soft:#F4D9B8;--ink:#22312A;--mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--ink);font-family:"Figtree",sans-serif;line-height:1.6;overflow-x:hidden}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.serif{font-family:"Fraunces",serif}
+.wrap{max-width:880px;margin:0 auto;padding:0 28px}
+@media(max-width:600px){.wrap{padding:0 18px}}
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:480px;height:480px;background:rgba(169,191,172,.35);top:-150px;right:-110px;animation:drift 16s ease-in-out infinite alternate}
+.glow.g2{width:400px;height:400px;background:rgba(244,217,184,.45);bottom:-120px;left:-150px;animation:drift 20s ease-in-out infinite alternate-reverse}
+@keyframes drift{from{transform:translate(0,0)}to{transform:translate(34px,26px) scale(1.05)}}
+main,header{position:relative;z-index:1}
+
+.nav{
+  position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:50;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  background:rgba(255,254,250,.85);backdrop-filter:blur(14px);
+  border:1px solid var(--ring);border-radius:999px;padding:8px 20px;
+  box-shadow:0 10px 30px -12px rgba(30,58,43,.18);width:min(860px,calc(100% - 36px));
+  font-size:14px;animation:navin .8s cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes navin{from{opacity:0;transform:translate(-50%,-16px)}to{opacity:1;transform:translate(-50%,0)}}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;color:var(--pine)}
+.leaf{width:26px;height:26px;background:var(--pine);border-radius:50% 50% 50% 6px;position:relative;flex:none}
+.leaf::after{content:"";position:absolute;inset:8px;border-radius:50% 50% 50% 4px;background:var(--honey)}
+.back{font-weight:600;color:var(--mut)}
+.back:hover{color:var(--pine)}
+
+.up{opacity:0;transform:translateY(24px);animation:up .8s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+
+/* report head */
+.rhead{padding:130px 0 30px;text-align:center}
+.donepill{display:inline-flex;align-items:center;gap:9px;background:rgba(94,125,98,.14);color:var(--moss);font-size:13px;font-weight:700;border-radius:999px;padding:9px 18px}
+.donepill .chk{width:20px;height:20px;border-radius:50%;background:var(--moss);display:grid;place-items:center}
+.donepill .chk svg{width:11px;height:11px;stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;animation:draw .5s ease .6s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.rhead h1{font-family:"Fraunces",serif;font-size:clamp(34px,4.4vw,52px);font-weight:560;letter-spacing:-.02em;color:var(--pine);line-height:1.08;margin-top:18px}
+.rhead h1 em{font-style:italic;font-weight:480;color:var(--moss)}
+.rhead .meta{margin-top:12px;color:var(--mut);font-size:14.5px;display:flex;justify-content:center;gap:18px;flex-wrap:wrap}
+.rhead .meta b{color:var(--pine)}
+.techline{display:inline-flex;align-items:center;gap:10px;margin-top:18px;background:var(--card);border:1px solid var(--ring);border-radius:999px;padding:8px 18px 8px 9px;box-shadow:0 6px 16px -8px rgba(30,58,43,.2);font-size:14px}
+.techline .av{width:32px;height:32px;border-radius:50% 50% 50% 10px;background:var(--pine);color:var(--cream);display:grid;place-items:center;font-size:12px;font-weight:700}
+
+/* score strip */
+.scorestrip{display:flex;align-items:center;justify-content:center;gap:26px;margin:30px auto 0;background:var(--pine);color:var(--cream);border-radius:26px;padding:20px 30px;max-width:560px;flex-wrap:wrap;box-shadow:0 22px 44px -22px rgba(30,58,43,.5)}
+.scorestrip .n{font-family:"Fraunces",serif;font-size:46px;font-weight:600;line-height:1}
+.scorestrip .n small{font-size:18px;color:var(--honey-soft);font-weight:600}
+.scorestrip .l{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--sage);text-transform:uppercase}
+.scorestrip .delta{background:rgba(244,217,184,.16);color:var(--honey-soft);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700}
+.scorestrip p{font-size:13.5px;color:#C6D4C6;max-width:24ch}
+
+section{padding:34px 0}
+.lab{font-size:11.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--mut);display:flex;align-items:center;gap:10px}
+.lab::after{content:"";flex:1;height:1px;background:var(--ring)}
+.lab b{color:var(--honey)}
+
+/* checklist */
+.checklist{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.citem{display:flex;align-items:flex-start;gap:13px;background:var(--card);border:1px solid var(--ring);border-radius:18px;padding:13px 16px;opacity:0;transform:translateY(12px);animation:up .55s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.4s)}
+.citem .bx{width:22px;height:22px;border-radius:8px;flex:none;display:grid;place-items:center;margin-top:2px;background:var(--moss)}
+.citem .bx svg{width:12px;height:12px;stroke:#fff;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.citem .t{font-weight:600;color:var(--pine);font-size:15px}
+.citem .src{font-size:11px;font-weight:700;color:var(--mut);background:var(--cream-2);border-radius:999px;padding:2px 9px;margin-left:8px;vertical-align:2px}
+.citem .src.todo{background:var(--honey-soft);color:#8a5a1e}
+.citem .dd{font-size:13.5px;color:var(--mut)}
+.citem.flagged{border-color:rgba(222,143,63,.5);background:#FFFCF4}
+.citem.flagged .bx{background:var(--honey)}
+.citem.flagged .bx span{color:var(--pine);font-weight:800;font-size:13px}
+.flagnote{margin-top:6px;background:var(--honey-soft);border-radius:12px;padding:9px 13px;font-size:13.5px;color:var(--ink)}
+.flagnote b{color:#8a5a1e}
+
+/* photos */
+.photogrid{margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:600px){.photogrid{grid-template-columns:repeat(2,1fr)}}
+.photo{position:relative;aspect-ratio:4/3;border-radius:18px;overflow:hidden;border:1px solid var(--ring);opacity:0;transform:scale(.96);animation:pin .55s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,.4s)}
+@keyframes pin{to{opacity:1;transform:none}}
+.photo .ph{position:absolute;inset:0;display:grid;place-items:center;font-size:34px}
+.photo .cap{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(30,58,43,.85));color:var(--cream);font-size:11.5px;font-weight:600;padding:18px 11px 9px}
+.photo:hover{transform:translateY(-3px);transition:.25s}
+.photo.p1 .ph{background:linear-gradient(150deg,#BFD2C2,#7E9C84)}
+.photo.p2 .ph{background:linear-gradient(150deg,#E8DCC4,#C9B68C)}
+.photo.p3 .ph{background:linear-gradient(150deg,#D8E2D4,#9AB89E)}
+.photo.p4 .ph{background:linear-gradient(150deg,#E5D5BC,#B89F78)}
+.photo.p5 .ph{background:linear-gradient(150deg,#CBDACE,#86A78C)}
+.photo.p6 .ph{background:linear-gradient(150deg,#F0E3CC,#D2B888)}
+
+/* receipt + next */
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px}
+@media(max-width:680px){.duo{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid var(--ring);border-radius:24px;padding:22px}
+.panel h3{font-family:"Fraunces",serif;font-size:19px;font-weight:600;color:var(--pine)}
+.rline{display:flex;justify-content:space-between;font-size:14px;padding:8px 0;border-bottom:1px dashed var(--ring)}
+.rline:last-of-type{border-bottom:0}
+.rline .v{font-weight:600;color:var(--pine)}
+.rline.total .v{color:var(--moss)}
+.panel .fine{font-size:12.5px;color:var(--mut);margin-top:10px}
+.nextcard{background:var(--pine);color:var(--cream);border:0}
+.nextcard h3{color:var(--cream)}
+.nextcard .big{font-family:"Fraunces",serif;font-size:24px;font-weight:600;margin-top:8px}
+.nextcard p{font-size:13.5px;color:var(--sage);margin-top:6px}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:11px 20px;border-radius:999px;cursor:pointer;border:0;transition:transform .25s cubic-bezier(.3,1.4,.5,1)}
+.btn.honey{background:var(--honey);color:var(--pine);box-shadow:0 8px 20px -8px rgba(222,143,63,.7)}
+.btn.honey:hover{transform:translateY(-2px)}
+.btn.ghosty{background:rgba(248,245,238,.12);color:var(--cream);border:1px solid rgba(248,245,238,.25)}
+.btn.ghosty:hover{transform:translateY(-2px)}
+
+/* rate + footer */
+.rate{display:flex;align-items:center;justify-content:center;gap:16px;margin:20px 0 60px;flex-wrap:wrap}
+.rate p{font-size:14.5px;color:var(--mut)}
+.rate button{font:inherit;font-size:20px;width:52px;height:52px;border-radius:50% 50% 50% 16px;border:1.5px solid var(--ring);background:var(--card);cursor:pointer;transition:.25s cubic-bezier(.3,1.4,.5,1)}
+.rate button:hover{transform:translateY(-3px) scale(1.06);border-color:var(--moss)}
+footer{border-top:1px solid var(--ring);padding:24px 0 46px;font-size:13px;color:var(--mut);position:relative;z-index:1}
+footer .wrap{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}
+footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;animation-delay:0s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+<div class="glow g1"></div><div class="glow g2"></div>
+
+<header>
+  <nav class="nav">
+    <a class="logo" href="index.html"><span class="leaf"></span>HomeKept</a>
+    <a class="back" href="dashboard.html">← Back to your home</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <div class="rhead up">
+    <span class="donepill"><span class="chk"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5" pathLength="1"/></svg></span>Visit complete</span>
+    <h1>Summer systems <em>check.</em></h1>
+    <p class="meta"><span><b>Thursday, July 9</b> · 1:12 – 2:48 PM</span><span>14 Maple Ridge Crt</span><span><b>12 photos</b> · 6 tasks · 1 flagged</span></p>
+    <div class="techline"><span class="av">MT</span>Marcus walked your home today — here's everything he saw.</div>
+  </div>
+
+  <div class="scorestrip up" style="--d:.15s">
+    <div><div class="n">86<small>/100</small></div><div class="l">Home health</div></div>
+    <span class="delta">▲ +2 this visit</span>
+    <p>AC and plumbing in great shape. One item flagged below — already scheduled.</p>
+  </div>
+
+  <!-- checklist -->
+  <section class="up" style="--d:.25s">
+    <p class="lab">What we did</p>
+    <div class="checklist">
+      <div class="citem" style="--d:.45s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">AC performance check</span><div class="dd">Cooling at spec; condenser clean from June's rinse. 19°C supply air.</div></div></div>
+      <div class="citem" style="--d:.55s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">Leak inspection — under sinks, toilets, appliance lines</span><div class="dd">All dry. Replaced one worn washer hose gasket (included).</div></div></div>
+      <div class="citem" style="--d:.65s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">Dryer vent deep clean</span><div class="dd">Full run brushed — see the before/after photos. Airflow restored.</div></div></div>
+      <div class="citem" style="--d:.75s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">Furnace filter + detector sweep</span><span class="src">Every visit</span><div class="dd">Filter swapped (16×25×1, MERV 11). All 4 detectors tested green.</div></div></div>
+      <div class="citem" style="--d:.85s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">Hang the hallway mirror</span><span class="src todo">Your list</span><div class="dd">Done — anchored into the stud, level checked. (12 min)</div></div></div>
+      <div class="citem flagged" style="--d:.95s"><span class="bx"><span>⚑</span></span><div><span class="t">Water heater — drain valve weeping</span>
+        <div class="dd">Slow seep at the drain valve, ~1 drop/min. Not urgent, shouldn't wait past fall.</div>
+        <div class="flagnote"><b>What happens next:</b> added to your September visit for re-check; if it's worse, we'll book our licensed plumbing partner — they bill you directly, we add nothing.</div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- photos -->
+  <section class="up" style="--d:.35s">
+    <p class="lab">Photos — 6 of 12 shown · <b>tap any to open</b></p>
+    <div class="photogrid">
+      <figure class="photo p1" style="--d:.5s"><div class="ph">🌬️</div><figcaption class="cap">AC supply temp — 19°C</figcaption></figure>
+      <figure class="photo p2" style="--d:.58s"><div class="ph">🧺</div><figcaption class="cap">Dryer vent — before</figcaption></figure>
+      <figure class="photo p3" style="--d:.66s"><div class="ph">✨</div><figcaption class="cap">Dryer vent — after</figcaption></figure>
+      <figure class="photo p4" style="--d:.74s"><div class="ph">🚿</div><figcaption class="cap">Under-sink — dry</figcaption></figure>
+      <figure class="photo p5" style="--d:.82s"><div class="ph">🪞</div><figcaption class="cap">Hallway mirror — hung</figcaption></figure>
+      <figure class="photo p6" style="--d:.9s"><div class="ph">⚑</div><figcaption class="cap">Drain valve seep — flagged</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- receipt + next visit -->
+  <section class="up" style="--d:.45s">
+    <p class="lab">The paperwork, handled</p>
+    <div class="duo">
+      <div class="panel">
+        <h3>Materials used</h3>
+        <div style="margin-top:10px">
+          <div class="rline"><span>Furnace filter 16×25×1 (MERV 11)</span><span class="v">included</span></div>
+          <div class="rline"><span>2× 9V detector batteries</span><span class="v">included</span></div>
+          <div class="rline"><span>Washer hose gasket</span><span class="v">included</span></div>
+          <div class="rline total"><span>Billed to you</span><span class="v">$0.00</span></div>
+        </div>
+        <p class="fine">Standard consumables are part of your plan. Specialty parts are always at cost — receipt shown right here.</p>
+      </div>
+      <div class="panel nextcard">
+        <h3>Up next</h3>
+        <div class="big">September — Pre-heating check</div>
+        <p>Water heater re-check (that valve), pressure test, toilet internals, sump recheck. We'll confirm the date a week out.</p>
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <a class="btn honey" href="#">Add to your list ✿</a>
+          <a class="btn ghosty" href="#">Reschedule</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rate up" style="--d:.55s">
+    <p>How was this visit?</p>
+    <button aria-label="Thumbs up">👍</button>
+    <button aria-label="Thumbs down">👎</button>
+    
+  </div>
+
+  <p class="up" style="--d:.6s;text-align:center;margin:-30px 0 60px;font-size:13.5px;color:var(--mut)">
+    A <a href="#" style="color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)">Google review</a> helps neighbours find us — it takes a minute.
+  </p>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Visit report · Mockup v2</span>
+    <span><a href="dashboard.html">← Dashboard</a> &nbsp;·&nbsp; <a href="index.html">Landing</a></span>
+  </div>
+</footer>
+</body>
+</html>
