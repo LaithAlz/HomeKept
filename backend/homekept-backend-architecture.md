@@ -139,7 +139,7 @@ DTOs never cross above the controller boundary. Entities never cross below the s
 - `Service` — id, name, category (HVAC / PLUMBING / EXTERIOR / SMART_HOME), tier_class (BASIC / MEDIUM / PREMIUM — the picks classification, see docs/pricing-and-visits.md), default_duration_minutes, a_la_carte_price_cents (nullable — set for pickable services), description, is_free_with_every_visit, active
 - `PlanTier` — id, code (ESSENTIAL / COMPLETE / PREMIER), display_name, monthly_price_cents, annual_price_cents, visits_per_year, included_picks_per_year, max_premium_picks_per_year, stripe_price_id_monthly, stripe_price_id_annual, stripe_price_id_founding (nullable — the founding-member rate, retired after the first 15), description
 - `PlanTierService` — plan_tier_id, service_id, frequency_per_year
-- `VisitTemplate` — id, plan_tier_id, month (1–12), name ("Fall winterization"), description
+- `VisitTemplate` — id, min_tier (ESSENTIAL / COMPLETE / PREMIER — this tier *and above* get the visit; the calendar is cumulative, so no duplication across tiers), month (1–12), name ("Fall winterization"), description
 - `VisitTemplateService` — visit_template_id, service_id, sort_order
 
 **Visit templates** are the seasonal calendar as data: which named visit each tier gets in
@@ -164,7 +164,7 @@ via migration from docs/pricing-and-visits.md and edited only by migration at MV
 **Owns:** `subscriber` table, `subscription_event` table.
 
 **Key entities:**
-- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, paused_until, cancelled_at, created_at, updated_at
+- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, founding_rate (boolean), founding_rate_expires_at (nullable — 12 months from activation; the first-15 cap is enforced by counting founding_rate rows), stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, paused_until, cancelled_at, created_at, updated_at
 - `SubscriptionEvent` — id, subscriber_id, event_type, payload (JSONB), processed_at, source (STRIPE_WEBHOOK / MANUAL / SYSTEM)
 
 **Status state machine (this is sacred — see Part 4):**
@@ -195,7 +195,8 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 | Event | Action |
 |---|---|
-| `checkout.session.completed` | Create or activate subscriber row |
+| `checkout.session.completed` (`mode=subscription`) | Create or activate subscriber row |
+| `checkout.session.completed` (`mode=payment` + pick metadata) | Create EXTRA visit / `VisitService(source=EXTRA)` for the paid pick |
 | `customer.subscription.updated` | Sync plan tier, period dates |
 | `customer.subscription.deleted` | Set status CANCELLED |
 | `invoice.payment_failed` | Set status PAYMENT_ISSUE, notify customer |
@@ -245,14 +246,17 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 **Responsibilities:** scheduled and completed maintenance visits. This is what the business *is*. Every paying subscriber generates 4-24 visits per year; this is the most-touched table in the database.
 
-**Owns:** `visit` table, `visit_service` table, `visit_photo` table, `visit_note` table, `todo_item` table.
+**Owns:** `visit`, `visit_service`, `visit_photo`, `visit_note`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
 
 **Key entities:**
 - `Visit` — id, subscriber_id, property_id, technician_id, visit_template_id (nullable — null for EXTRA/WALKTHROUGH), scheduled_for, duration_minutes, actual_duration_minutes, materials_cost_cents, status, type, completion_notes, completed_at, created_at, updated_at
-- `VisitService` — id, visit_id, service_id (FK to catalog), source (TEMPLATE / PICK / FLAGGED / TODO), completed, completed_at, technician_notes
+- `VisitService` — id, visit_id, service_id (FK to catalog), source (TEMPLATE / PICK / EXTRA / FLAGGED / TODO — PICK burns the allowance, EXTRA is paid à la carte and never does), completed, completed_at, technician_notes
 - `VisitNote` — id, visit_id, author_user_id, body, created_at
 - `VisitPhoto` — id, visit_id, storage_key (R2), caption, taken_at, created_at
-- `TodoItem` ("your list") — id, subscriber_id, body, status (OPEN / SCHEDULED / DONE / DECLINED), visit_id (nullable), created_at
+- `TodoItem` ("your list") — id, subscriber_id, body, status (OPEN / SCHEDULED / DONE / DECLINED — DECLINED set by the technician with a note), visit_id (nullable), created_at
+- `Flag` — id, subscriber_id, origin_visit_id, body, severity (INFO / ATTENTION / URGENT), status (OPEN / SCHEDULED / RESOLVED / REFERRED), photo_storage_key (nullable), created_at, resolved_at — the persistent half of observe → photograph → flag → refer; OPEN flags fold into the next visit and feed the health score
+- `RescheduleRequest` — id, visit_id, preferred_dates, status (PENDING / CONFIRMED / DECLINED), created_at
+- `HealthScoreSnapshot` — id, subscriber_id, score, computed_at — written per completed visit; score is computed on read (weighted checklist outcomes + open flags), snapshots exist so the dashboard's delta has a prior value
 
 `actual_duration_minutes` + `materials_cost_cents` are filled at completion — together
 with the technician's fully-loaded hourly cost they produce per-visit and per-subscriber
@@ -307,8 +311,8 @@ IN_PROGRESS → COMPLETED
 **Scale considerations:**
 - *MVP:* the founders are the technicians — two `technician_profile` rows with notional
   `fully_loaded_hourly_cost_cents` set from day 1 so per-visit unit economics are real
-  numbers, not vibes. The technician app (see §"Technician app" below) reads visits
-  assigned to these rows. Skip regions/availability tables.
+  numbers, not vibes. The technician app (see api-contract.md, "Technician app") reads
+  visits assigned to these rows. Skip regions/availability tables.
 - *Post-MVP (5+ technicians):* build the rest properly (regions, availability, real
   payroll-derived costs replacing notional ones). Add the availability check to the assignment engine.
 - *Scale (20+ technicians):* add skill tags (HVAC-certified, smart-home-trained), capacity planning views, time-off requests.
@@ -388,6 +392,7 @@ subscriber
   ├── N:1 → plan_tier (catalog)
   ├── 1:N → visit
   ├── 1:N → invoice
+  ├── 1:N → todo_item, flag, health_score_snapshot
   └── 1:N → subscription_event
 
 property
@@ -399,7 +404,9 @@ visit
   ├── N:1 → technician (optional)
   ├── 1:N → visit_service
   ├── 1:N → visit_note
-  └── 1:N → visit_photo (deferred)
+  ├── 1:N → visit_photo
+  ├── 1:N → reschedule_request
+  └── 0:1 → visit_template (its origin)
 
 walkthrough_booking (pre-subscription)
   ├── 0:1 → subscriber (after conversion)
@@ -407,6 +414,7 @@ walkthrough_booking (pre-subscription)
 
 catalog
   ├── plan_tier 1:N → plan_tier_service N:1 → service
+  ├── visit_template 1:N → visit_template_service N:1 → service
   └── service 1:N → visit_service (back-reference)
 ```
 
@@ -513,7 +521,7 @@ Each state machine class lives next to its entity (`subscription/SubscriberState
 **Authentication:** JWT in httpOnly cookies (see `identity`). All `/api/*` endpoints require a valid access token except:
 - `/api/auth/login`, `/api/auth/refresh`
 - `/api/bookings/walkthrough` (public form submission)
-- `/api/catalog/plans` (public pricing data)
+- `/api/catalog/plans`, `/api/catalog/picks` (public pricing data)
 - `/api/webhooks/stripe` (signed by Stripe, not session-authed)
 - `/api/activation/*` (token-authed, not session — see api-contract.md)
 - `/api/health` (no auth)
@@ -888,7 +896,8 @@ Apps live at launch:
   scheduling (template-generated, admin confirms), founding-rate management (first 15)
 
 Integrations live: Stripe Checkout + customer portal + one-off payments for extra
-picks, Stripe webhooks (7 events), SendGrid, Cloudflare R2 (signed URLs).
+picks, Stripe webhooks (per the §2.4 handler table, incl. mode-split handling of
+`checkout.session.completed`), SendGrid, Cloudflare R2 (signed URLs).
 
 Unit economics from visit #1: notional fully-loaded hourly cost per technician row ×
 actual duration + logged materials = per-visit and per-subscriber margin reporting.
@@ -928,8 +937,7 @@ Major operational shift: you stop being the technician. The architecture must su
 Additions:
 - Expand region beyond Oakville/Mississauga/Milton
 - Multi-property subscribers
-- Referral program with attribution tracking
-- Customer self-service: pause, plan change, request extra visit
+- Referral program with attribution tracking (added to the self-serve surface live since v1)
 - Webhook processing moved fully async with dead-letter queue
 - OpenAPI documentation
 - Performance budgets and SLOs

@@ -41,7 +41,7 @@ never skip a gate.
 
 ---
 
-## Phase 0 — Build & launch (0 → 5 customers, ~M0–M3)
+## Phase 0 — Build & launch (0 → 5 customers, ~M0–M5)
 
 **Business**
 - Incorporate; shareholders' agreement w/ 4yr/1yr vesting, role split, casting votes,
@@ -76,7 +76,7 @@ Stage 1, June 2026 revision):
 
 ---
 
-## Phase 1 — Proof (5 → 30 customers, ~M3–M12)
+## Phase 1 — Proof (5 → 30 customers, ~M5–M14)
 
 The only question this phase answers: **do people stay?** Target ≤2%/mo churn after
 month 3 of membership. If churn is >4%/mo, stop growing and fix the product/cadence —
@@ -106,7 +106,7 @@ referrals ≥25% of new leads.
 
 ---
 
-## Phase 2 — Repeatability (30 → 100 customers, ~M12–M24)
+## Phase 2 — Repeatability (30 → 100 customers, ~M14–M26)
 
 The question: **does the machine work without founder heroics?**
 
@@ -116,7 +116,7 @@ The question: **does the machine work without founder heroics?**
 - Expand to contiguous FSAs only (Oakville ring → Mississauga-west or Milton, not both)
 - Partnerships engine: realtors (closing-gift memberships), property managers (small
   portfolios = multi-property), insurance brokers (referral)
-- Founder salaries start when MRR > ~$8K (≈M18): modest and equal
+- Founder salaries start when MRR > ~$8K (≈M20): modest and equal
 - Pricing review at customer 50 with a year of real cost data; grandfather honestly
 - Winter readiness: capacity plan for Oct–Nov gutter/winterization crunch (the seasonal
   calendar concentrates demand — pre-book anchor visits 6 weeks out)
@@ -129,17 +129,14 @@ The question: **does the machine work without founder heroics?**
 - Bucket4j rate limiting; SendGrid bounce webhooks
 - Reporting: MRR/churn/cohort dashboard for the admin (read replica NOT yet — Postgres
   is fine)
-- Mobile-first pass on technician views (founders are the users; build what the field
-  actually needs — this is why founders stay on tools)
-- Materials cost per visit becomes a real column; unit-economics report per
-  subscriber/tier
+- Unit-economics reporting per subscriber/tier deepens (cost columns live since v1)
 
 **Exit gate:** 100 customers · churn still ≤2%/mo · sales hire produces ≥50% of new
 walk-throughs · founders' visit load ≥60/mo (the forcing function).
 
 ---
 
-## Phase 3 — Workforce (100 → 200 customers, ~M24–M30)
+## Phase 3 — Workforce (100 → 200 customers, ~M26–M32)
 
 The question: **does service quality survive employees?** This is the hardest phase —
 the arch doc calls it the "major operational shift," and most service businesses die here.
@@ -171,7 +168,7 @@ quality audit ≥95% pass · blended gross margin ≥50%.
 
 ---
 
-## Phase 4 — Scale (200 → 400+ customers, ~M30–M36)
+## Phase 4 — Scale (200 → 400+ customers, ~M32–M38)
 
 The question: **is this a GTA-West institution or a lifestyle business?** (Both are
 wins — decide deliberately.)
@@ -191,7 +188,7 @@ wins — decide deliberately.)
 
 **Tech** (arch doc Stage 4)
 - Route optimization within auto-assignment (drive-time aware day sheets)
-- Customer self-service completeness: reschedule, pick selection, referral tracking
+- Referral tracking added to the (already-live) self-serve surface
 - Webhook/event pipeline fully async w/ DLQ; OpenAPI docs; performance budgets
 - Read replica for analytics; partition `visit` by year when >10K rows/yr
 - Multi-property data model exercised for real
