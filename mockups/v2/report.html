@@ -63,7 +63,7 @@ main,header{position:relative;z-index:1}
 /* score strip */
 .scorestrip{display:flex;align-items:center;justify-content:center;gap:26px;margin:30px auto 0;background:var(--pine);color:var(--cream);border-radius:26px;padding:20px 30px;max-width:560px;flex-wrap:wrap;box-shadow:0 22px 44px -22px rgba(30,58,43,.5)}
 .scorestrip .n{font-family:"Fraunces",serif;font-size:46px;font-weight:600;line-height:1}
-.scorestrip .n s{text-decoration:none;font-size:18px;color:var(--honey-soft)}
+.scorestrip .n small{font-size:18px;color:var(--honey-soft);font-weight:600}
 .scorestrip .l{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--sage);text-transform:uppercase}
 .scorestrip .delta{background:rgba(244,217,184,.16);color:var(--honey-soft);border-radius:999px;padding:6px 14px;font-size:13px;font-weight:700}
 .scorestrip p{font-size:13.5px;color:#C6D4C6;max-width:24ch}
@@ -154,7 +154,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
   </div>
 
   <div class="scorestrip up" style="--d:.15s">
-    <div><div class="n">86<s>/100</s></div><div class="l">Home health</div></div>
+    <div><div class="n">86<small>/100</small></div><div class="l">Home health</div></div>
     <span class="delta">▲ +2 this visit</span>
     <p>AC and plumbing in great shape. One item flagged below — already scheduled.</p>
   </div>
@@ -170,14 +170,14 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
       <div class="citem" style="--d:.85s"><span class="bx"><svg viewBox="0 0 14 14"><polyline points="2,7.5 5.5,11 12,3.5"/></svg></span><div><span class="t">Hang the hallway mirror</span><span class="src todo">Your list</span><div class="dd">Done — anchored into the stud, level checked. (12 min)</div></div></div>
       <div class="citem flagged" style="--d:.95s"><span class="bx"><span>⚑</span></span><div><span class="t">Water heater — drain valve weeping</span>
         <div class="dd">Slow seep at the drain valve, ~1 drop/min. Not urgent, shouldn't wait past fall.</div>
-        <div class="flagnote"><b>What happens next:</b> added to your August visit for re-check; if it's worse, we'll book our licensed plumbing partner — they bill you directly, we add nothing.</div>
+        <div class="flagnote"><b>What happens next:</b> added to your September visit for re-check; if it's worse, we'll book our licensed plumbing partner — they bill you directly, we add nothing.</div>
       </div></div>
     </div>
   </section>
 
   <!-- photos -->
   <section class="up" style="--d:.35s">
-    <p class="lab">12 photos · <b>tap any to open</b></p>
+    <p class="lab">Photos — 6 of 12 shown · <b>tap any to open</b></p>
     <div class="photogrid">
       <figure class="photo p1" style="--d:.5s"><div class="ph">🌬️</div><figcaption class="cap">AC supply temp — 19°C</figcaption></figure>
       <figure class="photo p2" style="--d:.58s"><div class="ph">🧺</div><figcaption class="cap">Dryer vent — before</figcaption></figure>
@@ -204,7 +204,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
       </div>
       <div class="panel nextcard">
         <h3>Up next</h3>
-        <div class="big">August — Water systems</div>
+        <div class="big">September — Pre-heating check</div>
         <p>Water heater re-check (that valve), pressure test, toilet internals, sump recheck. We'll confirm the date a week out.</p>
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
           <a class="btn honey" href="#">Add to your list ✿</a>
@@ -218,8 +218,12 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
     <p>How was this visit?</p>
     <button aria-label="Thumbs up">👍</button>
     <button aria-label="Thumbs down">👎</button>
-    <p style="font-size:13px">Love the report? <a href="#" style="color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)">A Google review</a> helps neighbours find us.</p>
+    
   </div>
+
+  <p class="up" style="--d:.6s;text-align:center;margin:-30px 0 60px;font-size:13.5px;color:var(--mut)">
+    A <a href="#" style="color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey)">Google review</a> helps neighbours find us — it takes a minute.
+  </p>
 
 </main>
 

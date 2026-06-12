@@ -155,14 +155,14 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
     <h1>Pick how kept <em>you want to be.</em></h1>
     <p>Every plan runs on the same seasonal calendar, the same vetted technicians, and the same photo report after every visit.</p>
     <div class="toggle" id="toggle">
-      <button class="on" data-cycle="monthly">Monthly</button>
-      <button data-cycle="annual">Annual</button>
+      <button class="on" data-cycle="monthly" aria-pressed="true">Monthly</button>
+      <button data-cycle="annual" aria-pressed="false">Annual</button>
       <span class="save">2 months free</span>
     </div>
   </div>
 
   <div class="founding up" style="--d:.1s">
-    <span>🌱 <b>Founding member rate:</b> Complete for <b>$129/mo</b>, locked for a year — for our first 15 homes, in exchange for honest feedback.</span>
+    <span>🌱 <b>Founding member rate:</b> Complete for <b>$129/mo</b>, locked for a year — for our first 15 homes, in exchange for a testimonial we may share (disclosed as founding-member).</span>
     <span class="count">6 of 15 left</span>
   </div>
 
@@ -178,7 +178,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
         <li>Filters, detector tests &amp; batteries — every visit</li>
         <li>Photo report + health score, same day</li>
         <li>Your-list time each visit (~20 min)</li>
-        <li><b>1 included pick</b> a year</li>
+        <li><b>1 included pick</b> a year (Basic or Medium)</li>
         <li class="no">Priority scheduling</li>
         <li class="no">Repairs included</li>
       </ul>
@@ -205,7 +205,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
     <article class="plan up" style="--d:.35s">
       <div class="pname">Premier</div>
       <div class="pfor">Larger homes, busy households, aging-in-place</div>
-      <div class="price"><span class="d" data-m="$249" data-a="$208">$249</span><span class="per">/mo</span></div>
+      <div class="price"><span class="d" data-m="$249" data-a="$207">$249</span><span class="per">/mo</span></div>
       <div class="cad" data-m="billed monthly · CAD" data-a="$2,490 billed annually · CAD">billed monthly · CAD</div>
       <div class="visitline"><span class="dots"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>12 monthly visits, each named</div>
       <ul>
@@ -257,7 +257,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
         </ul>
       </div>
     </div>
-    <p class="picknote">Picks fold into your scheduled visits whenever possible — no extra appointment, no extra disruption.</p>
+    <p class="picknote">Picks fold into your scheduled visits whenever possible — no extra appointment, no extra disruption. Premium picks are included on Complete (max 1/yr) and Premier (max 3/yr); Essential’s included pick is Basic or Medium.</p>
   </section>
 
   <!-- vs protection plans -->
@@ -278,7 +278,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
     <div class="sechead"><h2>Fair <em>questions.</em></h2></div>
     <div class="faq">
       <details><summary>What don't you do?</summary><p>Licensed-trade work — gas, electrical panels, plumbing repairs, roofing. We inspect, catch things early, and refer you to a vetted partner who bills you directly. We add zero markup, ever.</p></details>
-      <details><summary>Can I cancel or pause?</summary><p>Anytime, from your dashboard — no calls, no retention scripts. Annual plans are refunded for unused full months.</p></details>
+      <details><summary>Can I cancel or pause?</summary><p>Both, anytime, from your dashboard — no calls, no retention scripts. Refund terms for annual plans are spelled out plainly in your agreement.</p></details>
       <details><summary>What if I don't need a visit some month?</summary><p>Every visit has a named seasonal reason, plus your-list time for the small stuff you want done. If a date doesn't work, reschedule from the app.</p></details>
       <details><summary>Are materials extra?</summary><p>Standard consumables — filters, batteries, humidifier pads, touch-up caulk — are included. Specialty parts are billed at literal cost, receipt in your report.</p></details>
       <details><summary>What's the walk-through?</summary><p>Ninety minutes, free, no obligation. We catalog your home's systems and you get a written plan within a week — keep it or don't.</p></details>
@@ -303,7 +303,7 @@ footer a{color:var(--pine);font-weight:600;border-bottom:1.5px solid var(--honey
 /* billing cycle toggle */
 const buttons = document.querySelectorAll('#toggle button');
 buttons.forEach(b => b.addEventListener('click', () => {
-  buttons.forEach(x => x.classList.toggle('on', x === b));
+  buttons.forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
   const annual = b.dataset.cycle === 'annual';
   document.querySelectorAll('.plan .price .d').forEach(d => {
     d.textContent = annual ? d.dataset.a : d.dataset.m;
