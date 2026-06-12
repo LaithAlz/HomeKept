@@ -97,6 +97,9 @@ Picks fold into scheduled visits where possible. Beyond allowance = à la carte
   adjacent to; treating it as binding is deliberate best practice, not strictly
   required.) Subscription terms carry CPA future-performance disclosures + cancellation
   rights incl. the 10-day cooling-off where applicable; auto-renewal gets advance notice.
+- **Competition Act (misleading advertising):** no fabricated social proof anywhere —
+  no invented customer counts, ratings, or testimonials. Real reviews only (the
+  founding-member exchange produces them legitimately).
 - **CASL:** booking consent already captured server-side; every marketing email/SMS
   carries sender identification + unsubscribe; outreach to realtors/property managers
   needs its own consent basis.
