@@ -1,6 +1,7 @@
 # HomeKept · MVP API Contract
 
-The endpoint surface for Stage 1 (weeks 1–8, issues #1–#45). This is the seam between
+The endpoint surface for the expanded v1 (arch doc Stage 1, June 2026 revision —
+issues #1–#45 plus the v1-expansion issues). This is the seam between
 the Spring backend and the frontend rebuild: both sides build against this document.
 Backward-compatible additions are fine; renames and removals require updating this file
 in the same PR.
@@ -51,8 +52,12 @@ Walk-through booking form submission (frontend `book` wizard).
 booking-confirmation email.
 
 ### `GET /api/catalog/plans`
-Plan tiers for the pricing page.
-→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 18900, "annualPriceCents": 188900, "visitsPerYear": 12, "description": "...", "services": [ { "name": "Furnace filter swap", "frequencyPerYear": 4 } ] } ]`
+Plan tiers for the pricing page (prices per docs/pricing-and-visits.md).
+→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 14900, "annualPriceCents": 149000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "foundingRateAvailable": true, "foundingMonthlyPriceCents": 12900, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
+
+### `GET /api/catalog/picks`
+The pickable services menu, grouped by tier class, with à la carte prices
+(`BASIC` 4900 / `MEDIUM` 8900 / `PREMIUM` 14900).
 
 ### `GET /api/health`
 → `200 { "status": "UP" }` (UptimeRobot target)
@@ -99,8 +104,13 @@ real need appears.
 ## Checkout & billing (role: CUSTOMER)
 
 ### `POST /api/checkout/session`
-`{ "planCode": "COMPLETE", "billingCycle": "MONTHLY" }`
+`{ "planCode": "COMPLETE", "billingCycle": "MONTHLY", "foundingRate": false }`
 → `200 { "checkoutUrl": "https://checkout.stripe.com/..." }` (Stripe-hosted page)
+
+`foundingRate: true` is validated server-side against the cap (15 founding subscribers,
+counted from `subscriber.founding_rate = true`) and uses `stripe_price_id_founding`;
+`subscriber.founding_rate_expires_at` is set 12 months from activation. The plans
+payload's `foundingRateAvailable` is computed from the same count.
 
 ### `POST /api/billing/portal-session`
 → `200 { "portalUrl": "https://billing.stripe.com/..." }` (plan change / cancel / cards)
@@ -118,14 +128,41 @@ acknowledged and ignored.
 
 ## Owner app (role: CUSTOMER — or ADMIN via ownership check)
 
-| Endpoint | Returns |
+| Endpoint | Returns / does |
 |---|---|
-| `GET /api/app/subscription` | `{ status, planCode, billingCycle, currentPeriodEnd, property: { streetAddress, city, ... } }` |
-| `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, completed }] }` |
-| `GET /api/app/visits/{id}` | full visit incl. `completionNotes`, notes list |
+| `GET /api/app/subscription` | `{ status, planCode, billingCycle, currentPeriodEnd, picksRemaining, premiumPicksRemaining, property: { streetAddress, city, ... } }` |
+| `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }] }` |
+| `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
+| `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [...] }` — v1 rubric (weighted checklist outcomes) |
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
+| `GET /api/app/todos` · `POST /api/app/todos` · `DELETE /api/app/todos/{id}` | "your list" — `{ body }`; OPEN items fold into the next scheduled visit |
+| `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
+| `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [...] }` — stored as a `reschedule_request` row pending admin confirmation; visit state machine handles the swap |
+| `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe Checkout (`mode=payment`) with `subscriberId`/`serviceId` metadata; on the `checkout.session.completed` webhook (distinguished by mode + metadata from subscription checkouts) an EXTRA visit / `VisitService(source=EXTRA)` is created — never burns the included-picks allowance |
+| `POST /api/app/subscription/pause` · `POST /api/app/subscription/resume` · `POST /api/app/subscription/cancel` | self-serve via Stripe (webhooks sync state); cancel asks a reason (churn data) |
 
-Home Health Score is post-MVP (Stage 3) — the dashboard renders without it until then.
+Plan change + payment method = Stripe customer portal (`POST /api/billing/portal-session`).
+
+---
+
+## Technician app (role: TECHNICIAN — at MVP, the two founders)
+
+| Endpoint | Returns / does |
+|---|---|
+| `GET /api/tech/visits/today` | day sheet: assigned visits w/ address, access notes, checklist (template + picks + todos + flagged) |
+| `POST /api/tech/visits/{id}/start` | → IN_PROGRESS |
+| `PATCH /api/tech/visits/{id}/services/{visitServiceId}` | `{ completed, technicianNotes }` — checklist tick |
+| `POST /api/tech/visits/{id}/photos/upload-url` | `{ contentType }` → `{ uploadUrl, storageKey }` (R2 signed PUT, 15-min) |
+| `POST /api/tech/visits/{id}/photos` | `{ storageKey, caption }` — confirm upload, attach to visit |
+| `POST /api/tech/visits/{id}/flags` | `{ body, severity, photoStorageKey? }` — creates a `Flag` (the observe→photograph→flag→refer loop); OPEN flags fold into the next visit (`source=FLAGGED`) and feed the health score's `flagged` list |
+| `PATCH /api/tech/todos/{id}` | `{ status: "DONE" \| "DECLINED", note? }` — your-list items worked or declined in the field |
+| `POST /api/tech/visits/{id}/complete` | `{ completionNotes, actualDurationMinutes, materialsCostCents, materialsNotes }` — → COMPLETED, fires report email |
+| `POST /api/tech/visits/{id}/incomplete` | `{ reason }` — → INCOMPLETE, auto-creates follow-up SCHEDULED visit |
+
+Picks accounting: `picksRemaining` counts `VisitService(source=PICK)` rows within the
+subscription anniversary year; `source=EXTRA` (paid) rows never count. Health Score v1 is
+computed on read from checklist outcomes + OPEN flags; a `health_score_snapshot` row is
+written per completed visit so `delta` compares against the previous snapshot.
 
 ---
 
@@ -140,7 +177,7 @@ Home Health Score is post-MVP (Stage 3) — the dashboard renders without it unt
 | `GET /api/admin/subscribers/{id}` | detail incl. property, visits, Stripe links |
 | `POST /api/admin/visits` | `{ subscriberId, scheduledFor, durationMinutes, serviceIds[], technicianUserId? }` |
 | `PATCH /api/admin/visits/{id}` | reschedule (creates new row per state machine) / cancel / assign technician |
-| `POST /api/admin/visits/{id}/complete` | `{ completionNotes, services: [{ id, completed, technicianNotes }] }` |
+| `POST /api/admin/visits/{id}/complete` | fallback for tech-app failure only — same payload as the tech complete endpoint (incl. `actualDurationMinutes`, `materialsCostCents`); requires IN_PROGRESS per the state machine |
 
 All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).
 

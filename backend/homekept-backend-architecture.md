@@ -136,9 +136,16 @@ DTOs never cross above the controller boundary. Entities never cross below the s
 **Owns:** `service` table, `plan_tier` table, `plan_tier_service` join table.
 
 **Key entities:**
-- `Service` — id, name, category (HVAC / PLUMBING / EXTERIOR / SMART_HOME), default_duration_minutes, description, is_free_with_every_visit, active
-- `PlanTier` — id, code (ESSENTIAL / COMPLETE / PREMIER), display_name, monthly_price_cents, annual_price_cents, visits_per_year, stripe_price_id_monthly, stripe_price_id_annual, description
+- `Service` — id, name, category (HVAC / PLUMBING / EXTERIOR / SMART_HOME), tier_class (BASIC / MEDIUM / PREMIUM — the picks classification, see docs/pricing-and-visits.md), default_duration_minutes, a_la_carte_price_cents (nullable — set for pickable services), description, is_free_with_every_visit, active
+- `PlanTier` — id, code (ESSENTIAL / COMPLETE / PREMIER), display_name, monthly_price_cents, annual_price_cents, visits_per_year, included_picks_per_year, max_premium_picks_per_year, stripe_price_id_monthly, stripe_price_id_annual, stripe_price_id_founding (nullable — the founding-member rate, retired after the first 15), description
 - `PlanTierService` — plan_tier_id, service_id, frequency_per_year
+- `VisitTemplate` — id, min_tier (ESSENTIAL / COMPLETE / PREMIER — this tier *and above* get the visit; the calendar is cumulative, so no duplication across tiers), month (1–12), name ("Fall winterization"), description
+- `VisitTemplateService` — visit_template_id, service_id, sort_order
+
+**Visit templates** are the seasonal calendar as data: which named visit each tier gets in
+each month and which services it contains. Visit auto-scheduling instantiates a `Visit`
+(and its `VisitService` checklist rows) from the matching template. Templates are seeded
+via migration from docs/pricing-and-visits.md and edited only by migration at MVP.
 
 **Why prices in cents:** floating-point currency arithmetic is the single most common source of "we charged you the wrong amount" bugs. Integer cents, always.
 
@@ -157,7 +164,7 @@ DTOs never cross above the controller boundary. Entities never cross below the s
 **Owns:** `subscriber` table, `subscription_event` table.
 
 **Key entities:**
-- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, paused_until, cancelled_at, created_at, updated_at
+- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, founding_rate (boolean), founding_rate_expires_at (nullable — 12 months from activation; the first-15 cap is enforced by counting founding_rate rows), stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, paused_until, cancelled_at, created_at, updated_at
 - `SubscriptionEvent` — id, subscriber_id, event_type, payload (JSONB), processed_at, source (STRIPE_WEBHOOK / MANUAL / SYSTEM)
 
 **Status state machine (this is sacred — see Part 4):**
@@ -188,7 +195,8 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 | Event | Action |
 |---|---|
-| `checkout.session.completed` | Create or activate subscriber row |
+| `checkout.session.completed` (`mode=subscription`) | Create or activate subscriber row |
+| `checkout.session.completed` (`mode=payment` + pick metadata) | Create EXTRA visit / `VisitService(source=EXTRA)` for the paid pick |
 | `customer.subscription.updated` | Sync plan tier, period dates |
 | `customer.subscription.deleted` | Set status CANCELLED |
 | `invoice.payment_failed` | Set status PAYMENT_ISSUE, notify customer |
@@ -238,13 +246,21 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 **Responsibilities:** scheduled and completed maintenance visits. This is what the business *is*. Every paying subscriber generates 4-24 visits per year; this is the most-touched table in the database.
 
-**Owns:** `visit` table, `visit_service` table, `visit_photo` table (deferred), `visit_note` table.
+**Owns:** `visit`, `visit_service`, `visit_photo`, `visit_note`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
 
 **Key entities:**
-- `Visit` — id, subscriber_id, property_id, technician_id, scheduled_for, duration_minutes, status, type, completion_notes, completed_at, created_at, updated_at
-- `VisitService` — id, visit_id, service_id (FK to catalog), completed, completed_at, technician_notes
+- `Visit` — id, subscriber_id, property_id, technician_id, visit_template_id (nullable — null for EXTRA/WALKTHROUGH), scheduled_for, duration_minutes, actual_duration_minutes, materials_cost_cents, status, type, completion_notes, completed_at, created_at, updated_at
+- `VisitService` — id, visit_id, service_id (FK to catalog), source (TEMPLATE / PICK / EXTRA / FLAGGED / TODO — PICK burns the allowance, EXTRA is paid à la carte and never does), completed, completed_at, technician_notes
 - `VisitNote` — id, visit_id, author_user_id, body, created_at
-- `VisitPhoto` (deferred) — id, visit_id, storage_url, caption, taken_at
+- `VisitPhoto` — id, visit_id, storage_key (R2), caption, taken_at, created_at
+- `TodoItem` ("your list") — id, subscriber_id, body, status (OPEN / SCHEDULED / DONE / DECLINED — DECLINED set by the technician with a note), visit_id (nullable), created_at
+- `Flag` — id, subscriber_id, origin_visit_id, body, severity (INFO / ATTENTION / URGENT), status (OPEN / SCHEDULED / RESOLVED / REFERRED), photo_storage_key (nullable), created_at, resolved_at — the persistent half of observe → photograph → flag → refer; OPEN flags fold into the next visit and feed the health score
+- `RescheduleRequest` — id, visit_id, preferred_dates, status (PENDING / CONFIRMED / DECLINED), created_at
+- `HealthScoreSnapshot` — id, subscriber_id, score, computed_at — written per completed visit; score is computed on read (weighted checklist outcomes + open flags), snapshots exist so the dashboard's delta has a prior value
+
+`actual_duration_minutes` + `materials_cost_cents` are filled at completion — together
+with the technician's fully-loaded hourly cost they produce per-visit and per-subscriber
+unit economics from visit #1 (see §2.7).
 
 **Status state machine (see Part 4 for full diagram):**
 
@@ -259,7 +275,10 @@ IN_PROGRESS → COMPLETED
 **Visit types:** `ROUTINE` (part of plan), `EXTRA` (subscriber-requested add-on), `WARRANTY` (re-do of a recent visit), `WALKTHROUGH` (the pre-subscription assessment — yes, it lives here too).
 
 **Scheduling logic:**
-- *MVP:* manual. Admin picks a date and a technician from dropdowns.
+- *MVP:* template-driven. On activation (and after each completion) the scheduler
+  instantiates the subscriber's next visits from their tier's `VisitTemplate`s; admin
+  confirms/adjusts date and technician. Pick selections and OPEN todo items fold into the
+  nearest scheduled visit as extra `VisitService`/checklist rows.
 - *Post-MVP (50+):* a "suggest next visit" function. Looks at the subscriber's plan tier (cadence), last visit date, season, and proposes a date. Admin confirms.
 - *Scale (200+):* auto-assignment engine. Takes subscriber's FSA + technician availability + technician region + plan tier + last-technician (Premier dedicated tech), returns a recommended assignment. Admin overrides as needed.
 
@@ -272,7 +291,7 @@ IN_PROGRESS → COMPLETED
 **Scale considerations:**
 - *MVP:* the visit table is small (<500 rows). Indexes on `subscriber_id`, `scheduled_for`, `status` are plenty.
 - *Post-MVP:* add composite index on `(technician_id, scheduled_for)` for daily technician schedule queries.
-- *Scale (500+ subscribers, 5,000+ visits/year):* partition `visit` table by year. Move `visit_photo` storage to S3/R2 with signed URL access (never serve photos through your backend).
+- *Scale (500+ subscribers, 5,000+ visits/year):* partition `visit` table by year. (`visit_photo` is on R2 with signed URLs from MVP — see §6.4.)
 
 ---
 
@@ -287,11 +306,15 @@ IN_PROGRESS → COMPLETED
 - `TechnicianRegion` — id, technician_id, fsa, priority (1 = primary region, 2 = secondary, 3 = overflow)
 - `TechnicianAvailability` — id, technician_id, day_of_week, start_time, end_time, effective_from, effective_until
 
-**Why hourly cost in cents lives here:** because unit economics analysis needs to know "Marcus costs $43/hr fully-loaded, this visit took him 1.5 hours, the customer pays $189/month for 12 visits — what's the margin?" Don't store the hourly cost in HR/payroll only. The backend needs it for cost reporting.
+**Why hourly cost in cents lives here:** because unit economics analysis needs to know "Marcus costs $43/hr fully-loaded, this visit took him 1.5 hours, the customer pays $149/month for 8 visits — what's the margin?" Don't store the hourly cost in HR/payroll only. The backend needs it for cost reporting.
 
 **Scale considerations:**
-- *MVP:* you're the only technician. Skip this entire domain or stub with one row.
-- *Post-MVP (5+ technicians):* build it properly. Add the availability check to the assignment engine.
+- *MVP:* the founders are the technicians — two `technician_profile` rows with notional
+  `fully_loaded_hourly_cost_cents` set from day 1 so per-visit unit economics are real
+  numbers, not vibes. The technician app (see api-contract.md, "Technician app") reads
+  visits assigned to these rows. Skip regions/availability tables.
+- *Post-MVP (5+ technicians):* build the rest properly (regions, availability, real
+  payroll-derived costs replacing notional ones). Add the availability check to the assignment engine.
 - *Scale (20+ technicians):* add skill tags (HVAC-certified, smart-home-trained), capacity planning views, time-off requests.
 
 ---
@@ -369,6 +392,7 @@ subscriber
   ├── N:1 → plan_tier (catalog)
   ├── 1:N → visit
   ├── 1:N → invoice
+  ├── 1:N → todo_item, flag, health_score_snapshot
   └── 1:N → subscription_event
 
 property
@@ -380,7 +404,9 @@ visit
   ├── N:1 → technician (optional)
   ├── 1:N → visit_service
   ├── 1:N → visit_note
-  └── 1:N → visit_photo (deferred)
+  ├── 1:N → visit_photo
+  ├── 1:N → reschedule_request
+  └── 0:1 → visit_template (its origin)
 
 walkthrough_booking (pre-subscription)
   ├── 0:1 → subscriber (after conversion)
@@ -388,6 +414,7 @@ walkthrough_booking (pre-subscription)
 
 catalog
   ├── plan_tier 1:N → plan_tier_service N:1 → service
+  ├── visit_template 1:N → visit_template_service N:1 → service
   └── service 1:N → visit_service (back-reference)
 ```
 
@@ -494,7 +521,7 @@ Each state machine class lives next to its entity (`subscription/SubscriberState
 **Authentication:** JWT in httpOnly cookies (see `identity`). All `/api/*` endpoints require a valid access token except:
 - `/api/auth/login`, `/api/auth/refresh`
 - `/api/bookings/walkthrough` (public form submission)
-- `/api/catalog/plans` (public pricing data)
+- `/api/catalog/plans`, `/api/catalog/picks` (public pricing data)
 - `/api/webhooks/stripe` (signed by Stripe, not session-authed)
 - `/api/activation/*` (token-authed, not session — see api-contract.md)
 - `/api/health` (no auth)
@@ -697,9 +724,12 @@ NotificationService.send(request)
 
 **Cost:** Places Autocomplete + Geocoding is ~$5 per 1,000 requests. At your scale, $20/month max.
 
-## 6.4 File storage (visit photos, deferred)
+## 6.4 File storage (visit photos — MVP)
 
-**Approach when built:**
+Photo reports are the product's hero feature (docs/pricing-and-visits.md), so photo
+storage ships in v1, not Stage 2.
+
+**Approach:**
 - Files stored in Cloudflare R2 (S3-compatible, no egress fees)
 - Backend never serves files directly — only generates signed URLs
 - Upload flow: frontend requests signed upload URL from backend → frontend uploads directly to R2 → frontend tells backend the upload completed
@@ -836,39 +866,66 @@ For each row above: if someone (including future-you) argues for adding the thin
 
 The shape of what gets built when, anchored to customer counts.
 
-## Stage 1 — MVP (0-10 paying customers, weeks 1-8 of build)
+## Stage 1 — MVP (0-10 paying customers, ~weeks 1-14 of build)
 
-Domains built: `identity`, `property`, `catalog`, `subscription` (basic), `booking`, `visit` (basic), `notification` (email only).
+> Scope expanded by founder decision (June 2026): v1 ships the full product surface —
+> photo reports, the technician app, complete customer self-serve, the picks system,
+> and template-driven visits — accepting a longer build (~14 weeks vs 8) in exchange
+> for launching with the hero features instead of manual bridges. Customer-count
+> anchors for later stages are superseded by docs/three-year-plan.md.
 
-State machines built and tested: subscriber, visit (basic), walk-through booking.
+Domains built: `identity`, `property` (incl. SKU sheet fields), `catalog` (incl.
+tier_class, picks, visit templates, founding-member rate), `subscription`, `booking`,
+`visit` (incl. photos, todos/"your list", checklists, materials + duration capture),
+`technician` (stub rows with cost fields — no regions/availability), `notification`
+(email only), `billing`.
 
-Integrations live: Stripe Checkout, Stripe webhooks (5 events), SendGrid.
+State machines built and tested: subscriber, visit (full lifecycle incl. `IN_PROGRESS`
+and `INCOMPLETE` — the technician app drives them), walk-through booking.
+
+Apps live at launch:
+- **Customer app** (`/app/*`): dashboard with Health Score v1 (weighted-checklist
+  rubric), visit list/detail with photos and checklists, "your list" todo queue,
+  pick selection against the tier allowance, and complete self-serve: reschedule
+  request, pause, plan change + payment method (Stripe portal), cancel, buy extra
+  picks (one-off Stripe payment)
+- **Technician app** (`/tech/*`, mobile-first PWA): today's visits, per-visit checklist
+  from the template (+ picks/todos/flagged items), photo capture to R2, notes,
+  materials + actual-duration entry, complete/incomplete flow
+- **Admin** (`/admin/*`): walk-through pipeline, subscriber list/detail, visit
+  scheduling (template-generated, admin confirms), founding-rate management (first 15)
+
+Integrations live: Stripe Checkout + customer portal + one-off payments for extra
+picks, Stripe webhooks (per the §2.4 handler table, incl. mode-split handling of
+`checkout.session.completed`), SendGrid, Cloudflare R2 (signed URLs).
+
+Unit economics from visit #1: notional fully-loaded hourly cost per technician row ×
+actual duration + logged materials = per-visit and per-subscriber margin reporting.
 
 Deployment: Render + Postgres + Cloudflare Workers (frontend) + Sentry.
 
-Manual everything: assignment, scheduling, follow-ups.
+Still manual at launch: technician assignment (two founders), follow-ups on referrals
+to licensed partners, the Premier Annual Home Plan (hand-written), report QA.
 
-## Stage 2 — Operational scale (10-50 customers, months 3-6)
+## Stage 2 — Operational scale (10-50 customers)
 
 Additions:
 - Async email sending (`@Async`)
 - Scheduled jobs (`@Scheduled`): reminders, reconciliation
-- Admin UI for visit scheduling and assignment
-- Visit photo uploads to R2
+- "Suggest next visit" scheduling assistant
 - Google Places autocomplete for addresses
 - Audit logging for admin actions
 - Bounce handling from SendGrid webhooks
+- Cohort/MRR/churn reporting for admin
 
-State machines refined: visit lifecycle gains `IN_PROGRESS` and `INCOMPLETE` states fully wired through admin and technician views.
-
-## Stage 3 — Workforce scale (50-150 customers, months 6-12)
+## Stage 3 — Workforce scale (50-150 customers)
 
 Additions:
-- `technician` domain fully built out: roster, regions, availability
+- `technician` domain completed: roster, regions, availability (cost fields exist since v1)
 - Auto-assignment engine (three-phase regional matching)
-- Technician PWA at `/tech/*`
-- Push notifications via FCM
-- Home Health Score algorithm + dashboard
+- Push notifications via FCM (technician app gains push day-sheets)
+- Home Health Score v2 (trends, customer-facing history)
+- Real payroll-derived labor costs replacing v1's notional rates
 - Jobrunr for durable background jobs
 - Bucket4j for rate limiting
 - Read-replica Postgres for analytics
@@ -880,8 +937,7 @@ Major operational shift: you stop being the technician. The architecture must su
 Additions:
 - Expand region beyond Oakville/Mississauga/Milton
 - Multi-property subscribers
-- Referral program with attribution tracking
-- Customer self-service: pause, plan change, request extra visit
+- Referral program with attribution tracking (added to the self-serve surface live since v1)
 - Webhook processing moved fully async with dead-letter queue
 - OpenAPI documentation
 - Performance budgets and SLOs

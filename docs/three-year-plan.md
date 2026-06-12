@@ -21,23 +21,27 @@ never skip a gate.
 
 | Phase | Customers | ~When | Business theme | Tech theme |
 |---|---|---|---|---|
-| 0 — Build & launch | 0 → 5 | M0–M3 | Founding members, SOPs, legal rails | MVP (issues #1–45) |
-| 1 — Proof | 5 → 30 | M3–M12 | One neighbourhood, referrals, retention proof | Operate & polish |
-| 2 — Repeatability | 30 → 100 | M12–M24 | Second/third area, sales hire, founder pay | Automation (Stage 2) |
-| 3 — Workforce | 100 → 200 | M24–M30 | Tech hires #1–2, COO off tools | Technician platform (Stage 3) |
-| 4 — Scale | 200 → 400+ | M30–M36 | GTA-West brand, partnerships engine | Multi-area & self-serve (Stage 4) |
+| 0 — Build & launch | 0 → 5 | M0–M5 | Founding members, SOPs, legal rails | Expanded v1: full product surface |
+| 1 — Proof | 5 → 30 | M5–M14 | One neighbourhood, referrals, retention proof | Operate & polish |
+| 2 — Repeatability | 30 → 100 | M14–M26 | Second/third area, sales hire, founder pay | Automation (Stage 2) |
+| 3 — Workforce | 100 → 200 | M26–M32 | Tech hires #1–2, COO off tools | Technician platform (Stage 3) |
+| 4 — Scale | 200 → 400+ | M32–M38 | GTA-West brand, partnerships engine | Multi-area (Stage 4) |
+
+> **Scope decision (June 2026):** v1 was expanded from the original 8-week MVP to the
+> full product surface — photo reports, technician app, complete customer self-serve,
+> picks system, visit templates, your-list, Health Score v1, founding rate, labor-cost
+> tracking. Cost: ~6 extra build weeks (calendar above slides accordingly; gates are
+> unchanged). Rationale: launch with the hero features instead of manual bridges.
 
 > **Supersession note:** the customer-count anchors in this table supersede the
 > architecture doc's Part 10 stage anchors (Stage 2 = 10–50, Stage 3 = 50–150, etc.),
 > which were drafted before the pricing spec and real capacity math existed. The arch
-> doc's stage *contents* still apply and are cited per phase below; a few items are
-> deliberately re-sequenced (self-serve basics and Health Score v1 pulled into Phases
-> 1–2; the read replica pushed to Phase 4). Follow-up: update arch doc Part 10 to
-> these anchors.
+> doc's stage *contents* still apply and are cited per phase below (Part 10's Stage 1
+> now reflects the expanded v1; the read replica stays pushed to Phase 4).
 
 ---
 
-## Phase 0 — Build & launch (0 → 5 customers, ~M0–M3)
+## Phase 0 — Build & launch (0 → 5 customers, ~M0–M5)
 
 **Business**
 - Incorporate; shareholders' agreement w/ 4yr/1yr vesting, role split, casting votes,
@@ -51,20 +55,28 @@ never skip a gate.
 - First 5 founding members ($129 Complete, 12-mo lock): friends-of-friends, own street,
   one Nextdoor neighbourhood. Pick ONE FSA and stay in it.
 
-**Tech** — the existing 8-week issue plan (#1–45), unchanged:
-- Spring monolith: identity, property, catalog, subscription, booking, visit,
-  notification; 3 state machines; Stripe Checkout + webhooks; SendGrid
-- Frontend: v2 design system (done — #48/#49), booking wizard port, activation flow,
-  customer dashboard on real data, minimal admin
+**Tech** — the original 8-week plan (#1–45) **plus the expanded-v1 scope** (arch doc
+Stage 1, June 2026 revision):
+- Spring monolith: all domains incl. visit templates, picks, photos, todos, technician
+  cost stubs; 3 state machines; Stripe Checkout + portal + one-off pick payments +
+  webhooks; SendGrid; R2 signed-URL photo storage
+- **Customer app**: dashboard w/ Health Score v1, visits w/ photos + checklists,
+  your-list, pick selection, full self-serve (reschedule request, pause, plan change,
+  cancel, buy extras)
+- **Technician app** (mobile PWA): day sheet, template-driven checklists, photo capture,
+  materials + duration entry, complete/incomplete flow
+- Admin: pipeline, scheduling (template-generated), founding-rate management
+- Frontend: v2 design system (done — #48/#49) across all three apps
 - Deploy: Render + Cloudflare + Sentry + UptimeRobot (#12)
 - Walk-through capture includes the SKU sheet (filter sizes, detector models, water
   heater age) → property record
 
-**Exit gate:** 5 paying, insured, SOPs written, both founders solo-capable, deploy live.
+**Exit gate:** 5 paying, insured, SOPs written, both founders solo-capable, deploy live,
+**every visit run end-to-end through the technician app from day 1**.
 
 ---
 
-## Phase 1 — Proof (5 → 30 customers, ~M3–M12)
+## Phase 1 — Proof (5 → 30 customers, ~M5–M14)
 
 The only question this phase answers: **do people stay?** Target ≤2%/mo churn after
 month 3 of membership. If churn is >4%/mo, stop growing and fix the product/cadence —
@@ -81,23 +93,20 @@ nothing else in this plan matters until retention is proven.
   ("would you recommend?" in the app after each report), per-visit material cost
 - Year-end: ~30–35 customers, ~$4.5K MRR, ~$30–35K cumulative revenue, cash-positive
 
-**Tech** (operate & polish; arch doc Stage 2 begins)
-- Visit photo uploads to R2 (signed URLs) — the report IS the product; this is the
-  retention feature
+**Tech** (operate & polish — photos, self-serve, your-list, and Health Score v1 now
+ship in v1; this phase is about operating them)
 - Async email (@Async), scheduled reminder jobs, Stripe nightly reconciliation
-- Admin: visit scheduling + assignment screens replace spreadsheet ops
+- Admin: visit scheduling + assignment screens harden with real usage
 - Google Places autocomplete on booking; audit logging on admin mutations
-- Customer self-serve: pause, plan change via Stripe portal, request EXTRA visit
-- "Your list" v1: customer to-do queue on the dashboard, folded into visit checklists
-- Home Health Score v1: simple rubric computed from checklist outcomes (not ML — a
-  weighted checklist)
+- Report-quality polish driven by churn signals (photo prompts in the tech checklist,
+  report email layout, health-score explanations)
 
 **Exit gate:** 30 customers · ≤2%/mo churn (m3+) · ≥40% walk-through close ·
 referrals ≥25% of new leads.
 
 ---
 
-## Phase 2 — Repeatability (30 → 100 customers, ~M12–M24)
+## Phase 2 — Repeatability (30 → 100 customers, ~M14–M26)
 
 The question: **does the machine work without founder heroics?**
 
@@ -107,7 +116,7 @@ The question: **does the machine work without founder heroics?**
 - Expand to contiguous FSAs only (Oakville ring → Mississauga-west or Milton, not both)
 - Partnerships engine: realtors (closing-gift memberships), property managers (small
   portfolios = multi-property), insurance brokers (referral)
-- Founder salaries start when MRR > ~$8K (≈M18): modest and equal
+- Founder salaries start when MRR > ~$8K (≈M20): modest and equal
 - Pricing review at customer 50 with a year of real cost data; grandfather honestly
 - Winter readiness: capacity plan for Oct–Nov gutter/winterization crunch (the seasonal
   calendar concentrates demand — pre-book anchor visits 6 weeks out)
@@ -120,17 +129,14 @@ The question: **does the machine work without founder heroics?**
 - Bucket4j rate limiting; SendGrid bounce webhooks
 - Reporting: MRR/churn/cohort dashboard for the admin (read replica NOT yet — Postgres
   is fine)
-- Mobile-first pass on technician views (founders are the users; build what the field
-  actually needs — this is why founders stay on tools)
-- Materials cost per visit becomes a real column; unit-economics report per
-  subscriber/tier
+- Unit-economics reporting per subscriber/tier deepens (cost columns live since v1)
 
 **Exit gate:** 100 customers · churn still ≤2%/mo · sales hire produces ≥50% of new
 walk-throughs · founders' visit load ≥60/mo (the forcing function).
 
 ---
 
-## Phase 3 — Workforce (100 → 200 customers, ~M24–M30)
+## Phase 3 — Workforce (100 → 200 customers, ~M26–M32)
 
 The question: **does service quality survive employees?** This is the hardest phase —
 the arch doc calls it the "major operational shift," and most service businesses die here.
@@ -148,14 +154,13 @@ the arch doc calls it the "major operational shift," and most service businesses
   dispatch before it's automated
 - ~200 customers ≈ $30K MRR; gross margin watch: blended target ≥50% with paid labor
 
-**Tech** (arch doc Stage 3)
-- `technician` domain built fully: roster, regions (FSA priority), availability
+**Tech** (arch doc Stage 3 — the technician *app* exists since v1; this phase builds the
+technician *platform* around it)
+- `technician` domain completed: roster, regions (FSA priority), availability
 - Auto-assignment engine v1 (three-phase filter/rank; admin confirms)
-- Technician PWA at /tech (the v2 mockup, now real): day sheet, checklist, photo upload,
-  your-list items, completion flow
 - FCM push notifications (visit reminders, day-sheet changes)
 - Health Score v2 + customer-facing trends
-- Payroll/cost integration: fully-loaded hourly cost per tech feeds margin reporting
+- Real payroll-derived labor costs replace v1's notional per-tech rates in margin reports
 - Hardening: SLO dashboards, webhook dead-letter queue, quarterly backup-restore drill
 
 **Exit gate:** 200 customers · churn ≤2.5%/mo through the tech transition · report
@@ -163,7 +168,7 @@ quality audit ≥95% pass · blended gross margin ≥50%.
 
 ---
 
-## Phase 4 — Scale (200 → 400+ customers, ~M30–M36)
+## Phase 4 — Scale (200 → 400+ customers, ~M32–M38)
 
 The question: **is this a GTA-West institution or a lifestyle business?** (Both are
 wins — decide deliberately.)
@@ -183,7 +188,7 @@ wins — decide deliberately.)
 
 **Tech** (arch doc Stage 4)
 - Route optimization within auto-assignment (drive-time aware day sheets)
-- Customer self-service completeness: reschedule, pick selection, referral tracking
+- Referral tracking added to the (already-live) self-serve surface
 - Webhook/event pipeline fully async w/ DLQ; OpenAPI docs; performance budgets
 - Read replica for analytics; partition `visit` by year when >10K rows/yr
 - Multi-property data model exercised for real
@@ -196,13 +201,13 @@ wins — decide deliberately.)
 
 | Milestone | ~Month | Customers | MRR | Team | Notes |
 |---|---|---|---|---|---|
-| Launch | M2 | 1 | $0.1K | 2 founders | first founding member |
-| Breakeven (operating) | M3–4 | 5 | $0.6K | 2 | burn covered |
-| Proof | M12 | 30–35 | $4.5–5K | 2 | retention proven |
-| Founder salaries | ~M18 | 60 | $9K | 2 + sales (commission) | modest, equal |
-| First employee | ~M22 | 100 | $15K | 3.5 | tech #1 |
-| Workforce proven | M30 | 200 | $30K | 5 | techs #1–2 + admin PT |
-| Year 3 | M36 | 300–400 | $45–60K | 6–7 | profitable, decision point |
+| Launch | M4 | 1 | $0.1K | 2 founders | first founding member |
+| Breakeven (operating) | M5–6 | 5 | $0.6K | 2 | burn covered |
+| Proof | M14 | 30–35 | $4.5–5K | 2 | retention proven |
+| Founder salaries | ~M20 | 60 | $9K | 2 + sales (commission) | modest, equal |
+| First employee | ~M24 | 100 | $15K | 3.5 | tech #1 |
+| Workforce proven | M32 | 200 | $30K | 5 | techs #1–2 + admin PT |
+| Year 3 | M38 | 300–400 | $45–60K | 6–7 | profitable, decision point |
 
 Cash: $10K founder float at M0; no external capital in the base plan.
 
