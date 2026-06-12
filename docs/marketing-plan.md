@@ -25,12 +25,16 @@ report, the seasonal calendar. The product is the proof until reviews exist.
 - Photos: real van/kit/checklist/report shots (no stock, no AI); weekly GBP "update"
   posts = the same seasonal tips as the video series
 - Booking link → homekept.ca/book?utm_source=gbp
-- **The reviews engine:** Google reviews are the local ranking factor. Founding-member
-  exchange (rate-for-review) supplies the first ~15. After that: review ask in the
-  visit-report email, only after visits the customer rated 👍 (PostHog/report data),
-  with a direct GBP review link. Never incentivize public reviews beyond the founding
-  cohort (Competition Act), never gate (filtering who gets asked by satisfaction is
-  fine; blocking unhappy reviewers from public channels is not).
+- **The reviews engine — testimonials and reviews are different things:**
+  - The founding-rate exchange buys a **testimonial** for HomeKept's own marketing,
+    with founding-member status disclosed wherever it's used. It never buys a Google
+    review — incentivized reviews violate Google policy outright (removal/suspension
+    risk for the profile this whole channel depends on) and are a Competition Bureau
+    deceptive-marketing concern. No exceptions, including the founding cohort.
+  - **Google reviews are asked for uniformly:** the review ask goes in the visit-report
+    email after *every* completed visit, same direct GBP link for everyone. The 👍/👎
+    report rating is used for ops follow-up and ask *timing* only — never for selecting
+    who gets asked (that's review gating, also prohibited).
 - NAP (name/address/phone) consistency: identical on site footer, GBP, Bing Places,
   Apple Business Connect, Yelp/Nextdoor business pages — citation set done once.
 
@@ -64,11 +68,13 @@ report, the seasonal calendar. The product is the proof until reviews exist.
 | **Nextdoor** | Seasonal tip posts (text or episode) as *founders, not brand*; answer every maintenance question in the area | 2×/mo posts + daily 10-min reply sweep | Value first; CTA only in profile + when asked; never DM-pitch |
 | **FB local groups** | Same content, same persona; join 5–8 Oakville/Mississauga/Milton home/community groups | 1–2×/mo per group | Respect group promo rules; the tip *is* the post |
 | **Door hangers** | Seasonal hook + QR → /book?utm_source=doorhanger&utm_campaign=[month]; hang only — **no knocking-to-sell, no contracts at the door** | Neighbourhood blitz around each anchor month, target FSA only | CPA posture per pricing doc |
-| **Realtor seed** | 3–5 agents: "first 60 days on us" closing gift for buyers (agent pays nothing; we get a warm intro at the exact moment of need) | Phase 1; formalizes in Phase 2 partnerships | Gift framing, not kickbacks; CASL consent comes from the buyer |
+| **Realtor seed** | 3–5 agents: "first 60 days on us" closing gift for buyers (agent pays nothing; we get a warm intro at the exact moment of need) | Phase 1; formalizes in Phase 2 partnerships | Gift framing, not kickbacks; the agent discloses the HomeKept-provided gift to their client in writing (TRESA s.18); CASL consent comes from the buyer; offer terms to be defined in pricing-and-visits.md before first use |
 | **Referrals (informal)** | Ask built into month-3 report email: "know a neighbour drowning in their list?" — give-a-month/get-a-month *formalizes in Phase 4* | Automated in report email | Referral emails are CEMs: sender ID + unsubscribe |
 | **Walk-through no-shows / non-converts** | See email nurture | — | — |
 
-**The density rule governs all of it:** every channel aims at the ONE target FSA until
+**The density rule governs all of it:** city pages and GBP are evergreen three-city
+assets, but posts, photos, door-hangers, and the review flywheel all concentrate on the
+home FSA's city first. Every channel aims at the ONE target FSA until
 saturated. "We already maintain two homes on this street" is the best ad we'll ever have
 — and the only one that's free.
 
@@ -87,12 +93,16 @@ saturated. "We already maintain two homes on this street" is the best ad we'll e
 ## Measurement (ties to arch §5.7)
 
 - UTM convention: `utm_source` = channel (gbp/nextdoor/fb/doorhanger/realtor/referral),
-  `utm_campaign` = asset or month. `lead_source` enum on the booking is the ground truth;
-  UTM → lead_source mapping happens in the booking form.
+  `utm_campaign` = asset or month. `lead_source` enum on the booking is the ground truth —
+  the enum gains `GBP`, `REALTOR`, `DOORHANGER` values (tracked in the technical-SEO
+  issue). The frontend must propagate UTMs itself (sessionStorage on landing → booking
+  POST): PostHog's cookieless mode does not carry them across pages. UTM-less arrivals
+  (most Nextdoor/FB) fall back to a "how did you hear about us" picker on the form.
 - Weekly scorecard (PostHog + DB): walk-throughs booked by source · close rate ·
   CAC-in-hours per channel (founder time is the only spend) · GBP views/actions ·
-  review count. Kill channels that produce nothing for 8 weeks; double down where
-  close rate is highest, not volume.
+  review count. Kill channels that produce nothing for 8 weeks *and* ≥10 leads of
+  history elsewhere to compare against (don't judge noise); double down where close
+  rate is highest, not volume.
 
 ## Not doing (and the trigger to start)
 

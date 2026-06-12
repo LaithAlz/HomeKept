@@ -30,8 +30,8 @@ Technicians observe → photograph → flag → refer. Never diagnose, never lic
 | For | Townhomes, condos, newer homes | Most detached/semis | Larger homes, busy households, aging-in-place |
 
 Annual = 2 months free. Prices CAD + HST. **Founding-member rate**: first 15 customers,
-Complete at $129/mo locked 12 months, in exchange for a review + testimonial. Never
-discount the public list.
+Complete at $129/mo locked 12 months, in exchange for a disclosed **testimonial** (never a Google review — incentivized
+reviews violate Google policy and Competition Act guidance). Never discount the public list.
 
 ## Every visit, every tier
 
@@ -98,8 +98,8 @@ Picks fold into scheduled visits where possible. Beyond allowance = à la carte
   required.) Subscription terms carry CPA future-performance disclosures + cancellation
   rights incl. the 10-day cooling-off where applicable; auto-renewal gets advance notice.
 - **Competition Act (misleading advertising):** no fabricated social proof anywhere —
-  no invented customer counts, ratings, or testimonials. Real reviews only (the
-  founding-member exchange produces them legitimately).
+  no invented customer counts, ratings, or testimonials. Real, disclosed testimonials
+  only; Google reviews are never incentivized or gated (see marketing-plan.md).
 - **CASL:** booking consent already captured server-side; every marketing email/SMS
   carries sender identification + unsubscribe; outreach to realtors/property managers
   needs its own consent basis.
