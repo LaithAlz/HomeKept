@@ -1,15 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, ClipboardCheck, Home, Mail, Sun } from "lucide-react";
-import { z } from "zod";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { SiteNav } from "@/components/site/SiteNav";
-import { SiteFooter } from "@/components/site/SiteFooter";
+import { Wordmark } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/book")({
@@ -19,324 +11,596 @@ export const Route = createFileRoute("/book")({
       {
         name: "description",
         content:
-          "Book a free 90-minute walk-through. We assess your home and email a custom maintenance plan the next day.",
+          "Book a free 90-minute walk-through. We assess your home and build a custom maintenance plan.",
       },
     ],
   }),
   component: BookPage,
 });
 
-// ---------- Schemas ----------
-const cities = ["Oakville", "Mississauga", "Milton", "Other"] as const;
-const sqftRanges = ["<1500", "1500–2500", "2500–4000", ">4000"] as const;
-const propertyTypes = ["Detached", "Semi", "Townhouse"] as const;
-const timeWindows = [
-  { id: "morning", label: "Morning", range: "8–11 AM" },
-  { id: "afternoon", label: "Afternoon", range: "12–4 PM" },
-  { id: "evening", label: "Evening", range: "5–7 PM" },
-] as const;
-const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-const postalCodeRegex = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+/* -------------------------------------------------------------------------- */
+/* Contract-accurate request shape — mirrors POST /api/bookings/walkthrough   */
+/* Endpoint is unbuilt (issue #8). Swap the mock body in submitBooking()      */
+/* for a real fetch() call when the backend is ready — one line.              */
+/* -------------------------------------------------------------------------- */
+interface BookingRequest {
+  fullName: string;
+  email: string;
+  phone: string;
+  streetAddress: string;
+  city: string;
+  postalCode: string;
+  yearBuilt?: number;
+  squareFootageRange?: "<1500" | "1500-2500" | "2500-4000" | ">4000";
+  propertyType: "DETACHED" | "SEMI" | "TOWNHOUSE";
+  preferredWeek: string; // ISO Monday date e.g. "2026-06-15"
+  timeOfDay: "MORNING" | "AFTERNOON" | "EVENING";
+  dayPreferences: ("MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN")[];
+  notes?: string;
+  leadSource?: "WEBSITE_ORGANIC";
+  contactConsent: true;
+}
 
-const step1Schema = z.object({
-  address: z.string().trim().min(3, "Enter your street address").max(200),
-  city: z.enum([...cities] as [string, ...string[]], { error: "Pick a city" }),
-  postalCode: z
-    .string()
-    .trim()
-    .regex(postalCodeRegex, "Use a valid Canadian postal code (e.g. L6H 1A1)"),
-  yearBuilt: z
-    .string()
-    .trim()
-    .optional()
-    .refine(
-      (v) => !v || (/^\d{4}$/.test(v) && +v >= 1800 && +v <= new Date().getFullYear()),
-      "Enter a 4-digit year",
-    ),
-  sqft: z.enum([...sqftRanges] as [string, ...string[]]).optional(),
-  propertyType: z.enum([...propertyTypes] as [string, ...string[]], {
-    error: "Pick a property type",
-  }),
-});
+/** Mock submission — structured to match the real contract exactly.
+ *  To wire to the live endpoint, replace this function body with:
+ *    const res = await fetch("/api/bookings/walkthrough", { method: "POST",
+ *      headers: { "Content-Type": "application/json" },
+ *      body: JSON.stringify(payload) });
+ *    if (!res.ok) throw new Error("booking_failed");
+ *    return await res.json() as { id: number; status: "PENDING" };
+ */
+async function submitBooking(payload: BookingRequest): Promise<{ id: number; status: "PENDING" }> {
+  // eslint-disable-next-line no-console
+  console.debug("[mock] POST /api/bookings/walkthrough", payload);
+  await new Promise((r) => setTimeout(r, 600)); // simulate network
+  return { id: Math.floor(Math.random() * 9000) + 1000, status: "PENDING" };
+}
 
-const step2Schema = z.object({
-  weekStart: z.string().min(1, "Pick a preferred week"),
-  timeOfDay: z.enum(["morning", "afternoon", "evening"], {
-    error: "Pick a time of day",
-  }),
-  days: z
-    .array(z.enum([...daysOfWeek] as [string, ...string[]]))
-    .min(1, "Pick at least one day"),
-  notes: z.string().max(1000).optional(),
-});
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                   */
+/* -------------------------------------------------------------------------- */
 
-const step3Schema = z.object({
-  fullName: z.string().trim().min(2, "Enter your full name").max(120),
-  email: z.string().trim().email("Enter a valid email").max(255),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^[\d\s()+\-.]{10,}$/, "Enter a valid phone number"),
-  consent: z.literal(true, { error: "We need your consent to follow up" }),
-});
+const CITIES = ["Oakville", "Mississauga", "Milton", "Other"] as const;
+type City = (typeof CITIES)[number];
 
-type FormState = {
-  step1: Partial<z.infer<typeof step1Schema>>;
-  step2: Partial<z.infer<typeof step2Schema>> & { days?: string[] };
-  step3: Partial<z.infer<typeof step3Schema>> & { consent?: boolean };
+const SQFT_LABELS: Record<string, string> = {
+  "<1500": "< 1,500 sq ft",
+  "1500-2500": "1,500 – 2,500",
+  "2500-4000": "2,500 – 4,000",
+  ">4000": "4,000+",
+};
+const SQFT_KEYS = Object.keys(SQFT_LABELS) as (keyof typeof SQFT_LABELS)[];
+
+type PropertyType = "DETACHED" | "SEMI" | "TOWNHOUSE";
+const PROPERTY_CARDS: { type: PropertyType; emoji: string; label: string; sub: string }[] = [
+  { type: "DETACHED", emoji: "🏡", label: "Detached", sub: "Stands on its own" },
+  { type: "SEMI", emoji: "🏠", label: "Semi", sub: "Shares one wall" },
+  { type: "TOWNHOUSE", emoji: "🏘️", label: "Townhouse", sub: "Row or condo town" },
+];
+
+type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING";
+const TOD_CARDS: { id: TimeOfDay; emoji: string; label: string; range: string }[] = [
+  { id: "MORNING", emoji: "🌅", label: "Morning", range: "8 – 11 AM" },
+  { id: "AFTERNOON", emoji: "☀️", label: "Afternoon", range: "12 – 4 PM" },
+  { id: "EVENING", emoji: "🌆", label: "Evening", range: "5 – 7 PM" },
+];
+
+type DayKey = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+const DAYS: { key: DayKey; label: string }[] = [
+  { key: "MON", label: "Mon" },
+  { key: "TUE", label: "Tue" },
+  { key: "WED", label: "Wed" },
+  { key: "THU", label: "Thu" },
+  { key: "FRI", label: "Fri" },
+  { key: "SAT", label: "Sat" },
+  { key: "SUN", label: "Sun" },
+];
+
+const postalRe = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+const emailRe = /^\S+@\S+\.\S+$/;
+const phoneRe = /^[\d\s()+\-.]{10,}$/;
+
+/* -------------------------------------------------------------------------- */
+/* Form state                                                                  */
+/* -------------------------------------------------------------------------- */
+
+interface FormData {
+  // Step 1
+  address: string;
+  city: City | "";
+  postalCode: string;
+  yearBuilt: string;
+  sqft: string;
+  propertyType: PropertyType | "";
+  // Step 2
+  preferredWeek: string; // ISO Monday
+  timeOfDay: TimeOfDay | "";
+  days: DayKey[];
+  notes: string;
+  // Step 3
+  fullName: string;
+  email: string;
+  phone: string;
+  consent: boolean;
+}
+
+const EMPTY: FormData = {
+  address: "",
+  city: "",
+  postalCode: "",
+  yearBuilt: "",
+  sqft: "",
+  propertyType: "",
+  preferredWeek: "",
+  timeOfDay: "",
+  days: [],
+  notes: "",
+  fullName: "",
+  email: "",
+  phone: "",
+  consent: false,
 };
 
-const STORAGE_KEY = "homekept:book-draft";
+const STORAGE_KEY = "homekept:book-draft-v2";
 
-const emptyState: FormState = {
-  step1: {},
-  step2: { days: [] },
-  step3: {},
-};
-
-function loadState(): FormState {
-  if (typeof window === "undefined") return emptyState;
+function loadDraft(): FormData {
+  if (typeof window === "undefined") return EMPTY;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyState;
-    return { ...emptyState, ...JSON.parse(raw) };
+    if (!raw) return EMPTY;
+    return { ...EMPTY, ...JSON.parse(raw) };
   } catch {
-    return emptyState;
+    return EMPTY;
   }
 }
 
-// ---------- Week helpers ----------
-function startOfWeek(d: Date): Date {
-  const x = new Date(d);
-  const day = x.getDay(); // 0=Sun
-  const diff = (day + 6) % 7; // Mon = 0
-  x.setDate(x.getDate() - diff);
-  x.setHours(0, 0, 0, 0);
-  return x;
+/* -------------------------------------------------------------------------- */
+/* Week helpers                                                                */
+/* -------------------------------------------------------------------------- */
+
+function getNextMonday(): Date {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun
+  const daysUntilMon = day === 0 ? 1 : 8 - day;
+  d.setDate(d.getDate() + daysUntilMon);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-function formatWeek(start: Date): string {
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
-  return `${fmt(start)} – ${fmt(end)}`;
-}
-
-function nextWeeks(n: number): { iso: string; label: string }[] {
-  const base = startOfWeek(new Date());
-  base.setDate(base.getDate() + 7); // start next week
-  return Array.from({ length: n }, (_, i) => {
-    const d = new Date(base);
+function getWeekChips(count = 4): { iso: string; label: string }[] {
+  const mon = getNextMonday();
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date(mon);
     d.setDate(d.getDate() + i * 7);
-    return { iso: d.toISOString().slice(0, 10), label: formatWeek(d) };
+    return {
+      iso: d.toISOString().slice(0, 10),
+      label: "Week of " + d.toLocaleDateString("en-CA", { month: "short", day: "numeric" }),
+    };
   });
 }
 
-// ---------- Page ----------
+/* -------------------------------------------------------------------------- */
+/* Validation                                                                  */
+/* -------------------------------------------------------------------------- */
+
+type FieldErrors = Partial<Record<string, string>>;
+
+function validateStep1(f: FormData): FieldErrors {
+  const errs: FieldErrors = {};
+  if (f.address.trim().length < 3) errs.address = "Please enter your street address";
+  if (!f.city) errs.city = "Please pick a city";
+  if (!postalRe.test(f.postalCode.trim())) errs.postalCode = "Use a valid Canadian postal code";
+  if (!f.propertyType) errs.propertyType = "Pick the closest match";
+  if (
+    f.yearBuilt.trim() &&
+    (!/^\d{4}$/.test(f.yearBuilt.trim()) ||
+      +f.yearBuilt < 1800 ||
+      +f.yearBuilt > new Date().getFullYear())
+  )
+    errs.yearBuilt = "Enter a 4-digit year";
+  return errs;
+}
+
+function validateStep2(f: FormData): FieldErrors {
+  const errs: FieldErrors = {};
+  if (!f.preferredWeek) errs.preferredWeek = "Pick a week that could work";
+  if (!f.timeOfDay) errs.timeOfDay = "Pick a time of day";
+  if (f.days.length === 0) errs.days = "Pick at least one day";
+  return errs;
+}
+
+function validateStep3(f: FormData): FieldErrors {
+  const errs: FieldErrors = {};
+  if (f.fullName.trim().length < 2) errs.fullName = "Please enter your name";
+  if (!emailRe.test(f.email.trim())) errs.email = "Enter a valid email";
+  if (!phoneRe.test(f.phone.trim())) errs.phone = "Enter a valid phone number";
+  if (!f.consent) errs.consent = "We need your consent to follow up";
+  return errs;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Page root                                                                   */
+/* -------------------------------------------------------------------------- */
+
 function BookPage() {
   return (
-    <div className="min-h-dvh bg-background">
-      <SiteNav />
-      <main id="main" className="mx-auto max-w-6xl px-6 py-12 md:py-20">
-        <BookFlow />
+    <div className="min-h-dvh overflow-x-clip bg-background">
+      {/* Ambient glows — decorative */}
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
+        <div className="absolute -right-36 -top-44 size-[520px] animate-drift rounded-full bg-sage/35 blur-[90px]" />
+        <div className="absolute -left-52 bottom-[-120px] size-[420px] animate-drift rounded-full bg-honey-soft/45 blur-[90px] [animation-direction:alternate-reverse]" />
+      </div>
+
+      {/* Slim booking nav — matches mockup header */}
+      <header className="sticky top-4 z-50 px-4 sm:px-5">
+        <nav
+          className="mx-auto flex w-full max-w-6xl animate-reveal items-center justify-between gap-2 rounded-full border border-border bg-card/85 px-5 py-2 shadow-soft backdrop-blur-xl"
+          aria-label="Site navigation"
+        >
+          <Link to="/" className="flex items-center" aria-label="HomeKept home">
+            <Wordmark size="sm" />
+          </Link>
+          <span className="hidden text-sm text-muted-foreground sm:block">
+            Free walk-through &middot;{" "}
+            <strong className="text-moss font-semibold">90 min · no obligation</strong>
+          </span>
+        </nav>
+      </header>
+
+      <main id="main" className="relative z-10">
+        <div className="mx-auto max-w-6xl px-5 pb-24 pt-10 sm:px-8 sm:pt-14">
+          <BookFlow />
+        </div>
       </main>
-      <SiteFooter />
     </div>
   );
 }
 
-function BookFlow() {
-  const [state, setState] = useState<FormState>(emptyState);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState<null | {
-    step1: z.infer<typeof step1Schema>;
-    step2: z.infer<typeof step2Schema>;
-    step3: z.infer<typeof step3Schema>;
-  }>(null);
+/* -------------------------------------------------------------------------- */
+/* Main flow                                                                   */
+/* -------------------------------------------------------------------------- */
 
-  // hydrate from localStorage on mount
+function BookFlow() {
+  const [data, setData] = useState<FormData>(EMPTY);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [shaking, setShaking] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    firstName: string;
+    email: string;
+    timeOfDay: TimeOfDay;
+    weekLabel: string;
+  } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const weeks = useMemo(() => getWeekChips(4), []);
+
+  // Hydrate draft on mount
   useEffect(() => {
-    setState(loadState());
+    setData(loadDraft());
   }, []);
 
-  // persist on change
+  // Persist draft
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch {
       /* ignore */
     }
-  }, [state]);
+  }, [data]);
 
-  function update<K extends keyof FormState>(key: K, patch: Partial<FormState[K]>) {
-    setState((s) => ({ ...s, [key]: { ...s[key], ...patch } }));
+  function patch(updates: Partial<FormData>) {
+    setData((d) => ({ ...d, ...updates }));
+    // Clear errors for patched fields
+    const cleared: FieldErrors = { ...errors };
+    for (const k of Object.keys(updates)) delete cleared[k];
+    setErrors(cleared);
+  }
+
+  function shake() {
+    setShaking(false);
+    // Double rAF to force re-render before re-adding class
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        setShaking(true);
+        setTimeout(() => setShaking(false), 500);
+      }),
+    );
   }
 
   function goNext() {
-    if (step === 1) {
-      const r = step1Schema.safeParse(state.step1);
-      if (!r.success) return setErrors(flatten(r.error));
-      setErrors({});
-      setStep(2);
-    } else if (step === 2) {
-      const r = step2Schema.safeParse(state.step2);
-      if (!r.success) return setErrors(flatten(r.error));
-      setErrors({});
-      setStep(3);
+    const errs = step === 1 ? validateStep1(data) : validateStep2(data);
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      shake();
+      return;
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setErrors({});
+    setStep((s) => (s < 3 ? ((s + 1) as 1 | 2 | 3) : s));
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function goBack() {
     setErrors({});
-    setStep((s) => (s === 3 ? 2 : 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s));
+    cardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function submit() {
-    const r1 = step1Schema.safeParse(state.step1);
-    const r2 = step2Schema.safeParse(state.step2);
-    const r3 = step3Schema.safeParse(state.step3);
-    if (!r3.success) return setErrors(flatten(r3.error));
-    if (!r1.success || !r2.success) {
-      setStep(!r1.success ? 1 : 2);
-      setErrors(flatten((!r1.success ? r1.error : r2.error)!));
+  async function submit() {
+    const errs = validateStep3(data);
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      shake();
       return;
     }
     setErrors({});
-    setSubmitted({ step1: r1.data, step2: r2.data, step3: r3.data });
+    setSubmitting(true);
+    setSubmitError(null);
+
+    // Build the contract-accurate payload
+    const sqftMap: Record<string, BookingRequest["squareFootageRange"]> = {
+      "<1500": "<1500",
+      "1500-2500": "1500-2500",
+      "2500-4000": "2500-4000",
+      ">4000": ">4000",
+    };
+
+    const payload: BookingRequest = {
+      fullName: data.fullName.trim(),
+      email: data.email.trim(),
+      phone: data.phone.trim(),
+      streetAddress: data.address.trim(),
+      city: data.city as City,
+      postalCode: data.postalCode.trim().toUpperCase(),
+      propertyType: data.propertyType as PropertyType,
+      preferredWeek: data.preferredWeek,
+      timeOfDay: data.timeOfDay as TimeOfDay,
+      dayPreferences: data.days,
+      notes: data.notes.trim() || undefined,
+      leadSource: "WEBSITE_ORGANIC",
+      contactConsent: true,
+      ...(data.yearBuilt.trim() ? { yearBuilt: parseInt(data.yearBuilt, 10) } : {}),
+      ...(data.sqft ? { squareFootageRange: sqftMap[data.sqft] } : {}),
+    };
+
     try {
-      window.localStorage.removeItem(STORAGE_KEY);
+      await submitBooking(payload);
+      const weekObj = weeks.find((w) => w.iso === data.preferredWeek);
+      setSubmitted({
+        firstName: data.fullName.trim().split(" ")[0],
+        email: data.email.trim(),
+        timeOfDay: data.timeOfDay as TimeOfDay,
+        weekLabel: weekObj?.label ?? "the week you picked",
+      });
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
     } catch {
-      /* ignore */
+      setSubmitError("Something went wrong — please try again in a moment.");
+      setSubmitting(false);
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  const weekLabel = weeks.find((w) => w.iso === data.preferredWeek)?.label;
+  const todLabel = TOD_CARDS.find((t) => t.id === data.timeOfDay)?.label;
+  const daysLabel = data.days.map((d) => DAYS.find((x) => x.key === d)?.label).join(" · ");
+
   if (submitted) {
-    return <Confirmation data={submitted} />;
+    return <SuccessScreen {...submitted} />;
   }
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[1fr_360px]">
+    <div className="grid gap-10 lg:grid-cols-[1.45fr_1fr] lg:gap-12 lg:items-start">
+      {/* ── Wizard column ── */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">
-          Free walk-through
-        </p>
-        <h1 className="mt-3 font-display text-4xl font-extrabold tracking-tight md:text-5xl">
-          Book your 90-minute home visit.
-        </h1>
-        <p className="mt-3 max-w-xl text-muted-foreground">
-          Tell us about your home and when you're around. We'll confirm by email and follow up the next day with a custom maintenance plan.
-        </p>
+        <div className="animate-reveal">
+          <h1 className="font-display text-[clamp(30px,4vw,46px)] font-[560] leading-[1.1] tracking-[-0.02em] text-primary">
+            Let&rsquo;s walk <em className="font-[480] italic text-moss">your home.</em>
+          </h1>
+          <p className="mt-2.5 text-[15px] text-muted-foreground">
+            Three quick steps — about a minute. We&rsquo;ll confirm your time within one business
+            day.
+          </p>
+        </div>
 
+        {/* Stepper */}
         <StepIndicator step={step} />
 
-        <div className="mt-8 rounded-3xl border border-border bg-card p-6 shadow-soft md:p-8">
-          {step === 1 && (
-            <Step1
-              value={state.step1}
-              errors={errors}
-              onChange={(p) => update("step1", p)}
-            />
+        {/* Wizard card */}
+        <div
+          ref={cardRef}
+          className={cn(
+            "animate-reveal mt-6 rounded-[34px] border border-border bg-card p-7 shadow-[0_24px_50px_-30px_rgba(30,58,43,0.35)] sm:p-10",
+            "[animation-delay:180ms]",
+            shaking && "animate-shake",
           )}
-          {step === 2 && (
-            <Step2
-              value={state.step2}
-              errors={errors}
-              onChange={(p) => update("step2", p)}
-            />
-          )}
-          {step === 3 && (
-            <Step3
-              value={state.step3}
-              errors={errors}
-              onChange={(p) => update("step3", p)}
-            />
+          style={{ "--reveal-index": 0 } as React.CSSProperties}
+        >
+          {step === 1 && <Step1 data={data} errors={errors} onChange={patch} />}
+          {step === 2 && <Step2 data={data} errors={errors} onChange={patch} weeks={weeks} />}
+          {step === 3 && <Step3 data={data} errors={errors} onChange={patch} />}
+
+          {submitError && (
+            <p role="alert" className="mt-4 text-sm font-semibold text-destructive">
+              {submitError}
+            </p>
           )}
 
-          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Footer nav */}
+          <div className="mt-8 flex items-center justify-between gap-4 border-t border-dashed border-border/60 pt-6">
             {step > 1 ? (
-              <Button variant="outline" onClick={goBack}>
-                <ChevronLeft className="size-4" />
-                Back
+              <Button
+                type="button"
+                variant="outline"
+                onClick={goBack}
+                className="gap-2 border-border/40 text-muted-foreground hover:text-primary"
+              >
+                ← Back
               </Button>
             ) : (
-              <Button asChild variant="ghost">
+              <Button asChild variant="ghost" className="text-muted-foreground hover:text-primary">
                 <Link to="/">Cancel</Link>
               </Button>
             )}
+
             {step < 3 ? (
-              <Button onClick={goNext} size="lg">
-                Continue
-                <ChevronRight className="size-4" />
+              <Button type="button" variant="accent" size="lg" onClick={goNext}>
+                Continue <span aria-hidden="true">→</span>
               </Button>
             ) : (
-              <Button onClick={submit} size="lg" variant="accent">
-                Book my walk-through
+              <Button
+                type="button"
+                variant="accent"
+                size="lg"
+                onClick={submit}
+                disabled={submitting}
+                aria-busy={submitting}
+              >
+                {submitting ? "Sending…" : "Book my walk-through ✿"}
               </Button>
             )}
           </div>
         </div>
       </div>
 
-      <Aside />
+      {/* ── Live summary sidebar ── */}
+      <aside
+        className="relative animate-reveal overflow-hidden rounded-[30px] bg-primary p-7 text-primary-foreground shadow-[0_28px_56px_-28px_rgba(30,58,43,0.55)] lg:sticky lg:top-28 lg:self-start"
+        style={{ "--reveal-index": 2 } as React.CSSProperties}
+        aria-label="Walk-through summary"
+      >
+        {/* decorative orb */}
+        <div
+          aria-hidden="true"
+          className="absolute -right-16 -top-20 size-60 rounded-full bg-accent/20 blur-[54px]"
+        />
+
+        <p className="relative text-[11.5px] font-bold uppercase tracking-[0.12em] text-sage">
+          Your walk-through
+        </p>
+        <h2 className="relative mt-2 font-display text-2xl font-[600] leading-tight">
+          Building your{" "}
+          <em className="font-[480] italic" style={{ color: "var(--honey-soft)" }}>
+            visit…
+          </em>
+        </h2>
+
+        {/* Summary rows */}
+        <dl className="relative mt-5 flex flex-col gap-px overflow-hidden rounded-2xl">
+          <SumRow
+            label="Home"
+            value={
+              data.address.trim()
+                ? `${data.address.trim()}${data.city ? ", " + data.city : ""}`
+                : null
+            }
+          />
+          <SumRow
+            label="Type"
+            value={
+              data.propertyType
+                ? (PROPERTY_CARDS.find((p) => p.type === data.propertyType)?.label ?? null)
+                : null
+            }
+          />
+          <SumRow label="Week" value={weekLabel ?? null} />
+          <SumRow label="Time" value={todLabel ?? null} />
+          <SumRow label="Days" value={daysLabel || null} />
+          <SumRow label="For" value={data.fullName.trim() || null} />
+        </dl>
+
+        {/* Fact pills */}
+        <div className="relative mt-5 flex flex-wrap gap-2" aria-label="Walk-through details">
+          <span className="rounded-full border border-primary-foreground/16 bg-primary-foreground/10 px-3 py-1.5 text-[12.5px]">
+            💸 $0 — completely free
+          </span>
+          <span className="rounded-full border border-primary-foreground/16 bg-primary-foreground/10 px-3 py-1.5 text-[12.5px]">
+            ⏱️ About 90 minutes
+          </span>
+          <span className="rounded-full border border-primary-foreground/16 bg-primary-foreground/10 px-3 py-1.5 text-[12.5px]">
+            🤝 No obligation
+          </span>
+        </div>
+      </aside>
     </div>
   );
 }
 
-function flatten(err: z.ZodError): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const i of err.issues) {
-    const k = i.path.join(".");
-    if (!out[k]) out[k] = i.message;
-  }
-  return out;
+/* -------------------------------------------------------------------------- */
+/* Summary row                                                                 */
+/* -------------------------------------------------------------------------- */
+
+function SumRow({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="flex items-center justify-between gap-3 bg-primary-foreground/[0.07] px-4 py-2.5 text-[13.5px]">
+      <dt className="text-sage">{label}</dt>
+      <dd
+        className={cn(
+          "text-right font-semibold transition-all duration-300",
+          value ? "text-primary-foreground" : "font-normal text-primary-foreground/35",
+        )}
+      >
+        {value ?? "—"}
+      </dd>
+    </div>
+  );
 }
 
-// ---------- Steps ----------
+/* -------------------------------------------------------------------------- */
+/* Step indicator                                                              */
+/* -------------------------------------------------------------------------- */
+
 function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
-  const items = [
-    { n: 1, label: "About the home" },
-    { n: 2, label: "Pick a time" },
-    { n: 3, label: "Contact details" },
+  const nodes = [
+    { n: 1, label: "Your home" },
+    { n: 2, label: "Timing" },
+    { n: 3, label: "You" },
   ];
+
   return (
-    <ol className="mt-8 flex items-center gap-2 md:gap-4" aria-label="Booking progress">
-      {items.map((it, i) => {
-        const active = step === it.n;
-        const done = step > it.n;
+    <ol
+      className="animate-reveal mt-7 flex items-center gap-0"
+      aria-label="Booking progress"
+      style={{ "--reveal-index": 1 } as React.CSSProperties}
+    >
+      {nodes.map((node, i) => {
+        const active = step === node.n;
+        const done = step > node.n;
         return (
-          <li key={it.n} className="flex flex-1 items-center gap-2 md:gap-3">
-            <span
+          <li key={node.n} className="flex items-center">
+            <div
               className={cn(
-                "flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold transition-colors",
-                done && "border-primary bg-primary text-primary-foreground",
-                active && "border-accent bg-accent text-accent-foreground",
-                !done && !active && "border-border bg-background text-muted-foreground",
-              )}
-              aria-current={active ? "step" : undefined}
-            >
-              {done ? <Check className="size-4" /> : it.n}
-            </span>
-            <span
-              className={cn(
-                "hidden text-sm font-medium md:inline",
-                active ? "text-foreground" : "text-muted-foreground",
+                "flex items-center gap-2.5 text-[13.5px] font-semibold",
+                active ? "text-primary" : "text-muted-foreground",
               )}
             >
-              {it.label}
-            </span>
-            {i < items.length - 1 && (
               <span
                 className={cn(
-                  "ml-1 hidden h-px flex-1 md:block",
-                  done ? "bg-primary/40" : "bg-border",
+                  "grid size-9 place-items-center font-display text-[15px] font-semibold transition-all duration-300",
+                  "[border-radius:50%_50%_50%_11px]",
+                  done && "bg-moss text-white scale-100",
+                  active && "bg-primary text-primary-foreground scale-110 -rotate-6",
+                  !done && !active && "bg-surface text-muted-foreground",
                 )}
-              />
+                aria-current={active ? "step" : undefined}
+              >
+                {done ? "✓" : node.n}
+              </span>
+              <span className="hidden sm:inline">{node.label}</span>
+            </div>
+            {i < nodes.length - 1 && (
+              <div className="relative mx-3.5 h-[2.5px] min-w-[30px] flex-1 overflow-hidden rounded-full bg-surface sm:min-w-[48px]">
+                <span
+                  className={cn(
+                    "absolute inset-0 origin-left rounded-full bg-moss transition-transform duration-500",
+                    done ? "scale-x-100" : "scale-x-0",
+                  )}
+                />
+              </div>
             )}
           </li>
         );
@@ -345,521 +609,609 @@ function StepIndicator({ step }: { step: 1 | 2 | 3 }) {
   );
 }
 
-function FieldError({ id, msg }: { id: string; msg?: string }) {
-  if (!msg) return null;
-  return (
-    <p id={id} className="mt-1.5 text-sm text-destructive">
-      {msg}
-    </p>
-  );
-}
+/* -------------------------------------------------------------------------- */
+/* Step 1 — About the home                                                     */
+/* -------------------------------------------------------------------------- */
 
 function Step1({
-  value,
+  data,
   errors,
   onChange,
 }: {
-  value: FormState["step1"];
-  errors: Record<string, string>;
-  onChange: (p: Partial<FormState["step1"]>) => void;
+  data: FormData;
+  errors: FieldErrors;
+  onChange: (p: Partial<FormData>) => void;
 }) {
   return (
-    <div className="space-y-5">
-      <h2 className="font-display text-xl font-bold">About the home</h2>
+    <div>
+      <h2 className="font-display text-[25px] font-[600] text-primary">Tell us about the home.</h2>
+      <p className="mt-1.5 text-[14px] text-muted-foreground">
+        Just enough to plan the visit — no measuring tape required.
+      </p>
 
-      <div>
-        <Label htmlFor="address">Street address</Label>
-        <Input
-          id="address"
-          autoComplete="street-address"
-          placeholder="123 Maple Ave"
-          value={value.address ?? ""}
-          onChange={(e) => onChange({ address: e.target.value })}
-          aria-invalid={!!errors.address}
-          aria-describedby={errors.address ? "err-address" : undefined}
-        />
-        <FieldError id="err-address" msg={errors.address} />
-      </div>
-
-      <div className="grid gap-5 md:grid-cols-2">
-        <div>
-          <Label>City</Label>
-          <RadioGroup
-            className="mt-2 grid grid-cols-2 gap-2"
-            value={value.city ?? ""}
-            onValueChange={(v) => onChange({ city: v as (typeof cities)[number] })}
-          >
-            {cities.map((c) => (
-              <label
-                key={c}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-accent/60",
-                  value.city === c && "border-accent bg-accent/5",
-                )}
-              >
-                <RadioGroupItem value={c} />
-                {c}
-              </label>
-            ))}
-          </RadioGroup>
-          <FieldError id="err-city" msg={errors.city} />
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        {/* Street address — full width */}
+        <div className="sm:col-span-2">
+          <FieldWrap error={errors.address}>
+            <label htmlFor="f-address" className="field-label">
+              Street address
+            </label>
+            <input
+              id="f-address"
+              type="text"
+              autoComplete="street-address"
+              placeholder="14 Maple Ridge Crt"
+              value={data.address}
+              onChange={(e) => onChange({ address: e.target.value })}
+              aria-invalid={!!errors.address}
+              aria-describedby={errors.address ? "err-address" : undefined}
+              className={fieldCls(!!errors.address)}
+            />
+            <FieldError id="err-address" msg={errors.address} />
+          </FieldWrap>
         </div>
 
-        <div>
-          <Label htmlFor="postal">Postal code</Label>
-          <Input
-            id="postal"
+        {/* City */}
+        <FieldWrap error={errors.city}>
+          <label htmlFor="f-city" className="field-label">
+            City
+          </label>
+          <select
+            id="f-city"
+            value={data.city}
+            onChange={(e) => onChange({ city: e.target.value as City | "" })}
+            aria-invalid={!!errors.city}
+            aria-describedby={errors.city ? "err-city" : undefined}
+            className={fieldCls(!!errors.city)}
+          >
+            <option value="">Choose…</option>
+            {CITIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <FieldError id="err-city" msg={errors.city} />
+        </FieldWrap>
+
+        {/* Postal code */}
+        <FieldWrap error={errors.postalCode}>
+          <label htmlFor="f-postal" className="field-label">
+            Postal code
+          </label>
+          <input
+            id="f-postal"
+            type="text"
             autoComplete="postal-code"
             placeholder="L6H 1A1"
-            value={value.postalCode ?? ""}
+            value={data.postalCode}
             onChange={(e) => onChange({ postalCode: e.target.value.toUpperCase() })}
             aria-invalid={!!errors.postalCode}
             aria-describedby={errors.postalCode ? "err-postal" : undefined}
+            className={fieldCls(!!errors.postalCode)}
           />
           <FieldError id="err-postal" msg={errors.postalCode} />
+        </FieldWrap>
+      </div>
+
+      {/* Property type */}
+      <div className="mt-5" role="group" aria-labelledby="ptype-label">
+        <p id="ptype-label" className="field-label">
+          Property type
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
+          {PROPERTY_CARDS.map((p) => {
+            const sel = data.propertyType === p.type;
+            return (
+              <button
+                key={p.type}
+                type="button"
+                onClick={() => onChange({ propertyType: p.type })}
+                aria-pressed={sel}
+                className={cn(
+                  "rounded-[20px] border-[1.5px] p-4 text-left transition-all duration-200 hover:-translate-y-[3px]",
+                  sel
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-transparent bg-background hover:border-sage",
+                  errors.propertyType && !sel && "border-destructive/45",
+                )}
+              >
+                <span className="text-[22px]" aria-hidden="true">
+                  {p.emoji}
+                </span>
+                <strong
+                  className={cn(
+                    "mt-1.5 block text-[14.5px] font-semibold",
+                    sel ? "text-primary-foreground" : "text-primary",
+                  )}
+                >
+                  {p.label}
+                </strong>
+                <span className={cn("text-[12.5px]", sel ? "text-sage" : "text-muted-foreground")}>
+                  {p.sub}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {errors.propertyType && (
+          <p className="mt-1.5 text-[12.5px] font-semibold text-destructive" role="alert">
+            {errors.propertyType}
+          </p>
+        )}
+      </div>
+
+      {/* Size chips — optional */}
+      <div className="mt-5" role="group" aria-labelledby="sqft-label">
+        <p id="sqft-label" className="field-label">
+          Roughly how big? <span className="font-normal text-muted-foreground">(optional)</span>
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {SQFT_KEYS.map((k) => {
+            const sel = data.sqft === k;
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => onChange({ sqft: sel ? "" : k })}
+                aria-pressed={sel}
+                className={cn("chip", sel && "chip-on")}
+              >
+                {SQFT_LABELS[k]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <div>
-          <Label htmlFor="year">
-            Year built <span className="text-muted-foreground">(optional)</span>
-          </Label>
-          <Input
-            id="year"
+      {/* Year built — optional */}
+      <div className="mt-5">
+        <FieldWrap error={errors.yearBuilt}>
+          <label htmlFor="f-year" className="field-label">
+            Year built <span className="font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <input
+            id="f-year"
+            type="text"
             inputMode="numeric"
             placeholder="1998"
             maxLength={4}
-            value={value.yearBuilt ?? ""}
+            value={data.yearBuilt}
             onChange={(e) => onChange({ yearBuilt: e.target.value })}
             aria-invalid={!!errors.yearBuilt}
             aria-describedby={errors.yearBuilt ? "err-year" : undefined}
+            className={fieldCls(!!errors.yearBuilt)}
           />
           <FieldError id="err-year" msg={errors.yearBuilt} />
-        </div>
-
-        <div>
-          <Label>
-            Square footage <span className="text-muted-foreground">(optional)</span>
-          </Label>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {sqftRanges.map((r) => {
-              const selected = value.sqft === r;
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => onChange({ sqft: selected ? undefined : r })}
-                  className={cn(
-                    "rounded-full border border-border bg-background px-3 py-1.5 text-sm transition-colors hover:border-accent/60",
-                    selected && "border-accent bg-accent/5 text-foreground",
-                  )}
-                >
-                  {r}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <Label>Property type</Label>
-        <RadioGroup
-          className="mt-2 grid grid-cols-3 gap-2"
-          value={value.propertyType ?? ""}
-          onValueChange={(v) =>
-            onChange({ propertyType: v as (typeof propertyTypes)[number] })
-          }
-        >
-          {propertyTypes.map((p) => (
-            <label
-              key={p}
-              className={cn(
-                "flex cursor-pointer items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-accent/60",
-                value.propertyType === p && "border-accent bg-accent/5",
-              )}
-            >
-              <RadioGroupItem value={p} />
-              {p}
-            </label>
-          ))}
-        </RadioGroup>
-        <FieldError id="err-prop" msg={errors.propertyType} />
+        </FieldWrap>
       </div>
     </div>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Step 2 — Timing                                                             */
+/* -------------------------------------------------------------------------- */
+
 function Step2({
-  value,
+  data,
   errors,
   onChange,
+  weeks,
 }: {
-  value: FormState["step2"];
-  errors: Record<string, string>;
-  onChange: (p: Partial<FormState["step2"]>) => void;
+  data: FormData;
+  errors: FieldErrors;
+  onChange: (p: Partial<FormData>) => void;
+  weeks: { iso: string; label: string }[];
 }) {
-  const weeks = useMemo(() => nextWeeks(4), []);
-  const selectedDays = (value.days ?? []) as string[];
-
-  function toggleDay(d: (typeof daysOfWeek)[number]) {
-    const next = selectedDays.includes(d)
-      ? selectedDays.filter((x) => x !== d)
-      : [...selectedDays, d];
-    onChange({ days: next as FormState["step2"]["days"] });
-  }
-
   return (
-    <div className="space-y-5">
-      <h2 className="font-display text-xl font-bold">Pick a time</h2>
+    <div>
+      <h2 className="font-display text-[25px] font-[600] text-primary">When suits you?</h2>
+      <p className="mt-1.5 text-[14px] text-muted-foreground">
+        Pick a week and the times that usually work — we&rsquo;ll confirm an exact slot.
+      </p>
 
-      <div>
-        <Label>Preferred week</Label>
-        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {/* Preferred week */}
+      <div className="mt-6" role="group" aria-labelledby="week-label">
+        <p id="week-label" className="field-label">
+          Preferred week
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
           {weeks.map((w) => {
-            const selected = value.weekStart === w.iso;
+            const sel = data.preferredWeek === w.iso;
             return (
               <button
                 key={w.iso}
                 type="button"
-                onClick={() => onChange({ weekStart: w.iso })}
-                className={cn(
-                  "rounded-xl border border-border bg-background px-3 py-3 text-left text-sm transition-colors hover:border-accent/60",
-                  selected && "border-accent bg-accent/5",
-                )}
+                onClick={() => onChange({ preferredWeek: w.iso })}
+                aria-pressed={sel}
+                className={cn("chip", sel && "chip-on")}
               >
-                <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Week of
-                </span>
-                <span className="mt-0.5 block font-medium">{w.label}</span>
+                {w.label}
               </button>
             );
           })}
         </div>
-        <FieldError id="err-week" msg={errors.weekStart} />
+        {errors.preferredWeek && (
+          <p className="mt-1.5 text-[12.5px] font-semibold text-destructive" role="alert">
+            {errors.preferredWeek}
+          </p>
+        )}
       </div>
 
-      <div>
-        <Label>Time of day</Label>
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
-          {timeWindows.map((t) => {
-            const selected = value.timeOfDay === t.id;
+      {/* Time of day */}
+      <div className="mt-6" role="group" aria-labelledby="tod-label">
+        <p id="tod-label" className="field-label">
+          Time of day
+        </p>
+        <div className="mt-2 grid grid-cols-1 gap-3 min-[420px]:grid-cols-3">
+          {TOD_CARDS.map((t) => {
+            const sel = data.timeOfDay === t.id;
             return (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => onChange({ timeOfDay: t.id })}
+                aria-pressed={sel}
                 className={cn(
-                  "rounded-xl border border-border bg-background px-3 py-3 text-left text-sm transition-colors hover:border-accent/60",
-                  selected && "border-accent bg-accent/5",
+                  "rounded-[20px] border-[1.5px] p-4 text-left transition-all duration-200 hover:-translate-y-[3px]",
+                  sel
+                    ? "border-transparent bg-primary text-primary-foreground"
+                    : "border-transparent bg-background hover:border-sage",
+                  errors.timeOfDay && !sel && "border-destructive/45",
                 )}
               >
-                <span className="block font-medium">{t.label}</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
+                <span className="text-[22px]" aria-hidden="true">
+                  {t.emoji}
+                </span>
+                <strong
+                  className={cn(
+                    "mt-1.5 block text-[14.5px] font-semibold",
+                    sel ? "text-primary-foreground" : "text-primary",
+                  )}
+                >
+                  {t.label}
+                </strong>
+                <span className={cn("text-[12.5px]", sel ? "text-sage" : "text-muted-foreground")}>
                   {t.range}
                 </span>
               </button>
             );
           })}
         </div>
-        <FieldError id="err-time" msg={errors.timeOfDay} />
+        {errors.timeOfDay && (
+          <p className="mt-1.5 text-[12.5px] font-semibold text-destructive" role="alert">
+            {errors.timeOfDay}
+          </p>
+        )}
       </div>
 
-      <div>
-        <Label>Day-of-week preference</Label>
+      {/* Day chips */}
+      <div className="mt-6" role="group" aria-labelledby="days-label">
+        <p id="days-label" className="field-label">
+          Days that usually work{" "}
+          <span className="font-normal text-muted-foreground">(pick any)</span>
+        </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {daysOfWeek.map((d) => {
-            const selected = selectedDays.includes(d);
+          {DAYS.map((d) => {
+            const sel = data.days.includes(d.key);
             return (
               <button
-                key={d}
+                key={d.key}
                 type="button"
-                onClick={() => toggleDay(d)}
-                aria-pressed={selected}
-                className={cn(
-                  "rounded-full border border-border bg-background px-4 py-1.5 text-sm transition-colors hover:border-accent/60",
-                  selected && "border-accent bg-accent/5",
-                )}
+                onClick={() => {
+                  const next = sel ? data.days.filter((x) => x !== d.key) : [...data.days, d.key];
+                  onChange({ days: next });
+                }}
+                aria-pressed={sel}
+                className={cn("chip", sel && "chip-on")}
               >
-                {d}
+                {d.label}
               </button>
             );
           })}
         </div>
-        <FieldError id="err-days" msg={errors.days} />
+        {errors.days && (
+          <p className="mt-1.5 text-[12.5px] font-semibold text-destructive" role="alert">
+            {errors.days}
+          </p>
+        )}
       </div>
 
-      <div>
-        <Label htmlFor="notes">
-          Anything we should know? <span className="text-muted-foreground">(optional)</span>
-        </Label>
-        <Textarea
-          id="notes"
-          rows={4}
-          placeholder="Gate code, dogs, side entrance, things on your mind…"
-          value={value.notes ?? ""}
+      {/* Notes */}
+      <div className="mt-6">
+        <label htmlFor="f-notes" className="field-label">
+          Anything we should know?{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
+        </label>
+        <textarea
+          id="f-notes"
+          rows={3}
+          placeholder="Gate code, a dog who loves visitors, the furnace that makes that noise…"
+          value={data.notes}
           onChange={(e) => onChange({ notes: e.target.value })}
           maxLength={1000}
+          className={cn(fieldCls(false), "resize-y min-h-[88px]")}
         />
       </div>
     </div>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Step 3 — Contact                                                            */
+/* -------------------------------------------------------------------------- */
+
 function Step3({
-  value,
+  data,
   errors,
   onChange,
 }: {
-  value: FormState["step3"];
-  errors: Record<string, string>;
-  onChange: (p: Partial<FormState["step3"]>) => void;
+  data: FormData;
+  errors: FieldErrors;
+  onChange: (p: Partial<FormData>) => void;
 }) {
   return (
-    <div className="space-y-5">
-      <h2 className="font-display text-xl font-bold">Contact details</h2>
-
-      <div>
-        <Label htmlFor="name">Full name</Label>
-        <Input
-          id="name"
-          autoComplete="name"
-          value={value.fullName ?? ""}
-          onChange={(e) => onChange({ fullName: e.target.value })}
-          aria-invalid={!!errors.fullName}
-          aria-describedby={errors.fullName ? "err-name" : undefined}
-        />
-        <FieldError id="err-name" msg={errors.fullName} />
-      </div>
-
-      <div className="grid gap-5 md:grid-cols-2">
-        <div>
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            value={value.email ?? ""}
-            onChange={(e) => onChange({ email: e.target.value })}
-            aria-invalid={!!errors.email}
-            aria-describedby={errors.email ? "err-email" : undefined}
-          />
-          <FieldError id="err-email" msg={errors.email} />
-        </div>
-        <div>
-          <Label htmlFor="phone">Phone</Label>
-          <Input
-            id="phone"
-            type="tel"
-            autoComplete="tel"
-            placeholder="(905) 555-0142"
-            value={value.phone ?? ""}
-            onChange={(e) => onChange({ phone: e.target.value })}
-            aria-invalid={!!errors.phone}
-            aria-describedby={errors.phone ? "err-phone" : undefined}
-          />
-          <FieldError id="err-phone" msg={errors.phone} />
-        </div>
-      </div>
-
-      <label className="flex items-start gap-3 rounded-xl border border-border bg-surface/60 p-4">
-        <Checkbox
-          id="consent"
-          checked={!!value.consent}
-          onCheckedChange={(c) => onChange({ consent: (c === true) as true })}
-          aria-describedby={errors.consent ? "err-consent" : undefined}
-        />
-        <span className="text-sm text-foreground/90">
-          It's okay to contact me about scheduling this walk-through and the maintenance plan that follows. No marketing spam.
-        </span>
-      </label>
-      <FieldError id="err-consent" msg={errors.consent} />
-    </div>
-  );
-}
-
-// ---------- Aside ----------
-function Aside() {
-  const items = [
-    {
-      icon: Home,
-      title: "Inside walk",
-      body: "We catalog HVAC, plumbing, smoke detectors, and the everyday systems homeowners forget about.",
-    },
-    {
-      icon: Sun,
-      title: "Exterior check",
-      body: "Gutters, downspouts, weather seals, the roof line from the ground — a seasonal once-over.",
-    },
-    {
-      icon: ClipboardCheck,
-      title: "Written plan",
-      body: "A custom 12-month maintenance schedule emailed the next day. No phone tag, no pressure.",
-    },
-  ];
-  return (
-    <aside className="lg:sticky lg:top-28 lg:self-start">
-      <div className="rounded-3xl border border-border bg-surface p-6 md:p-7">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-accent">
-          What to expect
-        </p>
-        <h2 className="mt-2 font-display text-2xl font-bold">
-          90 minutes. Then a plan.
-        </h2>
-        <ul className="mt-5 space-y-5">
-          {items.map((it) => (
-            <li key={it.title} className="flex gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-background text-accent">
-                <it.icon className="size-4" />
-              </span>
-              <div>
-                <p className="font-semibold">{it.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{it.body}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-6 border-t border-border pt-5 text-sm text-muted-foreground">
-          The walk-through is genuinely free. There's no sales pitch at the door — just an honest read on your home and a plan you can use whether you subscribe or not.
-        </p>
-      </div>
-    </aside>
-  );
-}
-
-// ---------- Confirmation ----------
-function Confirmation({
-  data,
-}: {
-  data: {
-    step1: z.infer<typeof step1Schema>;
-    step2: z.infer<typeof step2Schema>;
-    step3: z.infer<typeof step3Schema>;
-  };
-}) {
-  function downloadIcs() {
-    const start = new Date(data.step2.weekStart + "T00:00:00");
-    // pick first selected day in week, default Monday
-    const dayIndex: Record<string, number> = {
-      Mon: 0,
-      Tue: 1,
-      Wed: 2,
-      Thu: 3,
-      Fri: 4,
-      Sat: 5,
-      Sun: 6,
-    };
-    const firstDay = [...data.step2.days].sort(
-      (a, b) => dayIndex[a] - dayIndex[b],
-    )[0];
-    start.setDate(start.getDate() + (dayIndex[firstDay] ?? 0));
-    const hour =
-      data.step2.timeOfDay === "morning"
-        ? 9
-        : data.step2.timeOfDay === "afternoon"
-          ? 13
-          : 17;
-    start.setHours(hour, 0, 0, 0);
-    const end = new Date(start);
-    end.setMinutes(end.getMinutes() + 90);
-
-    const fmt = (d: Date) =>
-      d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-
-    const ics = [
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      "PRODID:-//HomeKept//Walk-through//EN",
-      "BEGIN:VEVENT",
-      `UID:${Date.now()}@homekept.ca`,
-      `DTSTAMP:${fmt(new Date())}`,
-      `DTSTART:${fmt(start)}`,
-      `DTEND:${fmt(end)}`,
-      "SUMMARY:HomeKept walk-through (tentative)",
-      `DESCRIPTION:90-minute home assessment. We'll confirm the exact time by email.`,
-      `LOCATION:${data.step1.address}\\, ${data.step1.city}`,
-      "END:VEVENT",
-      "END:VCALENDAR",
-    ].join("\r\n");
-
-    const blob = new Blob([ics], { type: "text/calendar" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "homekept-walkthrough.ics";
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  const weekLabel = formatWeek(new Date(data.step2.weekStart + "T00:00:00"));
-  const timeLabel =
-    timeWindows.find((t) => t.id === data.step2.timeOfDay)?.label +
-    " (" +
-    timeWindows.find((t) => t.id === data.step2.timeOfDay)?.range +
-    ")";
-
-  return (
-    <div className="mx-auto max-w-2xl">
-      <div className="flex size-14 items-center justify-center rounded-full bg-accent/10 text-accent">
-        <Check className="size-7" />
-      </div>
-      <h1 className="mt-5 font-display text-4xl font-extrabold tracking-tight md:text-5xl">
-        You're booked. Sort of.
-      </h1>
-      <p className="mt-3 text-muted-foreground">
-        We'll email <span className="font-medium text-foreground">{data.step3.email}</span> within one business day to confirm an exact time that works for both of us.
+    <div>
+      <h2 className="font-display text-[25px] font-[600] text-primary">And you are&hellip;</h2>
+      <p className="mt-1.5 text-[14px] text-muted-foreground">
+        So we know who&rsquo;s opening the door.
       </p>
 
-      <div className="mt-8 rounded-3xl border border-border bg-card p-6 shadow-soft md:p-8">
-        <h2 className="font-display text-lg font-bold">Walk-through details</h2>
-        <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-muted-foreground">Address</dt>
-            <dd className="mt-1 font-medium">
-              {data.step1.address}
-              <br />
-              {data.step1.city}, {data.step1.postalCode}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Property</dt>
-            <dd className="mt-1 font-medium">
-              {data.step1.propertyType}
-              {data.step1.sqft ? ` · ${data.step1.sqft} sq ft` : ""}
-              {data.step1.yearBuilt ? ` · built ${data.step1.yearBuilt}` : ""}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Preferred week</dt>
-            <dd className="mt-1 font-medium">{weekLabel}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Time of day</dt>
-            <dd className="mt-1 font-medium">{timeLabel}</dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-muted-foreground">Days that work</dt>
-            <dd className="mt-1 font-medium">{data.step2.days.join(", ")}</dd>
-          </div>
-          {data.step2.notes && (
-            <div className="sm:col-span-2">
-              <dt className="text-muted-foreground">Notes</dt>
-              <dd className="mt-1 whitespace-pre-wrap">{data.step2.notes}</dd>
-            </div>
-          )}
-        </dl>
+      <div className="mt-6 space-y-5">
+        <FieldWrap error={errors.fullName}>
+          <label htmlFor="f-name" className="field-label">
+            Full name
+          </label>
+          <input
+            id="f-name"
+            type="text"
+            autoComplete="name"
+            placeholder="Priya Sharma"
+            value={data.fullName}
+            onChange={(e) => onChange({ fullName: e.target.value })}
+            aria-invalid={!!errors.fullName}
+            aria-describedby={errors.fullName ? "err-name" : undefined}
+            className={fieldCls(!!errors.fullName)}
+          />
+          <FieldError id="err-name" msg={errors.fullName} />
+        </FieldWrap>
 
-        <div className="mt-6 flex flex-col gap-3 border-t border-border pt-6 sm:flex-row">
-          <Button onClick={downloadIcs} variant="accent">
-            <Mail className="size-4" />
-            Add to calendar
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/">Back home</Link>
-          </Button>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <FieldWrap error={errors.email}>
+            <label htmlFor="f-email" className="field-label">
+              Email
+            </label>
+            <input
+              id="f-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={data.email}
+              onChange={(e) => onChange({ email: e.target.value })}
+              aria-invalid={!!errors.email}
+              aria-describedby={errors.email ? "err-email" : undefined}
+              className={fieldCls(!!errors.email)}
+            />
+            <FieldError id="err-email" msg={errors.email} />
+          </FieldWrap>
+
+          <FieldWrap error={errors.phone}>
+            <label htmlFor="f-phone" className="field-label">
+              Phone
+            </label>
+            <input
+              id="f-phone"
+              type="tel"
+              autoComplete="tel"
+              placeholder="(905) 555-0123"
+              value={data.phone}
+              onChange={(e) => onChange({ phone: e.target.value })}
+              aria-invalid={!!errors.phone}
+              aria-describedby={errors.phone ? "err-phone" : undefined}
+              className={fieldCls(!!errors.phone)}
+            />
+            <FieldError id="err-phone" msg={errors.phone} />
+          </FieldWrap>
         </div>
+
+        {/* Consent */}
+        <ConsentToggle
+          checked={data.consent}
+          error={!!errors.consent}
+          onChange={(v) => onChange({ consent: v })}
+        />
+        {errors.consent && (
+          <p id="err-consent" className="text-[12.5px] font-semibold text-destructive" role="alert">
+            {errors.consent}
+          </p>
+        )}
       </div>
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Consent toggle (custom checkbox to match mockup)                           */
+/* -------------------------------------------------------------------------- */
+
+function ConsentToggle({
+  checked,
+  error,
+  onChange,
+}: {
+  checked: boolean;
+  error: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-3.5 rounded-[18px] border-[1.5px] bg-background p-4 transition-colors duration-200",
+        checked ? "border-moss/60" : error ? "border-destructive" : "border-transparent",
+      )}
+    >
+      <input
+        type="checkbox"
+        className="sr-only"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-describedby="err-consent"
+      />
+      {/* Visual checkbox */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mt-0.5 grid size-6 shrink-0 place-items-center rounded-[8px] border-2 bg-white transition-all duration-300",
+          checked ? "border-moss bg-moss scale-105 -rotate-5" : "border-sage",
+        )}
+      >
+        {checked && (
+          <svg
+            viewBox="0 0 14 14"
+            className="size-3.5 stroke-white"
+            fill="none"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="2,7.5 5.5,11 12,3.5" />
+          </svg>
+        )}
+      </span>
+      <span className="text-[13.5px] text-muted-foreground">
+        It&rsquo;s okay for HomeKept to contact me about my walk-through. No spam, no third parties
+        — just scheduling.
+      </span>
+    </label>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Success screen                                                              */
+/* -------------------------------------------------------------------------- */
+
+function SuccessScreen({
+  firstName,
+  email,
+  timeOfDay,
+  weekLabel,
+}: {
+  firstName: string;
+  email: string;
+  timeOfDay: TimeOfDay;
+  weekLabel: string;
+}) {
+  const timeLabel =
+    timeOfDay === "MORNING" ? "morning" : timeOfDay === "AFTERNOON" ? "afternoon" : "evening";
+
+  return (
+    <div className="mx-auto max-w-2xl animate-reveal text-center">
+      {/* Animated check SVG */}
+      <svg
+        viewBox="0 0 110 110"
+        className="mx-auto size-[110px]"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle
+          cx="55"
+          cy="55"
+          r="50"
+          pathLength="1"
+          className="fill-moss/10 stroke-moss"
+          strokeWidth="3"
+          style={{
+            strokeDasharray: 1,
+            strokeDashoffset: 1,
+            animation: "draw 0.8s ease forwards",
+          }}
+        />
+        <polyline
+          points="34,57 49,72 78,40"
+          pathLength="1"
+          className="stroke-moss"
+          fill="none"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            strokeDasharray: 1,
+            strokeDashoffset: 1,
+            animation: "draw 0.5s ease 0.55s forwards",
+          }}
+        />
+      </svg>
+
+      <h1 className="mt-6 font-display text-[clamp(26px,4vw,32px)] font-[600] text-primary">
+        Request received, <em className="font-[480] italic text-moss">{firstName}.</em>
+      </h1>
+
+      <p className="mx-auto mt-3 max-w-[42ch] text-[15px] text-muted-foreground">
+        We&rsquo;ll email <strong className="font-medium text-foreground">{email}</strong> to
+        confirm a {timeLabel} slot during{" "}
+        <strong className="font-medium text-foreground">{weekLabel.toLowerCase()}</strong>.
+      </p>
+
+      <ul className="mx-auto mt-8 max-w-sm space-y-3 text-left" aria-label="What happens next">
+        {[
+          "We confirm your exact time within one business day.",
+          "Your technician walks the home with you — 90 minutes.",
+          "Your written maintenance plan arrives within a week.",
+        ].map((text, i) => (
+          <li
+            key={i}
+            className="flex items-start gap-3.5 text-[14px] text-foreground"
+            style={{
+              opacity: 0,
+              transform: "translateY(12px)",
+              animation: `reveal 0.5s cubic-bezier(0.2,0.8,0.2,1) ${0.9 + i * 0.15}s forwards`,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              className="grid size-6 shrink-0 place-items-center rounded-[9px] bg-honey-soft text-[12px] font-bold text-primary mt-0.5"
+            >
+              {i + 1}
+            </span>
+            {text}
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-10">
+        <Button asChild variant="default" size="lg">
+          <Link to="/">Back to home</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Field helpers                                                               */
+/* -------------------------------------------------------------------------- */
+
+function fieldCls(invalid: boolean) {
+  return cn(
+    "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
+    "placeholder:text-muted-foreground/60",
+    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(94,125,98,0.15)]",
+    invalid && "border-destructive bg-[#FDF6F3] focus:border-destructive",
+    !invalid && "border-transparent",
+  );
+}
+
+function FieldWrap({ children, error }: { children: React.ReactNode; error?: string }) {
+  return <div className={cn("space-y-1.5", error && "has-error")}>{children}</div>;
+}
+
+function FieldError({ id, msg }: { id: string; msg?: string }) {
+  if (!msg) return null;
+  return (
+    <p id={id} role="alert" className="text-[12.5px] font-semibold text-destructive">
+      {msg}
+    </p>
   );
 }

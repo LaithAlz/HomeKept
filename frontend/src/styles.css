@@ -253,6 +253,22 @@
   }
 }
 
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-9px);
+  }
+  45% {
+    transform: translateX(7px);
+  }
+  70% {
+    transform: translateX(-4px);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
@@ -307,6 +323,48 @@
 
 @utility animate-marquee {
   animation: marquee 32s linear infinite;
+}
+
+@utility animate-shake {
+  animation: shake 0.45s cubic-bezier(0.3, 0.1, 0.3, 1);
+}
+
+/* Booking wizard chip buttons */
+@utility chip {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  padding: 9px 17px;
+  cursor: pointer;
+  transition: 0.22s cubic-bezier(0.3, 1.3, 0.5, 1);
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--sage);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@utility chip-on {
+  background: var(--pine);
+  color: var(--primary-foreground);
+  transform: translateY(-2px);
+}
+
+/* Field label convention */
+@utility field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 7px;
 }
 
 /* Scroll-reveal contract used by useReveal(): hidden until .in lands. */
