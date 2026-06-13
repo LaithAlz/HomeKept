@@ -116,7 +116,15 @@ DTOs never cross above the controller boundary. Entities never cross below the s
 
 **Owns:** `property` table.
 
-**Key entity:** `Property` — id, subscriber_id, street_address, unit, city, postal_code, latitude, longitude, fsa (forward sortation area, the first 3 chars of postal code — your region key), year_built, square_footage_range, property_type, access_notes, created_at, updated_at.
+**Key entity:** `Property` — id, subscriber_id, street_address, unit, city, postal_code, latitude, longitude, fsa (forward sortation area, the first 3 chars of postal code — your region key), year_built, square_footage_range, property_type, access_notes (**encrypted at rest** — see below), sku_sheet (filter sizes/counts, detector models, humidifier model, water heater age + flush-eligible flag), created_at, updated_at.
+
+**Access-note encryption (MVP):** `access_notes` holds lockbox codes, alarm codes, and
+similar — the most sensitive data in the system. Store it encrypted at rest with
+column-level encryption (pgcrypto `pgp_sym_encrypt`, or app-layer AES-GCM with the key in
+env config, never in git). Decrypted only server-side, only when serving the assigned
+technician's day sheet on visit day. This is a `hand-write` item — security-critical, and
+the V3 properties migration must create the column as `bytea`, not text. The customer
+settings UI may truthfully state "encrypted at rest."
 
 **Why a separate domain from subscription:** because a subscriber can eventually own multiple properties (rental units, second homes), and because property facts are owned by the property, not the subscription. Don't combine them.
 
@@ -433,6 +441,11 @@ catalog
 **Timestamps:** every table has `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`. Most tables also have `updated_at` (managed by trigger or by JPA `@LastModifiedDate`). All timestamps stored UTC; rendered in `America/Toronto` at the application layer.
 
 **Soft delete:** use `archived_at TIMESTAMPTZ` (nullable) rather than `deleted_at`. "Deleted" is final-sounding; "archived" admits the reality that you'll need to un-archive things sometimes. Don't hard-delete anything except in explicit GDPR/CASL compliance flows (when a user requests data deletion).
+
+**Post-cancellation retention:** after a subscriber cancels, their visit reports, photos,
+and home file stay accessible (downloadable) to them for **90 days**, then the account is
+archived and access closes (data retained per the privacy policy until a deletion request).
+This 90-day window is the figure the cancel UI quotes; keep them in sync.
 
 **Money:** always integers in cents. Never doubles, never `BigDecimal` stored as float, never strings. `amount_cents INTEGER` everywhere.
 
