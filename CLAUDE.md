@@ -22,8 +22,16 @@ In order, as relevant to the task:
 
 Follow `.claude/skills/homekept-feature.md` for every change: branch from main
 (kebab-case, descriptive) → implement → focused commits (no AI attribution, no
-Co-Authored-By) → PR with What/Why → wait for CI → subagent review → fix blockers →
+Co-Authored-By) → PR with What/Why → wait for CI → review → fix blockers →
 squash-merge. Never `git add -A` or `git add .`.
+
+**The agent crew (`/ship issue #<n>`):** builds run through specialized subagents in
+`.claude/agents/` — `implementer` (backend) and `frontend-builder` (UI) write code;
+`spec-guardian` (every diff, read-only), `safety-reviewer` (load-bearing paths, read-only,
+adversarial), and `copy-guardian` (changed strings, read-only) review it. Builders and
+reviewers are different agents; reviewers cannot write. The loop and the human-only
+boundary (merging, hand-write artifacts, secrets, pricing) live in
+`.claude/commands/ship.md`.
 
 ## Non-negotiables
 

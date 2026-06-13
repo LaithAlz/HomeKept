@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bun run typecheck *)",
+      "Bash(npm run typecheck *)",
+      "Bash(bun run lint *)",
+      "Bash(bunx tsc *)",
+      "Bash(gh api repos/LaithAlz/HomeKept/*)",
+      "Bash(gh issue create *)",
+      "Bash(gh label create *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh run list *)",
+      "Bash(gh workflow list *)"
+    ]
+  }
+}
