@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Settings — HomeKept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..650&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+/* HOMEKEPT v2 — Settings + cancel flow (mobile-first) */
+:root{
+  --cream:#F8F5EE;--cream-2:#F0EBDF;--card:#FFFEFA;
+  --pine:#1E3A2B;--moss:#5E7D62;--sage:#A9BFAC;
+  --honey:#DE8F3F;--honey-soft:#F4D9B8;--ink:#22312A;--mut:#5C6B60;
+  --ring:rgba(30,58,43,.08);--err:#B5482F;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--cream);color:var(--ink);font-family:"Figtree",sans-serif;line-height:1.55;overflow-x:hidden}
+::selection{background:var(--honey);color:var(--pine)}
+a{color:inherit;text-decoration:none}
+ul{list-style:none}
+.glow{position:fixed;border-radius:50%;filter:blur(90px);pointer-events:none;z-index:0}
+.glow.g1{width:440px;height:440px;background:rgba(169,191,172,.35);top:-130px;right:-100px}
+.wrap{max-width:640px;margin:0 auto;padding:0 18px 80px;position:relative;z-index:1}
+.up{opacity:0;transform:translateY(22px);animation:up .7s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:var(--d,0s)}
+@keyframes up{to{opacity:1;transform:none}}
+.top{padding:22px 0 8px;display:flex;align-items:center;justify-content:space-between}
+.back{font-size:14px;font-weight:600;color:var(--mut)}
+.back:hover{color:var(--pine)}
+h1{font-family:"Fraunces",serif;font-size:clamp(28px,7vw,36px);font-weight:560;letter-spacing:-.015em;color:var(--pine);margin-top:12px}
+h1 em{font-style:italic;font-weight:480;color:var(--moss)}
+
+.card{background:var(--card);border:1px solid var(--ring);border-radius:24px;padding:22px;margin-top:18px}
+.card h2{font-family:"Fraunces",serif;font-size:18px;font-weight:600;color:var(--pine);display:flex;justify-content:space-between;align-items:center}
+.card h2 .edit{font-family:"Figtree",sans-serif;font-size:12.5px;font-weight:700;color:var(--mut);border:1.5px solid var(--ring);border-radius:999px;padding:5px 13px;cursor:pointer;background:none}
+.card h2 .edit:hover{color:var(--pine);border-color:var(--pine)}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--ring);font-size:14px}
+.kv:last-of-type{border-bottom:0}
+.kv .k{color:var(--mut)}
+.kv .v{font-weight:600;color:var(--pine);text-align:right}
+.kv .v small{display:block;font-weight:500;color:var(--mut);font-size:12px}
+.lockchip{display:inline-flex;align-items:center;gap:6px;background:var(--cream-2);border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:700;color:var(--mut)}
+.note{font-size:12.5px;color:var(--mut);margin-top:12px;line-height:1.6}
+.note b{color:var(--pine)}
+
+.toggleline{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--ring);font-size:14px}
+.toggleline:last-of-type{border-bottom:0}
+.sw{width:46px;height:26px;border-radius:99px;background:var(--cream-2);position:relative;cursor:pointer;border:0;transition:.25s;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(30,58,43,.25);transition:.25s}
+.sw.on{background:var(--moss)}
+.sw.on::after{left:23px}
+
+.danger{border-color:rgba(181,72,47,.25)}
+.danger h2{color:var(--err)}
+.dbtns{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:700;font-size:13.5px;padding:11px 18px;border-radius:999px;cursor:pointer;border:1.5px solid var(--ring);background:none;color:var(--pine);transition:.2s}
+.btn:hover{border-color:var(--pine);transform:translateY(-1px)}
+.btn.warn{color:var(--err);border-color:rgba(181,72,47,.35)}
+.btn.warn:hover{border-color:var(--err)}
+
+/* cancel modal */
+.scrim{position:fixed;inset:0;z-index:60;background:rgba(30,58,43,.4);backdrop-filter:blur(3px);display:none;align-items:flex-end;justify-content:center}
+@media(min-width:560px){.scrim{align-items:center}}
+.scrim.on{display:flex}
+.sheet{background:var(--card);border-radius:28px 28px 0 0;width:min(540px,100%);padding:28px 24px calc(28px + env(safe-area-inset-bottom));animation:sheetup .45s cubic-bezier(.2,.8,.2,1)}
+@media(min-width:560px){.sheet{border-radius:28px}}
+@keyframes sheetup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet h3{font-family:"Fraunces",serif;font-size:23px;font-weight:600;color:var(--pine);line-height:1.15}
+.sheet h3 em{font-style:italic;font-weight:480;color:var(--moss)}
+.sheet .p{font-size:14px;color:var(--mut);margin-top:8px}
+.reasons{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.reason{display:flex;align-items:center;gap:12px;font:inherit;font-size:14px;text-align:left;background:var(--cream);border:1.5px solid transparent;border-radius:15px;padding:12px 14px;cursor:pointer;transition:.2s;color:var(--ink)}
+.reason:hover{border-color:var(--sage)}
+.reason.on{border-color:var(--pine);background:#F4F7F2}
+.reason .rad{width:20px;height:20px;border-radius:50%;border:2px solid var(--sage);flex:none;display:grid;place-items:center}
+.reason.on .rad::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--pine)}
+.sheet textarea{width:100%;font:inherit;font-size:14px;background:var(--cream);border:1.5px solid transparent;border-radius:15px;padding:12px 14px;margin-top:10px;outline:none;min-height:64px;resize:vertical}
+.sheet textarea:focus{background:#fff;border-color:var(--moss)}
+.savebanner{display:flex;align-items:center;gap:11px;background:var(--honey-soft);border-radius:15px;padding:12px 14px;font-size:13.5px;margin-top:14px}
+.savebanner b{color:#8a5a1e}
+.sheetbtns{display:flex;gap:10px;margin-top:18px}
+.sb{flex:1;font:inherit;font-weight:700;font-size:14px;padding:13px;border-radius:999px;border:0;cursor:pointer;transition:.2s}
+.sb.keep{background:var(--pine);color:var(--cream)}
+.sb.keep:hover{transform:translateY(-1px)}
+.sb.go{background:none;border:1.5px solid rgba(181,72,47,.35);color:var(--err)}
+.sb.go:hover{border-color:var(--err)}
+.sheet .fine{font-size:11.5px;color:var(--mut);margin-top:12px;text-align:center}
+@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+<div class="glow g1"></div>
+
+<div class="wrap">
+  <div class="top up"><a class="back" href="dashboard.html">← Your home</a></div>
+  <h1 class="up" style="--d:.05s">Settings &amp; <em>your home's file.</em></h1>
+
+  <!-- membership -->
+  <section class="card up" style="--d:.1s">
+    <h2>Membership <button class="edit">Manage billing</button></h2>
+    <div class="kv"><span class="k">Plan</span><span class="v">Complete · $149/mo<small>member since Jan 2026 · picks reset Jan 14</small></span></div>
+    <div class="kv"><span class="k">Payment</span><span class="v">Visa •• 4321<small>next invoice Jul 1 · via Stripe</small></span></div>
+  </section>
+
+  <!-- home file -->
+  <section class="card up" style="--d:.15s">
+    <h2>Your home's file <button class="edit">Edit</button></h2>
+    <div class="kv"><span class="k">Address</span><span class="v">14 Maple Ridge Crt<small>Erin Mills · Mississauga · L5L 1A1</small></span></div>
+    <div class="kv"><span class="k">Furnace filters</span><span class="v">2× 16×25×1 · MERV 11<small>we bring them — never think about it</small></span></div>
+    <div class="kv"><span class="k">Water heater</span><span class="v">Gas tank · 2019<small>flush-eligible ✓</small></span></div>
+    <div class="kv"><span class="k">Detectors</span><span class="v">4 units · battery type 9V</span></div>
+    <div class="kv"><span class="k">Access</span><span class="v"><span class="lockchip">🔒 encrypted</span><small>lockbox code · dog (friendly) in yard</small></span></div>
+    <p class="note">This is the file your technician reads before every visit. Access notes are <b>encrypted at rest</b> and visible only to your assigned technician on visit day.</p>
+  </section>
+
+  <!-- notifications -->
+  <section class="card up" style="--d:.2s">
+    <h2>Notifications</h2>
+    <div class="toggleline"><span>Visit reminders (24h before)</span><button class="sw on" role="switch" aria-checked="true" aria-label="Visit reminders"></button></div>
+    <div class="toggleline"><span>Photo report when a visit completes</span><button class="sw on" role="switch" aria-checked="true" aria-label="Report notifications"></button></div>
+    <div class="toggleline"><span>Monthly seasonal tips</span><button class="sw on" role="switch" aria-checked="true" aria-label="Seasonal tips"></button></div>
+  </section>
+
+  <!-- danger zone -->
+  <section class="card danger up" style="--d:.25s">
+    <h2>Pause or leave</h2>
+    <p class="note" style="margin-top:6px">Pausing keeps your home's file and your technician; visits and billing stop until you're back. Cancelling is immediate at period end — no calls, no retention scripts.</p>
+    <div class="dbtns">
+      <button class="btn">Pause membership</button>
+      <button class="btn warn" id="cancelbtn">Cancel membership</button>
+    </div>
+  </section>
+</div>
+
+<!-- cancel sheet -->
+<div class="scrim" id="scrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ctitle">
+    <h3 id="ctitle">Before you go — <em>one question.</em></h3>
+    <p class="p">What's the main reason? (This genuinely shapes what we fix.)</p>
+    <div class="reasons" id="reasons">
+      <button class="reason"><span class="rad"></span>Too expensive for what I use</button>
+      <button class="reason"><span class="rad"></span>Moving house</button>
+      <button class="reason"><span class="rad"></span>I'll handle maintenance myself</button>
+      <button class="reason"><span class="rad"></span>Service didn't meet expectations</button>
+      <button class="reason"><span class="rad"></span>Something else</button>
+    </div>
+    <textarea placeholder="Anything you want us to know (optional)"></textarea>
+    <div class="savebanner" id="saveoffer" hidden><b>Would pausing work instead?</b>&nbsp;Keep your home's file and technician — $0 until you resume.</div>
+    <div class="sheetbtns">
+      <button class="sb keep" id="keep">Keep my membership</button>
+      <button class="sb go" id="confirmcancel" disabled>Cancel at period end</button>
+    </div>
+    <p class="fine">Cancelling stops billing at the end of your current period (Jun 30). Your reports and home file stay downloadable for 90 days.</p>
+  </div>
+</div>
+
+<script>
+const scrim = document.getElementById('scrim');
+document.getElementById('cancelbtn').addEventListener('click', () => scrim.classList.add('on'));
+document.getElementById('keep').addEventListener('click', () => scrim.classList.remove('on'));
+
+const reasons = [...document.querySelectorAll('.reason')];
+const confirmBtn = document.getElementById('confirmcancel');
+reasons.forEach(r => r.addEventListener('click', () => {
+  reasons.forEach(x => x.classList.toggle('on', x === r));
+  confirmBtn.disabled = false;
+  /* the save offer appears only for price/DIY reasons — an offer, not an obstacle */
+  const t = r.textContent;
+  document.getElementById('saveoffer').hidden = !(t.includes('expensive') || t.includes('myself'));
+}));
+confirmBtn.addEventListener('click', () => {
+  confirmBtn.textContent = '✓ Cancelled — until Jun 30';
+  confirmBtn.disabled = true;
+});
+
+document.querySelectorAll('.sw').forEach(sw => sw.addEventListener('click', () => {
+  sw.classList.toggle('on');
+  sw.setAttribute('aria-checked', sw.classList.contains('on'));
+}));
+</script>
+</body>
+</html>
