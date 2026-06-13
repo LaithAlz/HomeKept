@@ -76,7 +76,8 @@ and leaves out of your gutters; Premier is a house manager.*
 | Detector battery sweep | Toilet internals refresh | |
 
 Picks fold into scheduled visits where possible. Beyond allowance = à la carte
-(`EXTRA` visit type). Service catalog gains `tier_class` (BASIC/MEDIUM/PREMIUM).
+(`EXTRA` visit type). Service catalog gains `tier_class` (BASIC/MEDIUM/PREMIUM). The
+included-picks allowance resets on the subscription anniversary, not the calendar year.
 
 ## Scope & safety rails
 
