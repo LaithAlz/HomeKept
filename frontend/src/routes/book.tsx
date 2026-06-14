@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
+import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 
 export const Route = createFileRoute("/book")({
   head: () => ({
@@ -13,7 +14,20 @@ export const Route = createFileRoute("/book")({
         content:
           "Book a free 90-minute walk-through. We assess your home and build a custom maintenance plan.",
       },
+      {
+        property: "og:title",
+        content: "Book a free home walk-through — HomeKept",
+      },
+      {
+        property: "og:description",
+        content:
+          "90 minutes, no obligation. We assess every system and send a written maintenance plan within a week.",
+      },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: `${BASE_URL}/book` },
+      { property: "og:image", content: OG_IMAGE_DEFAULT },
     ],
+    links: [{ rel: "canonical", href: canonicalUrl("/book") }],
   }),
   component: BookPage,
 });

@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { Check, Minus, Star } from "lucide-react";
@@ -25,10 +26,13 @@ export const Route = createFileRoute("/plans")({
       { property: "og:title", content: "HomeKept Plans — Essential, Complete, Premier" },
       {
         property: "og:description",
-        content:
-          "Pick the level of proactive home maintenance that fits your home. Pause anytime.",
+        content: "Pick the level of proactive home maintenance that fits your home. Pause anytime.",
       },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: `${BASE_URL}/plans` },
+      { property: "og:image", content: OG_IMAGE_DEFAULT },
     ],
+    links: [{ rel: "canonical", href: canonicalUrl("/plans") }],
   }),
   component: PlansPage,
 });
@@ -213,8 +217,8 @@ function PlansPage() {
               Your whole home, looked after.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground md:text-lg">
-              Pick the level of care that fits your home. Every plan is month-to-month,
-              pausable, and cancellable in two clicks. All prices in Canadian dollars.
+              Pick the level of care that fits your home. Every plan is month-to-month, pausable,
+              and cancellable in two clicks. All prices in Canadian dollars.
             </p>
 
             <BillingToggle billing={billing} setBilling={setBilling} savings={annualSavings} />
@@ -242,9 +246,7 @@ function PlansPage() {
         <section className="border-t border-border bg-surface/40">
           <div className="mx-auto max-w-7xl px-6 py-20">
             <div className="mx-auto max-w-3xl text-center">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent">
-                Compare
-              </p>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-accent">Compare</p>
               <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight md:text-5xl">
                 Every feature, side by side.
               </h2>
@@ -278,9 +280,7 @@ function PlansPage() {
           <dl className="mt-12 divide-y divide-border rounded-3xl border border-border bg-card">
             {faqs.map((f) => (
               <div key={f.q} className="p-6 md:p-8">
-                <dt className="font-display text-lg font-bold text-foreground md:text-xl">
-                  {f.q}
-                </dt>
+                <dt className="font-display text-lg font-bold text-foreground md:text-xl">{f.q}</dt>
                 <dd className="mt-2 text-muted-foreground">{f.a}</dd>
               </div>
             ))}
@@ -294,8 +294,8 @@ function PlansPage() {
               Not ready to subscribe?
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-base text-primary-foreground/80 md:text-lg">
-              Start with a free 90-minute walk-through. We'll assess your home and email a
-              custom maintenance plan the next day — no obligation.
+              Start with a free 90-minute walk-through. We'll assess your home and email a custom
+              maintenance plan the next day — no obligation.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button asChild size="xl" variant="accent">
@@ -364,8 +364,8 @@ function BillingToggle({
         </button>
       </div>
       <p className="text-xs font-medium text-muted-foreground">
-        Annual saves about{" "}
-        <span className="font-bold text-accent">{savings}%</span> — roughly two months free.
+        Annual saves about <span className="font-bold text-accent">{savings}%</span> — roughly two
+        months free.
       </p>
     </div>
   );
@@ -417,12 +417,7 @@ function PlanCard({
           : `Billed annually · ${formatCAD(tier.annual * 12)}/yr`}
       </p>
 
-      <Button
-        asChild
-        size="lg"
-        variant={isFeatured ? "accent" : "default"}
-        className="mt-6 w-full"
-      >
+      <Button asChild size="lg" variant={isFeatured ? "accent" : "default"} className="mt-6 w-full">
         <Link to="/checkout" search={{ plan: tier.id }}>
           Choose {tier.name}
         </Link>
@@ -462,14 +457,7 @@ function ComparisonTable({
               const price = billing === "monthly" ? t.monthly : t.annual;
               const isHi = highlightedTier === t.id;
               return (
-                <th
-                  key={t.id}
-                  scope="col"
-                  className={cn(
-                    "p-6 align-top",
-                    isHi && "bg-accent/10",
-                  )}
-                >
+                <th key={t.id} scope="col" className={cn("p-6 align-top", isHi && "bg-accent/10")}>
                   <div className="flex flex-col">
                     <span className="font-display text-xl font-extrabold tracking-tight text-foreground">
                       {t.name}
@@ -498,10 +486,7 @@ function ComparisonTable({
               </tr>
               {g.rows.map((r) => (
                 <tr key={`${g.name}-${r.label}`} className="border-t border-border">
-                  <th
-                    scope="row"
-                    className="p-4 text-sm font-medium text-foreground/90"
-                  >
+                  <th scope="row" className="p-4 text-sm font-medium text-foreground/90">
                     {r.label}
                   </th>
                   {r.values.map((v, i) => (

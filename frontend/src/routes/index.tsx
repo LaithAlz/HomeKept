@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { BASE_URL, OG_IMAGE_DEFAULT, buildLocalBusinessSchema, canonicalUrl } from "@/lib/seo";
 import {
   ArrowRight,
   Bell,
@@ -36,7 +37,12 @@ export const Route = createFileRoute("/")({
         content:
           "Vetted technicians, scheduled visits, photo reports. Book a free 90-minute walk-through.",
       },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: BASE_URL },
+      { property: "og:image", content: OG_IMAGE_DEFAULT },
+      { "script:ld+json": buildLocalBusinessSchema() },
     ],
+    links: [{ rel: "canonical", href: canonicalUrl("/") }],
   }),
   component: LandingPage,
 });
