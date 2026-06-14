@@ -254,7 +254,7 @@ function LearnArticlePage() {
               <Link
                 to="/learn/$slug"
                 params={{ slug: prevArticle.slug }}
-                className="group flex max-w-[45%] flex-col gap-1 text-left"
+                className="group flex min-h-[44px] max-w-[45%] flex-col justify-center gap-1 text-left"
               >
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   <ArrowLeft
@@ -274,7 +274,7 @@ function LearnArticlePage() {
               <Link
                 to="/learn/$slug"
                 params={{ slug: nextArticle.slug }}
-                className="group flex max-w-[45%] flex-col items-end gap-1 text-right"
+                className="group flex min-h-[44px] max-w-[45%] flex-col items-end justify-center gap-1 text-right"
               >
                 <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Next

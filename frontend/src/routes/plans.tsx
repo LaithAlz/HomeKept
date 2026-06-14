@@ -340,7 +340,7 @@ function BillingToggle({
           aria-checked={billing === "monthly"}
           onClick={() => setBilling("monthly")}
           className={cn(
-            "rounded-full px-5 py-2 text-sm font-semibold transition-colors",
+            "rounded-full px-5 py-3 text-sm font-semibold transition-colors",
             billing === "monthly"
               ? "bg-primary text-primary-foreground shadow"
               : "text-foreground/70 hover:text-foreground",
@@ -354,7 +354,7 @@ function BillingToggle({
           aria-checked={billing === "annual"}
           onClick={() => setBilling("annual")}
           className={cn(
-            "rounded-full px-5 py-2 text-sm font-semibold transition-colors",
+            "rounded-full px-5 py-3 text-sm font-semibold transition-colors",
             billing === "annual"
               ? "bg-primary text-primary-foreground shadow"
               : "text-foreground/70 hover:text-foreground",
