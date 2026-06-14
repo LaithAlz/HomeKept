@@ -12,6 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TechRouteImport } from './routes/tech'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as PlansRouteImport } from './routes/plans'
+import { Route as OakvilleRouteImport } from './routes/oakville'
+import { Route as MississaugaRouteImport } from './routes/mississauga'
+import { Route as MiltonRouteImport } from './routes/milton'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BookRouteImport } from './routes/book'
@@ -20,6 +23,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as LearnSlugRouteImport } from './routes/learn.$slug'
 import { Route as AppVisitsRouteImport } from './routes/app.visits'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
@@ -49,6 +53,21 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const PlansRoute = PlansRouteImport.update({
   id: '/plans',
   path: '/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OakvilleRoute = OakvilleRouteImport.update({
+  id: '/oakville',
+  path: '/oakville',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MississaugaRoute = MississaugaRouteImport.update({
+  id: '/mississauga',
+  path: '/mississauga',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MiltonRoute = MiltonRouteImport.update({
+  id: '/milton',
+  path: '/milton',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignSystemRoute = DesignSystemRouteImport.update({
@@ -90,6 +109,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const LearnSlugRoute = LearnSlugRouteImport.update({
+  id: '/learn/$slug',
+  path: '/learn/$slug',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppVisitsRoute = AppVisitsRouteImport.update({
   id: '/visits',
@@ -174,6 +198,9 @@ export interface FileRoutesByFullPath {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/milton': typeof MiltonRoute
+  '/mississauga': typeof MississaugaRoute
+  '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -192,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
 }
@@ -200,6 +228,9 @@ export interface FileRoutesByTo {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/milton': typeof MiltonRoute
+  '/mississauga': typeof MississaugaRoute
+  '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -218,6 +249,7 @@ export interface FileRoutesByTo {
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
 }
@@ -229,6 +261,9 @@ export interface FileRoutesById {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/milton': typeof MiltonRoute
+  '/mississauga': typeof MississaugaRoute
+  '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -247,6 +282,7 @@ export interface FileRoutesById {
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRoute
+  '/learn/$slug': typeof LearnSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
 }
@@ -259,6 +295,9 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/milton'
+    | '/mississauga'
+    | '/oakville'
     | '/plans'
     | '/sitemap.xml'
     | '/tech'
@@ -277,6 +316,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
+    | '/learn/$slug'
     | '/admin/'
     | '/app/'
   fileRoutesByTo: FileRoutesByTo
@@ -285,6 +325,9 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/milton'
+    | '/mississauga'
+    | '/oakville'
     | '/plans'
     | '/sitemap.xml'
     | '/tech'
@@ -303,6 +346,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
+    | '/learn/$slug'
     | '/admin'
     | '/app'
   id:
@@ -313,6 +357,9 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/milton'
+    | '/mississauga'
+    | '/oakville'
     | '/plans'
     | '/sitemap.xml'
     | '/tech'
@@ -331,6 +378,7 @@ export interface FileRouteTypes {
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
+    | '/learn/$slug'
     | '/admin/'
     | '/app/'
   fileRoutesById: FileRoutesById
@@ -342,9 +390,13 @@ export interface RootRouteChildren {
   BookRoute: typeof BookRoute
   CheckoutRoute: typeof CheckoutRoute
   DesignSystemRoute: typeof DesignSystemRoute
+  MiltonRoute: typeof MiltonRoute
+  MississaugaRoute: typeof MississaugaRoute
+  OakvilleRoute: typeof OakvilleRoute
   PlansRoute: typeof PlansRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TechRoute: typeof TechRoute
+  LearnSlugRoute: typeof LearnSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -368,6 +420,27 @@ declare module '@tanstack/react-router' {
       path: '/plans'
       fullPath: '/plans'
       preLoaderRoute: typeof PlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oakville': {
+      id: '/oakville'
+      path: '/oakville'
+      fullPath: '/oakville'
+      preLoaderRoute: typeof OakvilleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mississauga': {
+      id: '/mississauga'
+      path: '/mississauga'
+      fullPath: '/mississauga'
+      preLoaderRoute: typeof MississaugaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/milton': {
+      id: '/milton'
+      path: '/milton'
+      fullPath: '/milton'
+      preLoaderRoute: typeof MiltonRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design-system': {
@@ -425,6 +498,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/learn/$slug': {
+      id: '/learn/$slug'
+      path: '/learn/$slug'
+      fullPath: '/learn/$slug'
+      preLoaderRoute: typeof LearnSlugRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/app/visits': {
       id: '/app/visits'
@@ -591,10 +671,24 @@ const rootRouteChildren: RootRouteChildren = {
   BookRoute: BookRoute,
   CheckoutRoute: CheckoutRoute,
   DesignSystemRoute: DesignSystemRoute,
+  MiltonRoute: MiltonRoute,
+  MississaugaRoute: MississaugaRoute,
+  OakvilleRoute: OakvilleRoute,
   PlansRoute: PlansRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TechRoute: TechRoute,
+  LearnSlugRoute: LearnSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
