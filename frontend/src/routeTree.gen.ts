@@ -9,8 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TechRouteImport } from './routes/tech'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PlansRouteImport } from './routes/plans'
 import { Route as OakvilleRouteImport } from './routes/oakville'
 import { Route as MississaugaRouteImport } from './routes/mississauga'
@@ -40,6 +42,11 @@ import { Route as AdminMetricsRouteImport } from './routes/admin.metrics'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminCatalogRouteImport } from './routes/admin.catalog'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TechRoute = TechRouteImport.update({
   id: '/tech',
   path: '/tech',
@@ -48,6 +55,11 @@ const TechRoute = TechRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlansRoute = PlansRouteImport.update({
@@ -202,8 +214,10 @@ export interface FileRoutesByFullPath {
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
+  '/terms': typeof TermsRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/metrics': typeof AdminMetricsRoute
@@ -232,8 +246,10 @@ export interface FileRoutesByTo {
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
+  '/terms': typeof TermsRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/metrics': typeof AdminMetricsRoute
@@ -265,8 +281,10 @@ export interface FileRoutesById {
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
+  '/privacy': typeof PrivacyRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
+  '/terms': typeof TermsRoute
   '/admin/catalog': typeof AdminCatalogRoute
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/metrics': typeof AdminMetricsRoute
@@ -299,8 +317,10 @@ export interface FileRouteTypes {
     | '/mississauga'
     | '/oakville'
     | '/plans'
+    | '/privacy'
     | '/sitemap.xml'
     | '/tech'
+    | '/terms'
     | '/admin/catalog'
     | '/admin/leads'
     | '/admin/metrics'
@@ -329,8 +349,10 @@ export interface FileRouteTypes {
     | '/mississauga'
     | '/oakville'
     | '/plans'
+    | '/privacy'
     | '/sitemap.xml'
     | '/tech'
+    | '/terms'
     | '/admin/catalog'
     | '/admin/leads'
     | '/admin/metrics'
@@ -361,8 +383,10 @@ export interface FileRouteTypes {
     | '/mississauga'
     | '/oakville'
     | '/plans'
+    | '/privacy'
     | '/sitemap.xml'
     | '/tech'
+    | '/terms'
     | '/admin/catalog'
     | '/admin/leads'
     | '/admin/metrics'
@@ -394,13 +418,22 @@ export interface RootRouteChildren {
   MississaugaRoute: typeof MississaugaRoute
   OakvilleRoute: typeof OakvilleRoute
   PlansRoute: typeof PlansRoute
+  PrivacyRoute: typeof PrivacyRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TechRoute: typeof TechRoute
+  TermsRoute: typeof TermsRoute
   LearnSlugRoute: typeof LearnSlugRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/tech': {
       id: '/tech'
       path: '/tech'
@@ -413,6 +446,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/plans': {
@@ -675,8 +715,10 @@ const rootRouteChildren: RootRouteChildren = {
   MississaugaRoute: MississaugaRoute,
   OakvilleRoute: OakvilleRoute,
   PlansRoute: PlansRoute,
+  PrivacyRoute: PrivacyRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TechRoute: TechRoute,
+  TermsRoute: TermsRoute,
   LearnSlugRoute: LearnSlugRoute,
 }
 export const routeTree = rootRouteImport
