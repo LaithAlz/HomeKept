@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { ShieldCheck } from "lucide-react";
 
@@ -33,17 +34,20 @@ export function SiteFooter() {
             </h4>
             <ul className="mt-4 space-y-2 text-sm">
               <li>
-                <a href="/privacy" className="text-muted-foreground hover:text-accent">
+                <Link to="/privacy" className="text-muted-foreground hover:text-accent">
                   Privacy
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/terms" className="text-muted-foreground hover:text-accent">
+                <Link to="/terms" className="text-muted-foreground hover:text-accent">
                   Terms
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="mailto:hello@homekept.ca" className="text-muted-foreground hover:text-accent">
+                <a
+                  href="mailto:hello@homekept.ca"
+                  className="text-muted-foreground hover:text-accent"
+                >
                   hello@homekept.ca
                 </a>
               </li>
