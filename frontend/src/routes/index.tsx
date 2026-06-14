@@ -115,7 +115,7 @@ function Hero() {
             Serving Oakville · Mississauga · Milton
           </div>
 
-          <h1 className="mt-7 font-display text-[clamp(46px,5.8vw,82px)] font-[560] leading-[1.04] tracking-[-0.025em] text-primary">
+          <h1 className="mt-7 font-display text-[clamp(34px,5.8vw,82px)] font-[560] leading-[1.04] tracking-[-0.025em] text-primary">
             <span className="block overflow-hidden">
               <span className="block animate-rise">Home maintenance</span>
             </span>
@@ -281,7 +281,7 @@ function SectionHead({
         <span className="h-0.5 w-7 rounded-full bg-accent" aria-hidden="true" />
         {eyebrow}
       </p>
-      <h2 className="mt-4 font-display text-[clamp(34px,4.2vw,56px)] font-[560] leading-[1.08] tracking-[-0.02em] text-primary">
+      <h2 className="mt-4 font-display text-[clamp(28px,4.2vw,56px)] font-[560] leading-[1.08] tracking-[-0.02em] text-primary">
         {children}
       </h2>
     </header>
@@ -676,7 +676,7 @@ function HealthScorePanel() {
               <span className="h-0.5 w-7 rounded-full bg-accent" aria-hidden="true" />
               Always-on insight
             </p>
-            <h2 className="mt-4 font-display text-[clamp(34px,4.2vw,56px)] font-[560] leading-[1.08] tracking-[-0.02em]">
+            <h2 className="mt-4 font-display text-[clamp(28px,4.2vw,56px)] font-[560] leading-[1.08] tracking-[-0.02em]">
               Every home gets a <em className="font-[480] italic text-sage">health score.</em>
             </h2>
             <p className="mt-4 max-w-[54ch] leading-relaxed text-sage">
@@ -783,7 +783,7 @@ function FinalCTA() {
           className="absolute -right-16 -top-24 size-72 animate-drift rounded-full bg-sage/25 blur-[60px] [animation-direction:alternate-reverse]"
         />
         <div className="relative">
-          <h2 className="font-display text-[clamp(38px,4.8vw,66px)] font-[560] leading-[1.06] tracking-[-0.02em]">
+          <h2 className="font-display text-[clamp(30px,4.8vw,66px)] font-[560] leading-[1.06] tracking-[-0.02em]">
             Let's walk your <em className="font-[480] italic text-honey-soft">home together.</em>
           </h2>
           <p className="mx-auto mt-5 max-w-[46ch] leading-relaxed text-sage">
