@@ -41,6 +41,7 @@ import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminMetricsRouteImport } from './routes/admin.metrics'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminCatalogRouteImport } from './routes/admin.catalog'
+import { Route as AppVisitsIdRouteImport } from './routes/app.visits.$id'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -202,6 +203,11 @@ const AdminCatalogRoute = AdminCatalogRouteImport.update({
   path: '/catalog',
   getParentRoute: () => AdminRoute,
 } as any)
+const AppVisitsIdRoute = AppVisitsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AppVisitsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -232,10 +238,11 @@ export interface FileRoutesByFullPath {
   '/app/health': typeof AppHealthRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
-  '/app/visits': typeof AppVisitsRoute
+  '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/app/visits/$id': typeof AppVisitsIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -264,10 +271,11 @@ export interface FileRoutesByTo {
   '/app/health': typeof AppHealthRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
-  '/app/visits': typeof AppVisitsRoute
+  '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/app/visits/$id': typeof AppVisitsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -299,10 +307,11 @@ export interface FileRoutesById {
   '/app/health': typeof AppHealthRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
-  '/app/visits': typeof AppVisitsRoute
+  '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/app/visits/$id': typeof AppVisitsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -339,6 +348,7 @@ export interface FileRouteTypes {
     | '/learn/$slug'
     | '/admin/'
     | '/app/'
+    | '/app/visits/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -371,6 +381,7 @@ export interface FileRouteTypes {
     | '/learn/$slug'
     | '/admin'
     | '/app'
+    | '/app/visits/$id'
   id:
     | '__root__'
     | '/'
@@ -405,6 +416,7 @@ export interface FileRouteTypes {
     | '/learn/$slug'
     | '/admin/'
     | '/app/'
+    | '/app/visits/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -651,6 +663,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCatalogRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/app/visits/$id': {
+      id: '/app/visits/$id'
+      path: '/$id'
+      fullPath: '/app/visits/$id'
+      preLoaderRoute: typeof AppVisitsIdRouteImport
+      parentRoute: typeof AppVisitsRoute
+    }
   }
 }
 
@@ -684,12 +703,24 @@ const AdminRouteChildren: AdminRouteChildren = {
 
 const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
+interface AppVisitsRouteChildren {
+  AppVisitsIdRoute: typeof AppVisitsIdRoute
+}
+
+const AppVisitsRouteChildren: AppVisitsRouteChildren = {
+  AppVisitsIdRoute: AppVisitsIdRoute,
+}
+
+const AppVisitsRouteWithChildren = AppVisitsRoute._addFileChildren(
+  AppVisitsRouteChildren,
+)
+
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
   AppHealthRoute: typeof AppHealthRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
-  AppVisitsRoute: typeof AppVisitsRoute
+  AppVisitsRoute: typeof AppVisitsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
 }
 
@@ -698,7 +729,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppHealthRoute: AppHealthRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
-  AppVisitsRoute: AppVisitsRoute,
+  AppVisitsRoute: AppVisitsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
 }
 
