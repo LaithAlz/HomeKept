@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: HomeKept
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/homekept}
+    username: ${DB_USERNAME:homekept}
+    password: ${DB_PASSWORD:homekept}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  # Honor X-Forwarded-Proto from the TLS-terminating proxy (Render/Cloudflare) so that
+  # HttpServletRequest.isSecure() returns true in production even though the app sees HTTP.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# Application-level configuration
+app:
+  timezone: ${APP_TIMEZONE:America/Toronto}
+  # Belt-and-suspenders: set APP_SECURE_COOKIES=true in prod.
+  # forward-headers-strategy above makes isSecure() true behind the TLS proxy as well.
+  secure-cookies: ${APP_SECURE_COOKIES:false}
+  # Set APP_DEV_MODE=true only in local development. NEVER in production.
+  # When false (default), the app refuses to start if JWT_SIGNING_KEY is blank,
+  # shorter than 32 bytes, or equals the well-known dev sentinel.
+  dev-mode: ${APP_DEV_MODE:false}
+  cors:
+    allowed-origins:
+      - ${CORS_ALLOWED_ORIGIN_1:http://localhost:5173}
+      - ${CORS_ALLOWED_ORIGIN_2:http://localhost:4173}
+  jwt:
+    # DEV SENTINEL — clearly labelled, ≥32 bytes so the length check passes in dev-mode.
+    # The startup guard in JwtService rejects this key when dev-mode=false (the default).
+    signing-key: ${JWT_SIGNING_KEY:dev-sentinel-key-do-not-use-in-production-replace-me!!}
+    access-token-expiry-seconds: 900      # 15 minutes
+    refresh-token-expiry-seconds: 604800  # 7 days
+  # Reserved for future property access-notes column-level encryption (V3 migration)
+  encryption:
+    access-notes-key: ${ACCESS_NOTES_ENC_KEY:}
+  # Admin seed: when both are set and no user with that email exists, an ADMIN user
+  # is created on startup (idempotent). See AdminSeeder. Never commit real values.
+  admin-seed:
+    email: ${ADMIN_SEED_EMAIL:}
+    password: ${ADMIN_SEED_PASSWORD:}
