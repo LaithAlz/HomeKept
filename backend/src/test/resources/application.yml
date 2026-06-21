@@ -1,0 +1,37 @@
+# Test configuration — Testcontainers overrides the datasource URL via @ServiceConnection
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  timezone: America/Toronto
+  # Tests run with dev-mode=false (the prod-like default) so the startup guard in
+  # JwtService exercises the prod code path. The signing key below is a real
+  # non-sentinel ≥32-byte value so the guard passes.
+  dev-mode: false
+  secure-cookies: false
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+  jwt:
+    # Placeholder, ≥32 bytes — not a real secret; only needs to be non-blank and
+    # long enough to pass the JwtService startup guard in prod mode (dev-mode=false).
+    signing-key: "test-only-not-a-real-signing-key-placeholder-xx"
+    access-token-expiry-seconds: 900
+    refresh-token-expiry-seconds: 604800
+  encryption:
+    access-notes-key: ""
+  admin-seed:
+    email: "seed-admin@test.local"
+    # Placeholder test password — AdminSeeder only needs a non-blank value here.
+    password: "test-only-placeholder-admin-pw"
