@@ -1,5 +1,9 @@
 package com.homekept.common;
 
+import com.homekept.booking.exception.BookingNotFoundException;
+import com.homekept.booking.exception.IllegalBookingTransitionException;
+import com.homekept.booking.exception.InvalidBookingRequestException;
+import org.springframework.security.access.AccessDeniedException;
 import com.homekept.identity.exception.AuthenticationException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
@@ -74,6 +78,51 @@ public class GlobalExceptionHandler {
                                                      HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorEnvelope.of("TOKEN_INVALID", "Session expired or invalid. Please log in again.", requestId(request)));
+    }
+
+    /** Booking not found (or not accessible) — 404 per ownership-failure rule. */
+    @ExceptionHandler(BookingNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleBookingNotFound(BookingNotFoundException ex,
+                                                               HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Booking not found", requestId(request)));
+    }
+
+    /** Illegal state machine transition — 409 Conflict per api-contract.md. */
+    @ExceptionHandler(IllegalBookingTransitionException.class)
+    public ResponseEntity<ErrorEnvelope> handleIllegalTransition(IllegalBookingTransitionException ex,
+                                                                  HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
+                        "Booking status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
+                        requestId(request)));
+    }
+
+    /**
+     * Curated booking validation failure — invalid enum values, squareFootageRange, etc.
+     * The message on {@link InvalidBookingRequestException} is safe to return verbatim
+     * (it is set by the service using only whitelisted, pre-canned strings).
+     */
+    @ExceptionHandler(InvalidBookingRequestException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidBookingRequest(InvalidBookingRequestException ex,
+                                                                      HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
+    }
+
+    /**
+     * Authenticated-but-insufficient-role denial from method security
+     * ({@code @PreAuthorize}) → 403. Without this explicit handler the catch-all below
+     * would swallow the {@link AccessDeniedException} ({@code AuthorizationDeniedException}
+     * extends it) thrown inside the controller and return 500 instead of 403. Anonymous
+     * (unauthenticated) requests never reach here — they are short-circuited to 401 by the
+     * security filter's authentication entry point. 403 = wrong role (per CLAUDE.md).
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorEnvelope> handleAccessDenied(AccessDeniedException ex,
+                                                            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorEnvelope.of("FORBIDDEN", "Insufficient permissions", requestId(request)));
     }
 
     @ExceptionHandler(Exception.class)

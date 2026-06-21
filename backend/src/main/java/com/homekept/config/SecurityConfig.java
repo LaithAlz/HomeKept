@@ -100,6 +100,9 @@ public class SecurityConfig {
                         // Public catalog endpoints — pricing page reads (GET only; arch doc §5.1)
                         .requestMatchers(HttpMethod.GET, "/api/catalog/plans").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/catalog/picks").permitAll()
+                        // Public booking form submission (arch doc §5.1, api-contract.md)
+                        // Rate-limited 3/IP/hour in BookingController; CASL consent enforced in DTO.
+                        .requestMatchers(HttpMethod.POST, "/api/bookings/walkthrough").permitAll()
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
