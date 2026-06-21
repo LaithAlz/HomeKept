@@ -97,6 +97,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         .requestMatchers("/api/health").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // Public catalog endpoints — pricing page reads (GET only; arch doc §5.1)
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/plans").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/catalog/picks").permitAll()
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
