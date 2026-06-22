@@ -72,7 +72,17 @@ class StripeWebhookIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        // subscription_event rows reference subscriber_id — delete them first.
+        // visit_service and visit rows reference subscriber via visit.subscriber_id
+        // (ON DELETE RESTRICT), so they must be removed before the subscriber row.
+        // visit_service has ON DELETE CASCADE from visit, but we delete explicitly in
+        // the correct FK order: visit_service → visit → subscriber.
+        for (Long id : createdSubscriberIds) {
+            jdbc.update(
+                    "DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", id);
+            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", id);
+        }
+
+        // subscription_event rows reference subscriber_id — delete them next.
         for (Long id : createdSubscriberIds) {
             jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", id);
         }
@@ -130,6 +140,15 @@ class StripeWebhookIntegrationTest {
                 "SELECT COUNT(*) FROM subscription_event WHERE stripe_event_id = ?",
                 Integer.class, eventId);
         assertThat(count).isEqualTo(1);
+
+        // The AFTER_COMMIT listener must have scheduled the subscriber's initial visits.
+        // ESSENTIAL (planTierId=1) always has at least one template month (Jan/Apr/Jul/Oct)
+        // inside the 4-month scheduling window, so at least one SCHEDULED visit is created —
+        // proving the activation → SubscriberActivatedEvent → scheduling wiring works end-to-end.
+        Integer visitCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit WHERE subscriber_id = ? AND status = 'SCHEDULED'",
+                Integer.class, sub.getId());
+        assertThat(visitCount).isGreaterThan(0);
     }
 
     @Test

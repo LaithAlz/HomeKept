@@ -3,6 +3,9 @@ package com.homekept.common;
 import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
+import com.homekept.visit.exception.IllegalVisitTransitionException;
+import com.homekept.visit.exception.InvalidVisitRequestException;
+import com.homekept.visit.exception.VisitNotFoundException;
 import com.homekept.subscription.FoundingRateExhaustedException;
 import com.homekept.subscription.InvalidActivationRequestException;
 import com.homekept.subscription.InvalidActivationTokenException;
@@ -189,6 +192,32 @@ public class GlobalExceptionHandler {
                                                                       HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorEnvelope.of("FOUNDING_RATE_UNAVAILABLE", ex.getMessage(), requestId(request)));
+    }
+
+    /** Visit not found (or not accessible by the current user) — 404. */
+    @ExceptionHandler(VisitNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleVisitNotFound(VisitNotFoundException ex,
+                                                             HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Visit not found", requestId(request)));
+    }
+
+    /** Illegal visit state machine transition — 409 Conflict. */
+    @ExceptionHandler(IllegalVisitTransitionException.class)
+    public ResponseEntity<ErrorEnvelope> handleIllegalVisitTransition(IllegalVisitTransitionException ex,
+                                                                      HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
+                        "Visit status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
+                        requestId(request)));
+    }
+
+    /** Invalid visit request parameters — 400. */
+    @ExceptionHandler(InvalidVisitRequestException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidVisitRequest(InvalidVisitRequestException ex,
+                                                                   HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
     }
 
     /**

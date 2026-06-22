@@ -9,6 +9,7 @@ import com.stripe.model.StripeObject;
 import com.stripe.model.checkout.Session;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +55,10 @@ import java.util.Optional;
  *
  * <h2>Domain boundary</h2>
  * <p>Catalog is accessed only via {@link CatalogService} — never its repository.
+ * Visit scheduling is decoupled via a {@link SubscriberActivatedEvent} published after
+ * the activation transaction commits. The visit domain listens via
+ * {@code @TransactionalEventListener(AFTER_COMMIT)} so a scheduling failure can never
+ * poison or roll back the activation transaction.
  */
 @Service
 public class StripeWebhookService {
@@ -65,17 +70,20 @@ public class StripeWebhookService {
     private final SubscriberStateMachine stateMachine;
     private final CatalogService catalogService;
     private final SubscriptionStartedNotifier subscriptionStartedNotifier;
+    private final ApplicationEventPublisher eventPublisher;
 
     public StripeWebhookService(SubscriberRepository subscriberRepository,
                                 SubscriptionEventRepository subscriptionEventRepository,
                                 SubscriberStateMachine stateMachine,
                                 CatalogService catalogService,
-                                SubscriptionStartedNotifier subscriptionStartedNotifier) {
+                                SubscriptionStartedNotifier subscriptionStartedNotifier,
+                                ApplicationEventPublisher eventPublisher) {
         this.subscriberRepository = subscriberRepository;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.stateMachine = stateMachine;
         this.catalogService = catalogService;
         this.subscriptionStartedNotifier = subscriptionStartedNotifier;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -226,6 +234,11 @@ public class StripeWebhookService {
 
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         subscriptionStartedNotifier.onSubscriptionStarted(subscriber.getId(), planCode);
+
+        // Publish a SubscriberActivatedEvent so the visit domain can schedule initial
+        // visits AFTER this transaction commits (TransactionalEventListener AFTER_COMMIT).
+        // Decoupled this way so a scheduling failure can never roll back the activation.
+        eventPublisher.publishEvent(new SubscriberActivatedEvent(subscriber.getId()));
 
         log.info("subscription_activated subscriberId={} planCode={} foundingRate={}",
                 subscriber.getId(), planCode, foundingRate);
