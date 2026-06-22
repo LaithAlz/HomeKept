@@ -20,9 +20,11 @@ import java.time.Instant;
  * <p>{@code payload} is JSONB — one of the two allowed JSONB columns in the schema
  * (arch doc §3). It holds raw event data from Stripe webhooks or system events.
  *
- * <p>This table also serves as the idempotency store for Stripe webhooks: the Stripe
- * event id is stored as {@code event_type} prefixed or in the payload, and duplicates
- * are short-circuited before processing (Stripe webhook slice implements this).
+ * <p>Idempotency for Stripe webhooks: {@code stripeEventId} stores the Stripe event id.
+ * A partial unique index ({@code idx_subscription_event_stripe_id}) on this column
+ * (added in V5) prevents the same Stripe event from producing two rows — the database
+ * is the final backstop even if the application-layer short-circuit is bypassed by a
+ * race condition.
  */
 @Entity
 @Table(name = "subscription_event")
@@ -50,6 +52,14 @@ public class SubscriptionEvent {
     @Column(nullable = false, length = 20)
     private SubscriptionEventSource source;
 
+    /**
+     * Stripe event id (e.g. {@code evt_1Abc...}). Stored for idempotency: the partial
+     * unique index ensures no two rows share the same Stripe event id. Null for
+     * non-Stripe events (MANUAL, SYSTEM).
+     */
+    @Column(name = "stripe_event_id", length = 255)
+    private String stripeEventId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -64,6 +74,15 @@ public class SubscriptionEvent {
         this.source = source;
     }
 
+    public SubscriptionEvent(Long subscriberId, String eventType, String payload,
+                             SubscriptionEventSource source, String stripeEventId) {
+        this.subscriberId = subscriberId;
+        this.eventType = eventType;
+        this.payload = payload;
+        this.source = source;
+        this.stripeEventId = stripeEventId;
+    }
+
     public Long getId() { return id; }
     public Long getSubscriberId() { return subscriberId; }
     public String getEventType() { return eventType; }
@@ -71,5 +90,7 @@ public class SubscriptionEvent {
     public Instant getProcessedAt() { return processedAt; }
     public void setProcessedAt(Instant processedAt) { this.processedAt = processedAt; }
     public SubscriptionEventSource getSource() { return source; }
+    public String getStripeEventId() { return stripeEventId; }
+    public void setStripeEventId(String stripeEventId) { this.stripeEventId = stripeEventId; }
     public Instant getCreatedAt() { return createdAt; }
 }

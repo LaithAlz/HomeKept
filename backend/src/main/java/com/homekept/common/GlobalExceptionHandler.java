@@ -3,8 +3,11 @@ package com.homekept.common;
 import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
+import com.homekept.subscription.FoundingRateExhaustedException;
 import com.homekept.subscription.InvalidActivationRequestException;
 import com.homekept.subscription.InvalidActivationTokenException;
+import com.homekept.subscription.NoBillingAccountException;
+import com.homekept.subscription.SubscriberNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.homekept.identity.exception.AuthenticationException;
@@ -164,6 +167,39 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity violation: {}", ex.getClass().getSimpleName());
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorEnvelope.of("CONFLICT", "That request conflicts with existing data.", requestId(request)));
+    }
+
+    /**
+     * Subscriber not found (or not accessible by the current user) — 404.
+     * Per CLAUDE.md ownership-failure rule: not-found and not-yours both return 404.
+     */
+    @ExceptionHandler(SubscriberNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleSubscriberNotFound(SubscriberNotFoundException ex,
+                                                                   HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Subscriber not found", requestId(request)));
+    }
+
+    /**
+     * Founding-rate slots exhausted or not available on the requested plan — 409.
+     * The message is a pre-canned safe string set by {@code CheckoutService}.
+     */
+    @ExceptionHandler(FoundingRateExhaustedException.class)
+    public ResponseEntity<ErrorEnvelope> handleFoundingRateExhausted(FoundingRateExhaustedException ex,
+                                                                      HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("FOUNDING_RATE_UNAVAILABLE", ex.getMessage(), requestId(request)));
+    }
+
+    /**
+     * No Stripe billing account yet (checkout not completed) — 409.
+     * Customer must complete checkout before accessing the billing portal.
+     */
+    @ExceptionHandler(NoBillingAccountException.class)
+    public ResponseEntity<ErrorEnvelope> handleNoBillingAccount(NoBillingAccountException ex,
+                                                                 HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("NO_BILLING_ACCOUNT", ex.getMessage(), requestId(request)));
     }
 
     @ExceptionHandler(Exception.class)
