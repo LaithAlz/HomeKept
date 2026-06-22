@@ -3,7 +3,10 @@ package com.homekept.common;
 import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
+import com.homekept.subscription.InvalidActivationRequestException;
+import com.homekept.subscription.InvalidActivationTokenException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.homekept.identity.exception.AuthenticationException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
@@ -111,6 +114,30 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Activation request validation failure (e.g. password too short).
+     * The message is a pre-canned safe string set by {@code ActivationService}.
+     */
+    @ExceptionHandler(InvalidActivationRequestException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidActivationRequest(InvalidActivationRequestException ex,
+                                                                         HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
+    }
+
+    /**
+     * Activation token invalid, expired, or already consumed.
+     * Returns a generic 400 message — the reason label is not leaked beyond a safe code.
+     * 410 Gone would be more semantically correct for USED/EXPIRED but the contract
+     * uses 400 for all token failures to keep client handling uniform.
+     */
+    @ExceptionHandler(InvalidActivationTokenException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidActivationToken(InvalidActivationTokenException ex,
+                                                                       HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_TOKEN", "Activation link is invalid or has expired", requestId(request)));
+    }
+
+    /**
      * Authenticated-but-insufficient-role denial from method security
      * ({@code @PreAuthorize}) → 403. Without this explicit handler the catch-all below
      * would swallow the {@link AccessDeniedException} ({@code AuthorizationDeniedException}
@@ -123,6 +150,20 @@ public class GlobalExceptionHandler {
                                                             HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ErrorEnvelope.of("FORBIDDEN", "Insufficient permissions", requestId(request)));
+    }
+
+    /**
+     * A DB uniqueness/FK violation (e.g. a duplicate-email race on concurrent activation)
+     * surfaces as a clean 409 rather than a 500 — the raw SQL detail is never echoed.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorEnvelope> handleDataIntegrity(DataIntegrityViolationException ex,
+                                                             HttpServletRequest request) {
+        // Log the exception class only — the DB cause message can embed conflicting column
+        // VALUES (e.g. an email), which must not land in logs (no-PII-in-logs rule).
+        log.warn("Data integrity violation: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("CONFLICT", "That request conflicts with existing data.", requestId(request)));
     }
 
     @ExceptionHandler(Exception.class)
