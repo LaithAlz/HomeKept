@@ -199,6 +199,86 @@ public class BookingService {
         return AdminBookingDetail.from(saved);
     }
 
+    // ── Cross-domain accessors (used by subscription domain) ──────────────────
+
+    /**
+     * Returns the activation data needed by the subscription domain during the
+     * activation flow. The subscription domain MUST call this method — it must
+     * never touch {@link WalkthroughBookingRepository} or {@link WalkthroughBooking} directly.
+     *
+     * @param bookingId the walk-through booking id
+     * @return activation data record
+     * @throws BookingNotFoundException if the booking does not exist
+     */
+    @Transactional(readOnly = true)
+    public BookingActivationData getActivationData(Long bookingId) {
+        WalkthroughBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException(bookingId));
+
+        String fullName = booking.getFullName() != null ? booking.getFullName().trim() : "";
+        String firstName;
+        String lastName;
+        int spaceIndex = fullName.indexOf(' ');
+        if (spaceIndex < 0) {
+            firstName = fullName;
+            lastName = "";
+        } else {
+            firstName = fullName.substring(0, spaceIndex);
+            lastName = fullName.substring(spaceIndex + 1);
+        }
+
+        return new BookingActivationData(
+                booking.getId(),
+                booking.getEmail(),
+                firstName,
+                lastName,
+                booking.getStreetAddress(),
+                booking.getCity(),
+                booking.getPostalCode(),
+                booking.getYearBuilt(),
+                booking.getSquareFootageRange(),
+                booking.getPropertyType() != null ? booking.getPropertyType().name() : null
+        );
+    }
+
+    /**
+     * Records that this booking has been converted to a subscriber.
+     * Called by the subscription domain after the subscriber row is created.
+     *
+     * @param bookingId    the walk-through booking id
+     * @param subscriberId the newly created subscriber id
+     */
+    @Transactional
+    public void markConverted(Long bookingId, Long subscriberId) {
+        WalkthroughBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException(bookingId));
+        // Conversion is a state transition (PERFORMED → CONVERTED, §4.3) — route it through
+        // the state machine. This also makes re-conversion impossible: CONVERTED is terminal,
+        // so a second attempt on an already-converted booking fails canTransition.
+        BookingStatus from = booking.getStatus();
+        if (!stateMachine.canTransition(from, BookingStatus.CONVERTED)) {
+            throw new IllegalBookingTransitionException(from, BookingStatus.CONVERTED);
+        }
+        booking.setConvertedToSubscriberId(subscriberId);
+        booking.setStatus(BookingStatus.CONVERTED);
+        bookingRepository.save(booking);
+    }
+
+    /**
+     * Attaches an activation token record to this booking.
+     * Called by the subscription domain after minting the token.
+     *
+     * @param bookingId         the walk-through booking id
+     * @param activationTokenId the activation token id to attach
+     */
+    @Transactional
+    public void attachActivationToken(Long bookingId, Long activationTokenId) {
+        WalkthroughBooking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new BookingNotFoundException(bookingId));
+        booking.setActivationTokenId(activationTokenId);
+        bookingRepository.save(booking);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private int resolveLimit(Integer limit) {
@@ -207,4 +287,35 @@ public class BookingService {
         }
         return Math.min(limit, 100);
     }
+
+    // ── Cross-domain data types ───────────────────────────────────────────────
+
+    /**
+     * Projection of walk-through booking data needed by the subscription activation flow.
+     * This record is the only object the subscription domain receives from the booking domain —
+     * no entity references, no repository access crosses the boundary.
+     *
+     * @param bookingId          the booking id
+     * @param email              prospective subscriber email
+     * @param firstName          first name (split from fullName on first space)
+     * @param lastName           last name (remainder after first space, or empty string)
+     * @param streetAddress      property street address
+     * @param city               property city
+     * @param postalCode         property postal code
+     * @param yearBuilt          year the home was built (nullable)
+     * @param squareFootageRange square footage range string (nullable)
+     * @param propertyType       property type name string (e.g. "DETACHED")
+     */
+    public record BookingActivationData(
+            Long bookingId,
+            String email,
+            String firstName,
+            String lastName,
+            String streetAddress,
+            String city,
+            String postalCode,
+            Integer yearBuilt,
+            String squareFootageRange,
+            String propertyType
+    ) {}
 }

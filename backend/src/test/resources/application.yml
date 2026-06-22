@@ -30,7 +30,11 @@ app:
     access-token-expiry-seconds: 900
     refresh-token-expiry-seconds: 604800
   encryption:
-    access-notes-key: ""
+    # PLACEHOLDER TEST KEY — 32 bytes of repeating 0x41 ('A') base64-encoded.
+    # Obviously not a real secret. Satisfies the AccessNotesCipher startup guard so
+    # integration tests boot in prod-like mode (dev-mode=false).
+    # GitGuardian will not flag a hex/base64 string of all one byte.
+    access-notes-key: "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUA="
   admin-seed:
     email: "seed-admin@test.local"
     # Placeholder test password — AdminSeeder only needs a non-blank value here.

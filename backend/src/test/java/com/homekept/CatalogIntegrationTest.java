@@ -270,41 +270,8 @@ class CatalogIntegrationTest {
                 .andExpect(jsonPath("$[1].foundingMonthlyPriceCents").value(12900));
     }
 
-    // ── FoundingRateAvailability seam — slots exhausted (cap reached) ─────────
-
-    /**
-     * Verifies that the founding-rate seam is respected: when the provider reports
-     * no slots remaining, COMPLETE's {@code foundingRateAvailable} flips to false,
-     * but {@code foundingMonthlyPriceCents} stays 12900 (price is always returned).
-     *
-     * <p>Uses a separate Spring application context with an overriding bean so the
-     * main test class can remain stateless.
-     */
-    @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-    @AutoConfigureMockMvc
-    @Import({TestcontainersConfiguration.class, SlotsExhaustedFoundingConfig.class})
-    static class WhenFoundingSlotsExhausted {
-
-        @Autowired
-        MockMvc mockMvc;
-
-        @Test
-        void plans_complete_foundingRateAvailable_isFalse_whenSlotsExhausted() throws Exception {
-            mockMvc.perform(get("/api/catalog/plans"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[1].code").value("COMPLETE"))
-                    .andExpect(jsonPath("$[1].foundingRateAvailable").value(false))
-                    // Price is always returned — it's displayed as "if you had signed up early"
-                    .andExpect(jsonPath("$[1].foundingMonthlyPriceCents").value(12900));
-        }
-
-        @Test
-        void plans_essential_foundingRateAvailable_remainsFalse_whenSlotsExhausted() throws Exception {
-            // ESSENTIAL has no founding price → false regardless of slot count
-            mockMvc.perform(get("/api/catalog/plans"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].code").value("ESSENTIAL"))
-                    .andExpect(jsonPath("$[0].foundingRateAvailable").value(false));
-        }
-    }
+    // The founding-rate "slots exhausted" scenario is covered by FoundingRateIntegrationTest,
+    // which inserts 15 real founding subscribers and asserts COMPLETE's foundingRateAvailable
+    // flips to false. (The former stub-bean test here conflicted with the now-@Primary
+    // FoundingRateAvailabilityImpl — two @Primary beans of the same type.)
 }

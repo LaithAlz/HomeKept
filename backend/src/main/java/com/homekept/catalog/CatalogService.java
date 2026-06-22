@@ -54,6 +54,58 @@ public class CatalogService {
     }
 
     /**
+     * Returns the monthly price in cents for a given plan tier id.
+     * Used by the subscription admin service to compute MRR without crossing into
+     * the catalog repository directly. Returns {@code null} if the plan tier is not found.
+     *
+     * @param planTierId the plan tier id
+     * @return monthly price in cents, or {@code null} if not found
+     */
+    @Transactional(readOnly = true)
+    public Integer getMonthlyPriceCents(Long planTierId) {
+        if (planTierId == null) {
+            return null;
+        }
+        return planTierRepository.findById(planTierId)
+                .map(PlanTier::getMonthlyPriceCents)
+                .orElse(null);
+    }
+
+    /**
+     * Returns the founding monthly price in cents for a given plan tier id.
+     * Returns {@code null} if the tier is not found or has no founding price.
+     *
+     * @param planTierId the plan tier id
+     * @return founding monthly price in cents, or {@code null}
+     */
+    @Transactional(readOnly = true)
+    public Integer getFoundingMonthlyPriceCents(Long planTierId) {
+        if (planTierId == null) {
+            return null;
+        }
+        return planTierRepository.findById(planTierId)
+                .map(PlanTier::getFoundingMonthlyPriceCents)
+                .orElse(null);
+    }
+
+    /**
+     * Returns the plan code string for a given plan tier id.
+     * Returns {@code null} if not found.
+     *
+     * @param planTierId the plan tier id
+     * @return plan code name (e.g. "COMPLETE"), or {@code null}
+     */
+    @Transactional(readOnly = true)
+    public String getPlanCode(Long planTierId) {
+        if (planTierId == null) {
+            return null;
+        }
+        return planTierRepository.findById(planTierId)
+                .map(t -> t.getCode().name())
+                .orElse(null);
+    }
+
+    /**
      * Returns the pickable services menu grouped by tier class.
      * Excludes standing items ({@code is_free_with_every_visit = true}) and inactive services.
      * Prices come from the database — integer cents, matching the seed in V2__catalog.sql.

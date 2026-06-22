@@ -136,6 +136,47 @@ public class AuthService {
     }
 
     /**
+     * Creates a new user account during the activation flow.
+     *
+     * <p>Called only by the activation orchestrator — this is the single permitted crossing
+     * from the subscription domain into identity. Callers in other domains must go through this
+     * method, never reach {@code UserRepository} directly.
+     *
+     * @param email        user email (must be unique — service layer should guard uniqueness)
+     * @param rawPassword  plaintext password (bcrypt-hashed here, never stored raw)
+     * @param firstName    user first name
+     * @param lastName     user last name
+     * @param role         the role to assign
+     * @param initialStatus the initial {@link UserStatus}
+     * @return the persisted {@link User}
+     */
+    @Transactional
+    public User createUser(String email, String rawPassword, String firstName, String lastName,
+                           Role role, UserStatus initialStatus) {
+        String hash = passwordEncoder.encode(rawPassword);
+        User user = new User(email.strip().toLowerCase(java.util.Locale.ROOT),
+                hash, firstName, lastName, role, initialStatus);
+        return userRepository.save(user);
+    }
+
+    /**
+     * Issues a JWT access token and a fresh refresh token for an already-authenticated
+     * (or just-created) user without requiring their password.
+     *
+     * <p>Used by the activation flow immediately after account creation so the
+     * subscriber is signed in without a second login round-trip.
+     *
+     * @param user the persisted user to issue tokens for
+     * @return a token pair to set in cookies
+     */
+    @Transactional
+    public TokenPair issueTokensFor(User user) {
+        String accessToken = jwtService.issueAccessToken(user);
+        String refreshToken = refreshTokenService.createToken(user);
+        return new TokenPair(accessToken, refreshToken);
+    }
+
+    /**
      * Returns the public profile for the authenticated user.
      */
     @Transactional(readOnly = true)
