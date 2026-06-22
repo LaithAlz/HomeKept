@@ -107,6 +107,10 @@ public class SecurityConfig {
                         // Rate-limited 10/IP/hour in ActivationController; token is HMAC-signed + single-use.
                         .requestMatchers(HttpMethod.POST, "/api/activation/validate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/activation/complete").permitAll()
+                        // Stripe webhook — public; signature is verified by StripeWebhookController
+                        // using the STRIPE_WEBHOOK_SECRET (Stripe-Signature header, HMAC-SHA256).
+                        // Auth cookies are never sent for this endpoint (Stripe does not send them).
+                        .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )

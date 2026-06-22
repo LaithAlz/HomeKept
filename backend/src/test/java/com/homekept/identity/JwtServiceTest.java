@@ -27,7 +27,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of("http://localhost:5173")),
                 new AppProperties.Jwt(SIGNING_KEY, 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         jwtService = new JwtService(props);
     }
@@ -67,7 +68,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt("completely-different-signing-key-32b!!", 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService otherJwt = new JwtService(otherProps);
 
@@ -100,7 +102,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt(SIGNING_KEY, -1L, 604800L), // -1 second = already expired
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService shortJwt = new JwtService(shortProps);
         User user = testUser(1L, "bob@example.com", Role.ADMIN);
@@ -133,7 +136,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt("short-key", 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService svc = new JwtService(props);
         // validateKeyStrength() is called by @PostConstruct; call it directly in unit test
@@ -153,7 +157,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt(JwtService.DEV_SENTINEL_KEY, 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService svc = new JwtService(props);
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -171,7 +176,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt(JwtService.DEV_SENTINEL_KEY, 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService svc = new JwtService(props);
         // Must not throw
@@ -187,7 +193,8 @@ class JwtServiceTest {
                 new AppProperties.Cors(java.util.List.of()),
                 new AppProperties.Jwt("a-strong-non-sentinel-key-that-is-definitely-32-bytes!!", 900L, 604800L),
                 new AppProperties.Encryption(""),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         JwtService svc = new JwtService(props);
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(svc::validateKeyStrength);

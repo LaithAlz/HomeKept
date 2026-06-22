@@ -73,3 +73,12 @@ app:
   admin-seed:
     email: ${ADMIN_SEED_EMAIL:}
     password: ${ADMIN_SEED_PASSWORD:}
+  # Stripe integration. In production set all five STRIPE_* env vars.
+  # The app logs a WARNING on startup if secret-key is blank.
+  # NEVER commit real Stripe keys — use environment variable injection only.
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+    success-url: ${STRIPE_SUCCESS_URL:http://localhost:8080/app?checkout=success}
+    cancel-url: ${STRIPE_CANCEL_URL:http://localhost:8080/plans?checkout=cancel}
+    portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:8080/app/billing}

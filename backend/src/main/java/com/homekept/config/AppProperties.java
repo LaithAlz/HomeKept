@@ -26,7 +26,8 @@ public record AppProperties(
         Cors cors,
         Jwt jwt,
         Encryption encryption,
-        AdminSeed adminSeed
+        AdminSeed adminSeed,
+        Stripe stripe
 ) {
 
     public record Cors(
@@ -51,5 +52,29 @@ public record AppProperties(
     public record AdminSeed(
             @DefaultValue("") String email,
             @DefaultValue("") String password
+    ) {}
+
+    /**
+     * Stripe integration config. All values are sourced from environment variables.
+     *
+     * <p>In production, set:
+     * <ul>
+     *   <li>{@code STRIPE_SECRET_KEY} — live secret key (sk_live_...)</li>
+     *   <li>{@code STRIPE_WEBHOOK_SECRET} — webhook signing secret (whsec_...)</li>
+     *   <li>{@code STRIPE_SUCCESS_URL} — where to redirect after successful checkout</li>
+     *   <li>{@code STRIPE_CANCEL_URL} — where to redirect on checkout cancellation</li>
+     *   <li>{@code STRIPE_PORTAL_RETURN_URL} — where to return from the billing portal</li>
+     * </ul>
+     *
+     * <p>If {@code secretKey} is blank on startup, a warning is logged. Stripe API calls
+     * will fail at runtime but the app does not hard-fail — dev and test environments
+     * often run without a real Stripe key.
+     */
+    public record Stripe(
+            @DefaultValue("") String secretKey,
+            @DefaultValue("") String webhookSecret,
+            @DefaultValue("http://localhost:8080/app?checkout=success") String successUrl,
+            @DefaultValue("http://localhost:8080/plans?checkout=cancel") String cancelUrl,
+            @DefaultValue("http://localhost:8080/app/billing") String portalReturnUrl
     ) {}
 }

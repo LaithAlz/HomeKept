@@ -222,7 +222,8 @@ class AccessNotesCipherTest {
                 new AppProperties.Cors(List.of("http://localhost:5173")),
                 new AppProperties.Jwt("test-signing-key-placeholder-xx", 900L, 604800L),
                 new AppProperties.Encryption(keyBase64),
-                new AppProperties.AdminSeed("", "")
+                new AppProperties.AdminSeed("", ""),
+                new AppProperties.Stripe("", "", "", "", "")
         );
         return new AccessNotesCipher(props);
     }

@@ -39,3 +39,12 @@ app:
     email: "seed-admin@test.local"
     # Placeholder test password — AdminSeeder only needs a non-blank value here.
     password: "test-only-placeholder-admin-pw"
+  stripe:
+    # Placeholder — never sent to Stripe in tests (checkout tests mock StripeService).
+    secret-key: "test-only-stripe-secret-placeholder"
+    # NON-whsec_ prefix so GitGuardian does not flag it. Used as the HMAC key in
+    # StripeWebhookIntegrationTest to sign fixture payloads via Webhook.Util.computeHmacSha256.
+    webhook-secret: "test-only-webhook-signing-placeholder"
+    success-url: "http://localhost:8080/app?checkout=success"
+    cancel-url: "http://localhost:8080/plans?checkout=cancel"
+    portal-return-url: "http://localhost:8080/app/billing"

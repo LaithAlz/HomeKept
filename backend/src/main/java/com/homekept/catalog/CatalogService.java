@@ -106,6 +106,48 @@ public class CatalogService {
     }
 
     /**
+     * Finds the {@link PlanTier} that owns the given Stripe price id (any of the three
+     * price columns: monthly, annual, founding). Returns {@code null} if no tier matches.
+     *
+     * <p>This is the canonical price-to-plan mapping point. Webhook handlers call this
+     * instead of reaching into {@link PlanTierRepository} directly.
+     *
+     * @param stripePriceId a Stripe price id (e.g. {@code price_1Abc...})
+     * @return the matching {@link PlanTier}, or {@code null}
+     */
+    @Transactional(readOnly = true)
+    public PlanTier findPlanTierByStripePriceId(String stripePriceId) {
+        if (stripePriceId == null || stripePriceId.isBlank()) {
+            return null;
+        }
+        return planTierRepository.findByAnyStripePriceId(stripePriceId).orElse(null);
+    }
+
+    /**
+     * Finds the {@link PlanTier} by its {@link PlanCode}. Returns {@code null} if not found.
+     *
+     * <p>Used by the checkout service to resolve the tier before creating a Stripe session.
+     *
+     * @param code the plan code (ESSENTIAL, COMPLETE, PREMIER)
+     * @return the matching {@link PlanTier}, or {@code null}
+     */
+    @Transactional(readOnly = true)
+    public PlanTier findPlanTierByCode(PlanCode code) {
+        if (code == null) {
+            return null;
+        }
+        return planTierRepository.findByCode(code).orElse(null);
+    }
+
+    /**
+     * Returns whether founding-rate slots are still available.
+     * Delegates to the live {@link FoundingRateAvailability} implementation.
+     */
+    public boolean isFoundingRateAvailable() {
+        return foundingRateAvailability.foundingSlotsRemaining();
+    }
+
+    /**
      * Returns the pickable services menu grouped by tier class.
      * Excludes standing items ({@code is_free_with_every_visit = true}) and inactive services.
      * Prices come from the database — integer cents, matching the seed in V2__catalog.sql.
