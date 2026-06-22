@@ -82,3 +82,12 @@ app:
     success-url: ${STRIPE_SUCCESS_URL:http://localhost:8080/app?checkout=success}
     cancel-url: ${STRIPE_CANCEL_URL:http://localhost:8080/plans?checkout=cancel}
     portal-return-url: ${STRIPE_PORTAL_RETURN_URL:http://localhost:8080/app/billing}
+  # Cloudflare R2 (S3-compatible) for visit photos. In production set all R2_* env vars.
+  # If endpoint/bucket are blank the app starts but photo endpoints return 503 (graceful).
+  # NEVER commit real R2 keys — use environment variable injection only.
+  r2:
+    endpoint: ${R2_ENDPOINT:}
+    bucket: ${R2_BUCKET:}
+    access-key-id: ${R2_ACCESS_KEY_ID:}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+    region: ${R2_REGION:auto}

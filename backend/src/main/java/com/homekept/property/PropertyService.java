@@ -71,6 +71,33 @@ public class PropertyService {
         return propertyRepository.findById(id).orElse(null);
     }
 
+    /**
+     * Decrypts the access notes for the given property and returns the plaintext.
+     *
+     * <p><strong>This is the ONLY place access notes are decrypted in the entire
+     * codebase.</strong> Called exclusively by the technician day-sheet
+     * ({@code GET /api/tech/visits/today}) for the assigned technician on visit day.
+     *
+     * <p><strong>NEVER log the return value.</strong> NEVER return it on any other
+     * endpoint. NEVER store it in a field longer than required.
+     *
+     * @param propertyId the property whose access notes to decrypt
+     * @return the plaintext access notes, or {@code null} if the property has none or
+     *         if encryption is disabled in dev-mode (blank key)
+     * @throws IllegalStateException if the property does not exist, or if decryption
+     *         fails (e.g. tampered ciphertext — AEADBadTagException)
+     */
+    @Transactional(readOnly = true)
+    public String decryptAccessNotes(Long propertyId) {
+        Property property = propertyRepository.findById(propertyId)
+                .orElseThrow(() -> new IllegalStateException("Property not found: " + propertyId));
+        if (!property.hasAccessNotes()) {
+            return null;
+        }
+        // Decrypt via the cipher — plaintext is returned to the caller and must not be logged.
+        return cipher.decrypt(property.getAccessNotes());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**

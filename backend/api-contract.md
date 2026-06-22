@@ -181,6 +181,7 @@ written per completed visit so `delta` compares against the previous snapshot.
 | `POST /api/admin/visits` | `{ subscriberId, scheduledFor, durationMinutes, serviceIds[], technicianUserId? }` |
 | `PATCH /api/admin/visits/{id}` | reschedule (creates new row per state machine) / cancel / assign technician |
 | `POST /api/admin/visits/{id}/complete` | fallback for tech-app failure only — same payload as the tech complete endpoint (incl. `actualDurationMinutes`, `materialsCostCents`); requires IN_PROGRESS per the state machine |
+| `POST /api/admin/technicians` | `{ userId, fullyLoadedHourlyCostCents, employeeStatus?, hireDate? }` — onboard a technician: creates a `technician_profile` for an existing user (the user's TECHNICIAN role is managed separately). 409 if a profile already exists for that user |
 
 All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).
 
