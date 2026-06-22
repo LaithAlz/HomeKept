@@ -148,6 +148,47 @@ public class CatalogService {
     }
 
     /**
+     * Returns a map of service id → service name for the given ids.
+     * Used by the visit domain to resolve service names for display without reaching
+     * into the catalog repository directly (domain boundary rule).
+     *
+     * <p>Unknown IDs are omitted from the result map — callers should fall back to
+     * a safe default (e.g. "Unknown service") for missing entries.
+     *
+     * @param serviceIds the service ids to look up
+     * @return map of id → name for found services
+     */
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, String> getServiceNamesByIds(java.util.List<Long> serviceIds) {
+        if (serviceIds == null || serviceIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        return serviceRepository.findAllById(serviceIds).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.homekept.catalog.Service::getId, com.homekept.catalog.Service::getName));
+    }
+
+    /**
+     * Validates that all provided service IDs exist in the catalog.
+     * Returns a list of IDs that were not found. An empty list means all IDs are valid.
+     *
+     * @param serviceIds the service ids to validate
+     * @return list of unknown (not found) IDs
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<Long> findUnknownServiceIds(java.util.List<Long> serviceIds) {
+        if (serviceIds == null || serviceIds.isEmpty()) {
+            return java.util.List.of();
+        }
+        java.util.Set<Long> found = serviceRepository.findAllById(serviceIds).stream()
+                .map(com.homekept.catalog.Service::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        return serviceIds.stream()
+                .filter(id -> !found.contains(id))
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
      * Returns the pickable services menu grouped by tier class.
      * Excludes standing items ({@code is_free_with_every_visit = true}) and inactive services.
      * Prices come from the database — integer cents, matching the seed in V2__catalog.sql.
