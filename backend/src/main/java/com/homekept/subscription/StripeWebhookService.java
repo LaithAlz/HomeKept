@@ -70,6 +70,8 @@ public class StripeWebhookService {
     private final SubscriberStateMachine stateMachine;
     private final CatalogService catalogService;
     private final SubscriptionStartedNotifier subscriptionStartedNotifier;
+    private final PaymentFailedNotifier paymentFailedNotifier;
+    private final SubscriptionCancelledNotifier subscriptionCancelledNotifier;
     private final ApplicationEventPublisher eventPublisher;
 
     public StripeWebhookService(SubscriberRepository subscriberRepository,
@@ -77,12 +79,16 @@ public class StripeWebhookService {
                                 SubscriberStateMachine stateMachine,
                                 CatalogService catalogService,
                                 SubscriptionStartedNotifier subscriptionStartedNotifier,
+                                PaymentFailedNotifier paymentFailedNotifier,
+                                SubscriptionCancelledNotifier subscriptionCancelledNotifier,
                                 ApplicationEventPublisher eventPublisher) {
         this.subscriberRepository = subscriberRepository;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.stateMachine = stateMachine;
         this.catalogService = catalogService;
         this.subscriptionStartedNotifier = subscriptionStartedNotifier;
+        this.paymentFailedNotifier = paymentFailedNotifier;
+        this.subscriptionCancelledNotifier = subscriptionCancelledNotifier;
         this.eventPublisher = eventPublisher;
     }
 
@@ -320,6 +326,8 @@ public class StripeWebhookService {
         subscriber.setCancelledAt(Instant.now());
         subscriberRepository.save(subscriber);
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
+        // Best-effort email — never throws, so it can't roll back the cancellation.
+        subscriptionCancelledNotifier.onSubscriptionCancelled(subscriber.getId());
         log.info("subscription_cancelled subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
     }
 
@@ -346,7 +354,8 @@ public class StripeWebhookService {
         subscriber.setStatus(SubscriberStatus.PAYMENT_ISSUE);
         subscriberRepository.save(subscriber);
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
-        // TODO: notification slice adds a real payment-failed email here.
+        // Best-effort email — never throws, so it can't roll back the state change.
+        paymentFailedNotifier.onPaymentFailed(subscriber.getId());
         log.info("payment_issue subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
     }
 

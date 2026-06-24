@@ -13,39 +13,36 @@ import org.springframework.stereotype.Component;
 import java.util.Optional;
 
 /**
- * Sends the welcome email when a subscriber activates (PENDING_ACTIVATION → ACTIVE).
- *
- * <p>Resolves the recipient via {@link RecipientResolver}; if it can't be resolved the send
- * is skipped (the activation has already succeeded — a missing email must not undo it).
- * No PII is logged.
+ * Sends the cancellation-confirmation email on {@code customer.subscription.deleted}.
+ * Best-effort; a missing recipient or send failure never breaks webhook processing.
  */
 @Component
-public class DefaultSubscriptionStartedNotifier implements SubscriptionStartedNotifier {
+public class DefaultSubscriptionCancelledNotifier implements SubscriptionCancelledNotifier {
 
-    private static final Logger log = LoggerFactory.getLogger(DefaultSubscriptionStartedNotifier.class);
+    private static final Logger log = LoggerFactory.getLogger(DefaultSubscriptionCancelledNotifier.class);
 
     private final RecipientResolver recipientResolver;
     private final EmailSender emailSender;
     private final AppProperties appProperties;
 
-    public DefaultSubscriptionStartedNotifier(RecipientResolver recipientResolver,
-                                              EmailSender emailSender,
-                                              AppProperties appProperties) {
+    public DefaultSubscriptionCancelledNotifier(RecipientResolver recipientResolver,
+                                                EmailSender emailSender,
+                                                AppProperties appProperties) {
         this.recipientResolver = recipientResolver;
         this.emailSender = emailSender;
         this.appProperties = appProperties;
     }
 
     @Override
-    public void onSubscriptionStarted(Long subscriberId, String planCode) {
+    public void onSubscriptionCancelled(Long subscriberId) {
         Optional<UserContact> contact = recipientResolver.forSubscriber(subscriberId);
         if (contact.isEmpty()) {
             return;
         }
-        String dashboardUrl = appProperties.frontendBaseUrl() + "/app";
-        RenderedEmail rendered = EmailTemplates.welcome(contact.get().firstName(), dashboardUrl);
+        String plansUrl = appProperties.frontendBaseUrl() + "/plans";
+        RenderedEmail rendered = EmailTemplates.subscriptionCancelled(contact.get().firstName(), plansUrl);
         emailSender.send(contact.get().email(), contact.get().firstName(),
                 rendered.subject(), rendered.htmlBody());
-        log.info("welcome_email_dispatched subscriberId={} planCode={}", subscriberId, planCode);
+        log.info("subscription_cancelled_email_dispatched subscriberId={}", subscriberId);
     }
 }
