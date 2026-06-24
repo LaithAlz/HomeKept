@@ -2,11 +2,16 @@ package com.homekept.visit;
 
 import com.homekept.visit.dto.AppVisitDetail;
 import com.homekept.visit.dto.AppVisitListItem;
+import com.homekept.visit.dto.CreateRescheduleRequest;
+import com.homekept.visit.dto.RescheduleRequestResponse;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,9 +37,12 @@ import java.util.List;
 public class AppVisitController {
 
     private final VisitAppService visitAppService;
+    private final RescheduleService rescheduleService;
 
-    public AppVisitController(VisitAppService visitAppService) {
+    public AppVisitController(VisitAppService visitAppService,
+                             RescheduleService rescheduleService) {
         this.visitAppService = visitAppService;
+        this.rescheduleService = rescheduleService;
     }
 
     /**
@@ -73,5 +81,30 @@ public class AppVisitController {
             Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(visitAppService.getVisit(userId, id));
+    }
+
+    /**
+     * POST /api/app/visits/{id}/reschedule-request
+     *
+     * <p>Records a PENDING reschedule request with the customer's proposed time slots,
+     * for admin confirmation. Returns 404 if the visit is not the authenticated
+     * subscriber's; 409 if the visit is not SCHEDULED or a pending request already exists.
+     *
+     * @param id      the visit id
+     * @param request the proposed times
+     * @param auth    JWT principal — Long user id
+     * @return 201 with the created request
+     */
+    @PostMapping("/{id}/reschedule-request")
+    public ResponseEntity<RescheduleRequestResponse> requestReschedule(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateRescheduleRequest request,
+            Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        RescheduleRequestResponse response =
+                rescheduleService.createRequest(userId, id, request.preferredDates());
+        return ResponseEntity
+                .created(java.net.URI.create("/api/app/visits/" + id + "/reschedule-request"))
+                .body(response);
     }
 }
