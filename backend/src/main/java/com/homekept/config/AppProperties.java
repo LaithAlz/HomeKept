@@ -28,7 +28,12 @@ public record AppProperties(
         Encryption encryption,
         AdminSeed adminSeed,
         Stripe stripe,
-        R2 r2
+        // @DefaultValue so the binder constructs an all-defaults R2 even when no
+        // app.r2.* keys are present (e.g. the test profile). R2 is designed to degrade
+        // gracefully — every field defaults to blank and R2StorageService returns 503 —
+        // so a missing block must NOT null out the component and NPE on startup. Unlike
+        // jwt/encryption/adminSeed, which intentionally fail fast when absent.
+        @DefaultValue R2 r2
 ) {
 
     public record Cors(
