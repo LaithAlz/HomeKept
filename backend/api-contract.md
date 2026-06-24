@@ -142,7 +142,8 @@ acknowledged and ignored.
 | `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
 | `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [...] }` — stored as a `reschedule_request` row pending admin confirmation; visit state machine handles the swap |
 | `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe Checkout (`mode=payment`) with `subscriberId`/`serviceId` metadata; on the `checkout.session.completed` webhook (distinguished by mode + metadata from subscription checkouts) an EXTRA visit / `VisitService(source=EXTRA)` is created — never burns the included-picks allowance |
-| `POST /api/app/subscription/pause` · `POST /api/app/subscription/resume` · `POST /api/app/subscription/cancel` | self-serve via Stripe (webhooks sync state); cancel asks a reason (churn data) |
+| `POST /api/app/subscription/pause` · `POST /api/app/subscription/resume` | → `200 { status, currentPeriodEnd }` — self-serve via Stripe; the `customer.subscription.paused`/`resumed` webhook applies the status change, so `status` is the current (pre-webhook) value. Pause requires ACTIVE, resume requires PAUSED, else `409 ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409 NO_BILLING_ACCOUNT` |
+| `POST /api/app/subscription/cancel` | `{ reason }` (required, churn data) → `200 { status, currentPeriodEnd }` — cancel-at-period-end via Stripe; the reason is stored as a `MANUAL` `subscription_event` (payload `{ "reason": ... }`) and `customer.subscription.deleted` applies CANCELLED when the period ends. Already-cancelled → `409`; blank reason → `400` |
 
 Plan change + payment method = Stripe customer portal (`POST /api/billing/portal-session`).
 
