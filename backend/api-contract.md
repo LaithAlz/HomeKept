@@ -140,7 +140,7 @@ acknowledged and ignored.
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
 | `GET /api/app/todos` · `POST /api/app/todos` · `DELETE /api/app/todos/{id}` | "your list" — `{ body }`; OPEN items fold into the next scheduled visit |
 | `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
-| `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [...] }` — stored as a `reschedule_request` row pending admin confirmation; visit state machine handles the swap |
+| `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [Instant, …] }` (1–5 timeslots) → `201 { id, visitId, status, preferredDates, createdAt }`. Stored as a PENDING `reschedule_request` (+ `reschedule_request_slot` rows) for admin confirmation. Visit must be owned (else 404) and SCHEDULED; a duplicate PENDING request for the same visit → 409 |
 | `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe Checkout (`mode=payment`) with `subscriberId`/`serviceId` metadata; on the `checkout.session.completed` webhook (distinguished by mode + metadata from subscription checkouts) an EXTRA visit / `VisitService(source=EXTRA)` is created — never burns the included-picks allowance |
 | `POST /api/app/subscription/pause` · `POST /api/app/subscription/resume` | → `200 { status, currentPeriodEnd }` — self-serve via Stripe; the `customer.subscription.paused`/`resumed` webhook applies the status change, so `status` is the current (pre-webhook) value. Pause requires ACTIVE, resume requires PAUSED, else `409 ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409 NO_BILLING_ACCOUNT` |
 | `POST /api/app/subscription/cancel` | `{ reason }` (required, churn data) → `200 { status, currentPeriodEnd }` — cancel-at-period-end via Stripe; the reason is stored as a `MANUAL` `subscription_event` (payload `{ "reason": ... }`) and `customer.subscription.deleted` applies CANCELLED when the period ends. Already-cancelled → `409`; blank reason → `400` |
@@ -181,6 +181,9 @@ written per completed visit so `delta` compares against the previous snapshot.
 | `GET /api/admin/subscribers/{id}` | detail incl. property, visits, Stripe links |
 | `POST /api/admin/visits` | `{ subscriberId, scheduledFor, durationMinutes, serviceIds[], technicianUserId? }` |
 | `PATCH /api/admin/visits/{id}` | reschedule (creates new row per state machine) / cancel / assign technician |
+| `GET /api/admin/reschedule-requests` | PENDING customer reschedule requests (oldest first): `[{ id, visitId, subscriberId, status, preferredDates, adminNote, confirmedVisitId, createdAt }]` |
+| `POST /api/admin/reschedule-requests/{id}/confirm` | `{ scheduledFor: Instant, adminNote? }` — reschedules the visit (RESCHEDULED old + new SCHEDULED via the state machine), marks the request CONFIRMED with `confirmedVisitId`. 404 if missing; 409 if already resolved or the visit is not reschedulable |
+| `POST /api/admin/reschedule-requests/{id}/decline` | `{ adminNote }` (required) — marks the request DECLINED. 404 if missing; 409 if already resolved |
 | `POST /api/admin/visits/{id}/complete` | fallback for tech-app failure only — same payload as the tech complete endpoint (incl. `actualDurationMinutes`, `materialsCostCents`); requires IN_PROGRESS per the state machine |
 | `POST /api/admin/technicians` | `{ userId, fullyLoadedHourlyCostCents, employeeStatus?, hireDate? }` — onboard a technician: creates a `technician_profile` for an existing user (the user's TECHNICIAN role is managed separately). 409 if a profile already exists for that user |
 

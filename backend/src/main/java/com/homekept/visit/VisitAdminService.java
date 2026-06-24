@@ -170,6 +170,34 @@ public class VisitAdminService {
     // ── Private operations ────────────────────────────────────────────────────
 
     private AdminVisitResponse reschedule(Visit oldVisit, Instant newScheduledFor, Long technicianUserId) {
+        Visit savedNew = rescheduleInternal(oldVisit, newScheduledFor, technicianUserId);
+        return toResponse(savedNew, loadServiceItems(savedNew.getId()));
+    }
+
+    /**
+     * Reschedules a visit by id and returns the new SCHEDULED visit. Used by the customer
+     * reschedule-request confirm flow ({@code RescheduleService}) so it can record the
+     * replacement visit id. Same-domain service call (visit → visit) — allowed.
+     *
+     * @param visitId         the visit to reschedule
+     * @param newScheduledFor the new start time
+     * @return the newly created SCHEDULED visit
+     * @throws VisitNotFoundException        if the visit does not exist
+     * @throws IllegalVisitTransitionException if the visit is not in a reschedulable state
+     */
+    @Transactional
+    public Visit rescheduleVisit(Long visitId, Instant newScheduledFor) {
+        Visit oldVisit = visitRepository.findById(visitId)
+                .orElseThrow(() -> new VisitNotFoundException(visitId));
+        return rescheduleInternal(oldVisit, newScheduledFor, null);
+    }
+
+    /**
+     * Core reschedule: marks the old visit RESCHEDULED (via the state machine) and creates a
+     * fresh SCHEDULED visit copying the subscriber, property, template, type, and service
+     * rows (source preserved). Returns the new visit. Per arch doc §4.2 this preserves history.
+     */
+    private Visit rescheduleInternal(Visit oldVisit, Instant newScheduledFor, Long technicianUserId) {
         // State machine: SCHEDULED → RESCHEDULED
         if (!stateMachine.canTransition(oldVisit.getStatus(), VisitStatus.RESCHEDULED)) {
             throw new IllegalVisitTransitionException(oldVisit.getStatus(), VisitStatus.RESCHEDULED);
@@ -197,16 +225,16 @@ public class VisitAdminService {
 
         // Copy the old visit's service rows to the new visit (source preserved).
         List<VisitService> oldServices = visitServiceRepository.findByVisitIdOrderByIdAsc(oldVisit.getId());
-        List<VisitService> newServices = new ArrayList<>();
+        int copied = 0;
         for (VisitService vs : oldServices) {
-            VisitService copy = new VisitService(savedNew.getId(), vs.getServiceId(), vs.getSource());
-            newServices.add(visitServiceRepository.save(copy));
+            visitServiceRepository.save(new VisitService(savedNew.getId(), vs.getServiceId(), vs.getSource()));
+            copied++;
         }
 
         log.info("admin_visit_created_rescheduled newVisitId={} subscriberId={} services={}",
-                savedNew.getId(), savedNew.getSubscriberId(), newServices.size());
+                savedNew.getId(), savedNew.getSubscriberId(), copied);
 
-        return toResponse(savedNew, toServiceItemsFromEntities(newServices));
+        return savedNew;
     }
 
     private AdminVisitResponse cancel(Visit visit) {

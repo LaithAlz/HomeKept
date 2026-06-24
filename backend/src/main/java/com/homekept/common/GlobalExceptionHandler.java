@@ -7,6 +7,8 @@ import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
+import com.homekept.visit.exception.RescheduleRequestConflictException;
+import com.homekept.visit.exception.RescheduleRequestNotFoundException;
 import com.homekept.visit.exception.VisitNotFoundException;
 import com.homekept.subscription.FoundingRateExhaustedException;
 import com.homekept.subscription.IllegalSubscriptionStateException;
@@ -221,6 +223,26 @@ public class GlobalExceptionHandler {
                                                                    HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
+    }
+
+    /** Reschedule request not found (or not owned by the customer) — 404. */
+    @ExceptionHandler(RescheduleRequestNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleRescheduleNotFound(RescheduleRequestNotFoundException ex,
+                                                                  HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Reschedule request not found", requestId(request)));
+    }
+
+    /**
+     * Reschedule request conflicts with current state — 409. The message is a pre-canned
+     * safe string set by {@code RescheduleService} (visit not schedulable, duplicate pending
+     * request, or already-resolved request).
+     */
+    @ExceptionHandler(RescheduleRequestConflictException.class)
+    public ResponseEntity<ErrorEnvelope> handleRescheduleConflict(RescheduleRequestConflictException ex,
+                                                                  HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
     }
 
     /** Illegal subscription lifecycle transition (pause/resume/cancel) — 409 Conflict. */
