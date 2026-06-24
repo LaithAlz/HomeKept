@@ -78,4 +78,39 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
      * Used to enforce ownership → 404 (not 403) for customer-facing endpoints.
      */
     Optional<Visit> findByIdAndSubscriberId(Long id, Long subscriberId);
+
+    // ── Technician day-sheet queries ──────────────────────────────────────────
+
+    /**
+     * Returns visits assigned to a technician (by user id) with scheduledFor between
+     * {@code dayStart} and {@code dayEnd} (exclusive), ordered by scheduledFor ascending.
+     * Used for the technician day sheet ({@code GET /api/tech/visits/today}).
+     */
+    @Query("SELECT v FROM Visit v WHERE v.technicianId = :technicianUserId " +
+           "AND v.scheduledFor >= :dayStart AND v.scheduledFor < :dayEnd " +
+           "ORDER BY v.scheduledFor ASC, v.id ASC")
+    List<Visit> findByTechnicianIdAndScheduledForBetween(
+            @Param("technicianUserId") Long technicianUserId,
+            @Param("dayStart") java.time.Instant dayStart,
+            @Param("dayEnd") java.time.Instant dayEnd);
+
+    /**
+     * Technician ownership check: returns the visit by id and technician user id.
+     * Used to enforce assigned-to-this-tech authz → 404 (not 403) per the
+     * ownership-failure rule (don't leak existence of another tech's visit).
+     */
+    Optional<Visit> findByIdAndTechnicianId(Long id, Long technicianUserId);
+
+    /**
+     * Returns any SCHEDULED or IN_PROGRESS visit for a subscriber assigned to the
+     * given technician. Used for the todo PATCH authz at MVP:
+     * "the todo's subscriber has a visit assigned to this tech today (or ongoing)."
+     */
+    @Query("SELECT v FROM Visit v WHERE v.subscriberId = :subscriberId " +
+           "AND v.technicianId = :technicianUserId " +
+           "AND v.status IN :statuses")
+    List<Visit> findActiveVisitsBySubscriberAndTechnician(
+            @Param("subscriberId") Long subscriberId,
+            @Param("technicianUserId") Long technicianUserId,
+            @Param("statuses") List<VisitStatus> statuses);
 }

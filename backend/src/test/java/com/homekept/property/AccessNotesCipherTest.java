@@ -223,7 +223,8 @@ class AccessNotesCipherTest {
                 new AppProperties.Jwt("test-signing-key-placeholder-xx", 900L, 604800L),
                 new AppProperties.Encryption(keyBase64),
                 new AppProperties.AdminSeed("", ""),
-                new AppProperties.Stripe("", "", "", "", "")
+                new AppProperties.Stripe("", "", "", "", ""),
+                new AppProperties.R2("", "", "", "", "")
         );
         return new AccessNotesCipher(props);
     }

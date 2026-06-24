@@ -48,7 +48,7 @@ public class Visit {
 
     /**
      * FK → users.id (technician role). Nullable until admin assigns a technician.
-     * No DB FK yet — technician slice not built. Stored as raw BIGINT.
+     * The FK constraint (fk_visit_technician) is added by the V7 migration.
      */
     @Column(name = "technician_id")
     private Long technicianId;
@@ -90,6 +90,10 @@ public class Visit {
 
     @Column(name = "completion_notes", columnDefinition = "TEXT")
     private String completionNotes;
+
+    /** Optional description of materials used during this visit. Filled at completion. */
+    @Column(name = "materials_notes", columnDefinition = "TEXT")
+    private String materialsNotes;
 
     @Column(name = "completed_at")
     private Instant completedAt;
@@ -142,6 +146,8 @@ public class Visit {
     public VisitType getType() { return type; }
     public String getCompletionNotes() { return completionNotes; }
     public void setCompletionNotes(String completionNotes) { this.completionNotes = completionNotes; }
+    public String getMaterialsNotes() { return materialsNotes; }
+    public void setMaterialsNotes(String materialsNotes) { this.materialsNotes = materialsNotes; }
     public Instant getCompletedAt() { return completedAt; }
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
     public Instant getCreatedAt() { return createdAt; }

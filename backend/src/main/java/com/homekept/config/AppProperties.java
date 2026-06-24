@@ -27,7 +27,13 @@ public record AppProperties(
         Jwt jwt,
         Encryption encryption,
         AdminSeed adminSeed,
-        Stripe stripe
+        Stripe stripe,
+        // @DefaultValue so the binder constructs an all-defaults R2 even when no
+        // app.r2.* keys are present (e.g. the test profile). R2 is designed to degrade
+        // gracefully — every field defaults to blank and R2StorageService returns 503 —
+        // so a missing block must NOT null out the component and NPE on startup. Unlike
+        // jwt/encryption/adminSeed, which intentionally fail fast when absent.
+        @DefaultValue R2 r2
 ) {
 
     public record Cors(
@@ -76,5 +82,31 @@ public record AppProperties(
             @DefaultValue("http://localhost:8080/app?checkout=success") String successUrl,
             @DefaultValue("http://localhost:8080/plans?checkout=cancel") String cancelUrl,
             @DefaultValue("http://localhost:8080/app/billing") String portalReturnUrl
+    ) {}
+
+    /**
+     * Cloudflare R2 (S3-compatible) storage config for visit photos.
+     *
+     * <p>In production, set:
+     * <ul>
+     *   <li>{@code R2_ENDPOINT} — R2 S3-compatible endpoint URL
+     *       (e.g. {@code https://<account_id>.r2.cloudflarestorage.com})</li>
+     *   <li>{@code R2_BUCKET} — bucket name</li>
+     *   <li>{@code R2_ACCESS_KEY_ID} — R2 access key id</li>
+     *   <li>{@code R2_SECRET_ACCESS_KEY} — R2 secret access key (never log or commit)</li>
+     *   <li>{@code R2_REGION} — region hint; R2 uses {@code auto} by default</li>
+     * </ul>
+     *
+     * <p>If the endpoint or bucket is blank, {@link com.homekept.storage.R2StorageService}
+     * will return a graceful 503 rather than NPE — R2 keys are a founder follow-up.
+     * The app does not hard-fail on blank R2 config so dev/test environments work without
+     * real credentials. The secret access key is NEVER logged.
+     */
+    public record R2(
+            @DefaultValue("") String endpoint,
+            @DefaultValue("") String bucket,
+            @DefaultValue("") String accessKeyId,
+            @DefaultValue("") String secretAccessKey,
+            @DefaultValue("auto") String region
     ) {}
 }

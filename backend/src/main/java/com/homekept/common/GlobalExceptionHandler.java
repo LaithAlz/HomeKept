@@ -1,6 +1,8 @@
 package com.homekept.common;
 
 import com.homekept.booking.exception.BookingNotFoundException;
+import com.homekept.technician.TechnicianAlreadyExistsException;
+import com.homekept.storage.StorageUnavailableException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
@@ -229,6 +231,24 @@ public class GlobalExceptionHandler {
                                                                  HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorEnvelope.of("NO_BILLING_ACCOUNT", ex.getMessage(), requestId(request)));
+    }
+
+    /** Technician profile already exists for this user — 409. */
+    @ExceptionHandler(TechnicianAlreadyExistsException.class)
+    public ResponseEntity<ErrorEnvelope> handleTechnicianAlreadyExists(TechnicianAlreadyExistsException ex,
+                                                                       HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
+    }
+
+    /** R2 storage not configured (endpoint or credentials blank) — 503. */
+    @ExceptionHandler(StorageUnavailableException.class)
+    public ResponseEntity<ErrorEnvelope> handleStorageUnavailable(StorageUnavailableException ex,
+                                                                   HttpServletRequest request) {
+        log.error("storage_unavailable: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorEnvelope.of("STORAGE_UNAVAILABLE",
+                        "Photo storage is not available. Please try again later.", requestId(request)));
     }
 
     @ExceptionHandler(Exception.class)
