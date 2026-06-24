@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -217,13 +218,18 @@ class TechVisitIntegrationTest {
         // The response MUST include the today visit and the decrypted access notes.
         // We assert the plaintext equals "Lockbox 1234" — proves the decryption path.
         // IMPORTANT: we do NOT log or print the value from the response — only assertThat.
+        //
+        // accessNotes is a singular String on the DTO. A JsonPath filter ($[?(...)]) is an
+        // indefinite path, so projecting .accessNotes yields a JSONArray (["Lockbox 1234"]);
+        // we match it with hasItem. (Indexing the String field as accessNotes[0] would
+        // resolve to an empty array and never match — that was the original bug.)
         mockMvc.perform(get(TODAY_URL)
                         .cookie(new Cookie("hk_access", techToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$[?(@.id == " + todayVisit.getId() + ")]").exists())
-                .andExpect(jsonPath("$[?(@.id == " + todayVisit.getId() + ")].accessNotes[0]")
-                        .value("Lockbox 1234"))
+                .andExpect(jsonPath("$[?(@.id == " + todayVisit.getId() + ")].accessNotes")
+                        .value(hasItem("Lockbox 1234")))
                 .andExpect(jsonPath("$[?(@.id == " + todayVisit.getId() + ")].services").isArray());
     }
 
