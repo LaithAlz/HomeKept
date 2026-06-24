@@ -69,6 +69,10 @@ The pickable services menu, grouped by tier class, with à la carte prices
 
 Magic-link flow: walk-through → subscriber. Token is single-use, HMAC-signed, 7-day expiry.
 
+The activation invite email links to `{FRONTEND_BASE_URL}/activate?token=<rawToken>` (token
+URL-encoded). The frontend activation page calls `/api/activation/validate` then
+`/api/activation/complete` with that token.
+
 Both endpoints are IP rate-limited (10/IP/hour) — magic links leak via forwarded emails.
 
 ### `POST /api/activation/validate`
