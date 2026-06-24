@@ -5,9 +5,12 @@ import com.homekept.config.AppProperties;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Event;
+import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
+import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
+import com.stripe.param.common.EmptyParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -113,6 +116,56 @@ public class StripeServiceImpl implements StripeService {
         } catch (StripeException e) {
             log.error("Stripe portal session creation failed stripeCode={}", e.getCode());
             throw new RuntimeException("Stripe portal session creation failed", e);
+        }
+    }
+
+    @Override
+    public void pauseSubscription(String stripeSubscriptionId, String idempotencyKey) {
+        // pause_collection.behavior=void: no invoices are collected while paused.
+        SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
+                .setPauseCollection(
+                        SubscriptionUpdateParams.PauseCollection.builder()
+                                .setBehavior(SubscriptionUpdateParams.PauseCollection.Behavior.VOID)
+                                .build())
+                .build();
+        updateSubscription(stripeSubscriptionId, params, idempotencyKey, "pause");
+    }
+
+    @Override
+    public void resumeSubscription(String stripeSubscriptionId, String idempotencyKey) {
+        // Clearing pause_collection (empty) resumes normal collection.
+        SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
+                .setPauseCollection(EmptyParam.EMPTY)
+                .build();
+        updateSubscription(stripeSubscriptionId, params, idempotencyKey, "resume");
+    }
+
+    @Override
+    public void cancelSubscriptionAtPeriodEnd(String stripeSubscriptionId, String idempotencyKey) {
+        SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
+                .setCancelAtPeriodEnd(true)
+                .build();
+        updateSubscription(stripeSubscriptionId, params, idempotencyKey, "cancel_at_period_end");
+    }
+
+    /**
+     * Retrieves the subscription and applies the given update with an idempotency key.
+     * Centralises the retrieve → update → error-wrap flow shared by pause/resume/cancel.
+     * The retrieve is a GET (no idempotency key needed); only the update is guarded.
+     */
+    private void updateSubscription(String stripeSubscriptionId, SubscriptionUpdateParams params,
+                                    String idempotencyKey, String action) {
+        RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(idempotencyKey)
+                .build();
+        try {
+            Subscription subscription = Subscription.retrieve(stripeSubscriptionId);
+            subscription.update(params, options);
+            log.info("Stripe subscription action={} stripeSubscriptionId={}", action, stripeSubscriptionId);
+        } catch (StripeException e) {
+            log.error("Stripe subscription action={} failed stripeSubscriptionId={} stripeCode={}",
+                    action, stripeSubscriptionId, e.getCode());
+            throw new RuntimeException("Stripe subscription " + action + " failed", e);
         }
     }
 

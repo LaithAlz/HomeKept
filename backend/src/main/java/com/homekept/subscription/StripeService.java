@@ -56,6 +56,46 @@ public interface StripeService {
     String createPortalSession(String stripeCustomerId);
 
     /**
+     * Pauses billing on a subscription (Stripe {@code pause_collection.behavior=void}).
+     *
+     * <p>Stripe then emits {@code customer.subscription.paused}, which the webhook handler
+     * uses to transition the subscriber ACTIVE → PAUSED. This method does NOT change local
+     * state — webhooks are the single source of truth for status.
+     *
+     * @param stripeSubscriptionId the Stripe subscription id (sub_...)
+     * @param idempotencyKey       deterministic key for this pause attempt
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    void pauseSubscription(String stripeSubscriptionId, String idempotencyKey);
+
+    /**
+     * Resumes billing on a paused subscription (clears Stripe {@code pause_collection}).
+     *
+     * <p>Stripe then emits {@code customer.subscription.resumed}, which the webhook handler
+     * uses to transition the subscriber PAUSED → ACTIVE. Local state is not changed here.
+     *
+     * @param stripeSubscriptionId the Stripe subscription id (sub_...)
+     * @param idempotencyKey       deterministic key for this resume attempt
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    void resumeSubscription(String stripeSubscriptionId, String idempotencyKey);
+
+    /**
+     * Schedules cancellation at the end of the current billing period
+     * (Stripe {@code cancel_at_period_end=true}). The customer keeps service through the
+     * period they have already paid for; auto-renewal stops.
+     *
+     * <p>Stripe emits {@code customer.subscription.deleted} when the period ends, which the
+     * webhook handler uses to transition the subscriber to CANCELLED. Local state is not
+     * changed here. The churn reason is captured by the caller, not Stripe.
+     *
+     * @param stripeSubscriptionId the Stripe subscription id (sub_...)
+     * @param idempotencyKey       deterministic key for this cancel attempt
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    void cancelSubscriptionAtPeriodEnd(String stripeSubscriptionId, String idempotencyKey);
+
+    /**
      * Constructs and verifies a Stripe webhook event from the raw HTTP body and signature.
      *
      * <p>Delegates to {@code com.stripe.net.Webhook.constructEvent(...)} using the
