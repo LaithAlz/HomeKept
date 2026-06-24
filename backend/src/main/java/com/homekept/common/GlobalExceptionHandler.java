@@ -9,6 +9,7 @@ import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.VisitNotFoundException;
 import com.homekept.subscription.FoundingRateExhaustedException;
+import com.homekept.subscription.IllegalSubscriptionStateException;
 import com.homekept.subscription.InvalidActivationRequestException;
 import com.homekept.subscription.InvalidActivationTokenException;
 import com.homekept.subscription.NoBillingAccountException;
@@ -220,6 +221,16 @@ public class GlobalExceptionHandler {
                                                                    HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
+    }
+
+    /** Illegal subscription lifecycle transition (pause/resume/cancel) — 409 Conflict. */
+    @ExceptionHandler(IllegalSubscriptionStateException.class)
+    public ResponseEntity<ErrorEnvelope> handleIllegalSubscriptionState(IllegalSubscriptionStateException ex,
+                                                                         HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
+                        "Subscription status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
+                        requestId(request)));
     }
 
     /**
