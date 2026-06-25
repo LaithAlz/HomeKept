@@ -41,7 +41,7 @@ public final class EmailTemplates {
     /** Welcome, on PENDING_ACTIVATION → ACTIVE. */
     public static RenderedEmail welcome(String firstName, String dashboardUrl) {
         String body = paragraph("Your membership is active. We'll look after the seasonal "
-                + "maintenance your home needs — you'll get a heads-up before each visit and a "
+                + "maintenance your home needs. You'll get a heads-up before each visit and a "
                 + "report after. Your schedule and visit history live in your dashboard.");
         return new RenderedEmail(
                 "Welcome to HomeKept",
@@ -51,9 +51,8 @@ public final class EmailTemplates {
 
     /** Visit completed, report ready. */
     public static RenderedEmail visitComplete(String firstName, String reportUrl) {
-        String body = paragraph("We've completed your recent visit. Your full report — what we "
-                + "checked, what we did, and anything worth keeping an eye on — is ready in your "
-                + "dashboard.");
+        String body = paragraph("We've completed your recent visit. Your full report is ready in "
+                + "your dashboard: what we checked, what we did, and anything worth keeping an eye on.");
         return new RenderedEmail(
                 "Your HomeKept visit is complete",
                 layout("Your visit is done", greeting(firstName) + body,
@@ -62,9 +61,9 @@ public final class EmailTemplates {
 
     /** Invoice payment failed; Stripe will retry. */
     public static RenderedEmail paymentFailed(String firstName, String billingUrl) {
-        String body = paragraph("Your latest HomeKept payment didn't go through — usually an "
-                + "expired or declined card. Please update your payment method to keep your "
-                + "membership active. We'll automatically retry once it's updated.");
+        String body = paragraph("Your latest HomeKept payment didn't go through. This is usually "
+                + "an expired or declined card. Please update your payment method to keep your "
+                + "membership active, and we'll automatically retry once it's updated.");
         return new RenderedEmail(
                 "Action needed: your HomeKept payment didn't go through",
                 layout("We couldn't process your payment", greeting(firstName) + body,
@@ -122,7 +121,7 @@ public final class EmailTemplates {
                         </td></tr>
                         <tr><td style="background:#ffffff;padding:0 28px 24px 28px;border:1px solid #ECE6DC;border-top:none;border-radius:0 0 8px 8px;">
                           <p style="margin:16px 0 0 0;font-size:12px;line-height:1.5;color:%s;">
-                            HomeKept — subscription home maintenance, GTA West.<br>
+                            HomeKept. Subscription home maintenance in the GTA West.<br>
                             This is a transactional message about your HomeKept membership.
                           </p>
                         </td></tr>
