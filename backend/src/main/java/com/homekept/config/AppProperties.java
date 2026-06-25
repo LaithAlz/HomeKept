@@ -33,7 +33,17 @@ public record AppProperties(
         // gracefully — every field defaults to blank and R2StorageService returns 503 —
         // so a missing block must NOT null out the component and NPE on startup. Unlike
         // jwt/encryption/adminSeed, which intentionally fail fast when absent.
-        @DefaultValue R2 r2
+        @DefaultValue R2 r2,
+        /**
+         * Public base URL of the frontend, used to build links in transactional emails
+         * (e.g. the activation magic link). Set FRONTEND_BASE_URL in production
+         * (e.g. https://homekept.ca). Defaults to the local dev origin.
+         */
+        @DefaultValue("http://localhost:8080") String frontendBaseUrl,
+        // @DefaultValue for the same reason as r2: SendGrid degrades gracefully (blank
+        // api-key/from-email → log-and-skip), so a missing app.sendgrid block must bind
+        // to defaults rather than null the component and NPE on startup.
+        @DefaultValue SendGrid sendGrid
 ) {
 
     public record Cors(
@@ -108,5 +118,25 @@ public record AppProperties(
             @DefaultValue("") String accessKeyId,
             @DefaultValue("") String secretAccessKey,
             @DefaultValue("auto") String region
+    ) {}
+
+    /**
+     * SendGrid transactional-email config for the {@code notification} domain.
+     *
+     * <p>In production set:
+     * <ul>
+     *   <li>{@code SENDGRID_API_KEY} — SendGrid API key (never log or commit)</li>
+     *   <li>{@code SENDGRID_FROM_EMAIL} — verified sender address (e.g. no-reply@homekept.ca)</li>
+     *   <li>{@code SENDGRID_FROM_NAME} — sender display name (defaults to HomeKept)</li>
+     * </ul>
+     *
+     * <p>If {@code apiKey} or {@code fromEmail} is blank, {@link com.homekept.notification.SendGridEmailSender}
+     * logs a warning and skips the send (no hard failure) — dev/test/CI run without a real
+     * key. The api key is NEVER logged.
+     */
+    public record SendGrid(
+            @DefaultValue("") String apiKey,
+            @DefaultValue("") String fromEmail,
+            @DefaultValue("HomeKept") String fromName
     ) {}
 }

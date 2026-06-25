@@ -29,7 +29,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         jwtService = new JwtService(props);
     }
@@ -71,7 +71,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService otherJwt = new JwtService(otherProps);
 
@@ -106,7 +106,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService shortJwt = new JwtService(shortProps);
         User user = testUser(1L, "bob@example.com", Role.ADMIN);
@@ -141,7 +141,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService svc = new JwtService(props);
         // validateKeyStrength() is called by @PostConstruct; call it directly in unit test
@@ -163,7 +163,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService svc = new JwtService(props);
         org.junit.jupiter.api.Assertions.assertThrows(
@@ -183,7 +183,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService svc = new JwtService(props);
         // Must not throw
@@ -201,7 +201,7 @@ class JwtServiceTest {
                 new AppProperties.Encryption(""),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", "")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
         );
         JwtService svc = new JwtService(props);
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(svc::validateKeyStrength);

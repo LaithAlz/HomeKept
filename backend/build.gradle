@@ -26,6 +26,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.flywaydb:flyway-database-postgresql'
 	implementation 'com.stripe:stripe-java:28.2.0'
+	implementation 'com.sendgrid:sendgrid-java:4.10.3'
 	implementation platform('software.amazon.awssdk:bom:2.31.0')
 	implementation 'software.amazon.awssdk:s3'
 	runtimeOnly 'org.postgresql:postgresql'
