@@ -164,13 +164,19 @@ export const Route = createFileRoute("/learn/$slug")({
   head: ({ params }) => {
     const article = ARTICLE_MAP.get(params.slug);
     if (!article) {
-      return { meta: [{ title: "Article not found: HomeKept" }] };
+      return {
+        meta: [{ title: "Article not found: HomeKept" }, { name: "robots", content: "noindex" }],
+      };
     }
     const url = `${BASE_URL}/learn/${article.slug}`;
     return {
+      // These articles are still content scaffolds ("Content coming soon"),
+      // so keep them out of the index until the founder replaces the
+      // placeholder body. Remove once real content ships (see ARTICLES above).
       meta: [
         { title: article.title },
         { name: "description", content: article.description },
+        { name: "robots", content: "noindex" },
         { property: "og:title", content: article.title },
         { property: "og:description", content: article.description },
         { property: "og:type", content: "article" },

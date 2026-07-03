@@ -90,9 +90,10 @@ export function buildLocalBusinessSchema(opts?: { cityName?: string; cityUrl?: s
           price: String(plan.monthlyPriceCad),
           priceCurrency: "CAD",
           priceSpecification: {
-            "@type": "RecurringCharge",
+            "@type": "UnitPriceSpecification",
+            price: String(plan.monthlyPriceCad),
+            priceCurrency: "CAD",
             billingIncrement: 1,
-            billingDuration: 1,
             unitCode: "MON",
           },
         })),

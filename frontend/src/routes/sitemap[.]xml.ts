@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type {} from "@tanstack/react-start";
 import { BASE_URL } from "@/lib/seo";
-import { ARTICLES } from "./learn.$slug";
 
 interface SitemapEntry {
   path: string;
@@ -13,12 +12,10 @@ export const Route = createFileRoute("/sitemap.xml")({
   server: {
     handlers: {
       GET: async () => {
-        const articleEntries: SitemapEntry[] = ARTICLES.map((a) => ({
-          path: `/learn/${a.slug}`,
-          changefreq: "yearly" as const,
-          priority: "0.5",
-        }));
-
+        // /learn/:slug articles are intentionally left out of the sitemap: they
+        // currently render "Content coming soon" placeholders (thin content)
+        // and carry a noindex meta tag. Re-add each article's URL here once
+        // the founder ships its real body copy.
         const entries: SitemapEntry[] = [
           { path: "/", changefreq: "weekly", priority: "1.0" },
           { path: "/plans", changefreq: "monthly", priority: "0.8" },
@@ -28,7 +25,6 @@ export const Route = createFileRoute("/sitemap.xml")({
           { path: "/milton", changefreq: "monthly", priority: "0.8" },
           { path: "/privacy", changefreq: "yearly", priority: "0.3" },
           { path: "/terms", changefreq: "yearly", priority: "0.3" },
-          ...articleEntries,
         ];
 
         const urls = entries.map((e) =>
