@@ -74,19 +74,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "HomeKept — Proactive home maintenance for the GTA" },
+      { title: "HomeKept: Proactive home maintenance for the GTA" },
       {
         name: "description",
         content:
-          "A monthly subscription that handles routine home maintenance for homeowners in Oakville, Mississauga, and Milton. Vetted technicians, scheduled visits, photo reports.",
+          "A monthly subscription that handles routine home maintenance for homeowners in Oakville, Mississauga, and Milton. Founder-run visits, seasonal checklists, photo reports.",
       },
       { name: "author", content: "HomeKept" },
       { name: "theme-color", content: "#F8F5EE" },
-      { property: "og:title", content: "HomeKept — Proactive home maintenance for the GTA" },
+      { property: "og:title", content: "HomeKept: Proactive home maintenance for the GTA" },
       {
         property: "og:description",
         content:
-          "Filters swapped, gutters cleared, seasonal checks done — on a schedule, by people you trust.",
+          "Filters swapped, gutters cleared, seasonal checks done: on a schedule, by people you trust.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },

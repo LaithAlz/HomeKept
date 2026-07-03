@@ -13,7 +13,7 @@ export const Route = createFileRoute("/mississauga")({
   head: () => ({
     meta: [
       {
-        title: "Home Maintenance Service Mississauga — HomeKept",
+        title: "Home Maintenance Service Mississauga: HomeKept",
       },
       {
         name: "description",
@@ -22,12 +22,12 @@ export const Route = createFileRoute("/mississauga")({
       },
       {
         property: "og:title",
-        content: "Home Maintenance Subscription in Mississauga — HomeKept",
+        content: "Home Maintenance Subscription in Mississauga: HomeKept",
       },
       {
         property: "og:description",
         content:
-          "Scheduled visits, vetted technicians, photo reports. Serving Mississauga neighbourhoods including Port Credit, Lorne Park, Erin Mills, and Streetsville.",
+          "Scheduled visits, seasonal checklists, photo reports. Serving Mississauga neighbourhoods including Port Credit, Lorne Park, Erin Mills, and Streetsville.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: CITY_URL },
@@ -90,7 +90,7 @@ const SEASONAL = [
   {
     season: "Winter",
     heading: "Basement moisture in older Applewood and Cooksville stock",
-    body: "Mississauga's older housing stock in Applewood, Rathwood, and Cooksville was built before modern drainage standards. Winter basement moisture checks — caulking, grading observations, sump pump health — catch water infiltration before it becomes a renovation.",
+    body: "Mississauga's older housing stock in Applewood, Rathwood, and Cooksville was built before modern drainage standards. Winter basement moisture checks, covering caulking, grading observations, and sump pump health, catch water infiltration before it becomes a renovation.",
   },
   {
     season: "Spring",
@@ -177,7 +177,7 @@ function HeroSection() {
           style={{ "--reveal-index": 2 } as React.CSSProperties}
         >
           A monthly subscription for Mississauga homeowners who want their home looked after
-          year-round — HVAC, gutters, plumbing, and seasonal checks — without the to-do list.
+          year-round, covering HVAC, gutters, plumbing, and seasonal checks, without the to-do list.
         </p>
 
         <div
@@ -295,8 +295,8 @@ function SeasonalSection() {
             <em className="font-[480] italic text-moss">need most, by season</em>
           </h2>
           <p className="mt-4 max-w-[60ch] text-base leading-relaxed text-muted-foreground">
-            Mississauga's mix of housing eras — 1960s stock in Cooksville, newer builds in Churchill
-            Meadows — means maintenance priorities vary by neighbourhood.
+            Mississauga's mix of housing eras, from 1960s stock in Cooksville to newer builds in
+            Churchill Meadows, means maintenance priorities vary by neighbourhood.
           </p>
         </div>
 
@@ -399,7 +399,7 @@ function CtaSection() {
           </h2>
           <p className="mx-auto mt-5 max-w-[46ch] leading-relaxed text-sage">
             Ninety minutes, no obligation. We'll walk your home, note every system, and send you a
-            written maintenance plan — keep it or don't.
+            written maintenance plan: keep it or don't.
           </p>
           <div className="mt-9">
             <Button asChild size="xl" variant="accent">

@@ -5,6 +5,8 @@
  * and JSON-LD @id values all stay in sync from one place.
  */
 
+import { PLANS } from "@/lib/plans";
+
 export const BASE_URL = "https://homekept.ca";
 
 /** Brand OG image used as the fallback on every page. */
@@ -59,7 +61,7 @@ export function buildLocalBusinessSchema(opts?: { cityName?: string; cityUrl?: s
         "@id": opts?.cityUrl ? `${opts.cityUrl}#organization` : `${BASE_URL}/#organization`,
         name: "HomeKept",
         description:
-          "Subscription home maintenance for homeowners in Oakville, Mississauga, and Milton. Scheduled visits, vetted technicians, photo reports.",
+          "Subscription home maintenance for homeowners in Oakville, Mississauga, and Milton. Scheduled visits, seasonal checklists, photo reports.",
         url: opts?.cityUrl ?? BASE_URL,
         logo: `${BASE_URL}/logo.png`,
         email: "hello@homekept.ca",
@@ -80,44 +82,20 @@ export function buildLocalBusinessSchema(opts?: { cityName?: string; cityUrl?: s
         areaServed,
         description:
           "Monthly subscription covering HVAC filters, gutter clearing, smoke detector tests, plumbing inspections, and seasonal home checks.",
-        offers: [
-          {
-            "@type": "Offer",
-            name: "Essential Plan",
-            price: "89",
-            priceCurrency: "CAD",
-            priceSpecification: {
-              "@type": "RecurringCharge",
-              billingIncrement: 1,
-              billingDuration: 1,
-              unitCode: "MON",
-            },
+        // Sourced from lib/plans.ts (docs/pricing-and-visits.md) so these
+        // numbers can never diverge from what's shown on the plans page.
+        offers: PLANS.map((plan) => ({
+          "@type": "Offer",
+          name: `${plan.name} Plan`,
+          price: String(plan.monthlyPriceCad),
+          priceCurrency: "CAD",
+          priceSpecification: {
+            "@type": "RecurringCharge",
+            billingIncrement: 1,
+            billingDuration: 1,
+            unitCode: "MON",
           },
-          {
-            "@type": "Offer",
-            name: "Complete Plan",
-            price: "149",
-            priceCurrency: "CAD",
-            priceSpecification: {
-              "@type": "RecurringCharge",
-              billingIncrement: 1,
-              billingDuration: 1,
-              unitCode: "MON",
-            },
-          },
-          {
-            "@type": "Offer",
-            name: "Premier Plan",
-            price: "249",
-            priceCurrency: "CAD",
-            priceSpecification: {
-              "@type": "RecurringCharge",
-              billingIncrement: 1,
-              billingDuration: 1,
-              unitCode: "MON",
-            },
-          },
-        ],
+        })),
       },
     ],
   };

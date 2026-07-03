@@ -13,7 +13,7 @@ export const Route = createFileRoute("/oakville")({
   head: () => ({
     meta: [
       {
-        title: "Home Maintenance Service Oakville — HomeKept",
+        title: "Home Maintenance Service Oakville: HomeKept",
       },
       {
         name: "description",
@@ -22,12 +22,12 @@ export const Route = createFileRoute("/oakville")({
       },
       {
         property: "og:title",
-        content: "Home Maintenance Subscription in Oakville — HomeKept",
+        content: "Home Maintenance Subscription in Oakville: HomeKept",
       },
       {
         property: "og:description",
         content:
-          "Scheduled visits, vetted technicians, photo reports. Serving Oakville neighbourhoods including Glen Abbey, River Oaks, Bronte, and Iroquois Ridge.",
+          "Scheduled visits, seasonal checklists, photo reports. Serving Oakville neighbourhoods including Glen Abbey, River Oaks, Bronte, and Iroquois Ridge.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: CITY_URL },
@@ -67,7 +67,7 @@ const SEASONAL = [
   {
     season: "Winter",
     heading: "Ice dams and attic moisture",
-    body: "Oakville's proximity to Lake Ontario keeps winters damp. Ice dams form where inadequate attic insulation lets heat escape at the roof edge — a visual attic check every winter catches moisture before it migrates to ceilings.",
+    body: "Oakville's proximity to Lake Ontario keeps winters damp. Ice dams form where inadequate attic insulation lets heat escape at the roof edge. A visual attic check every winter catches moisture before it migrates to ceilings.",
   },
   {
     season: "Spring",
@@ -82,7 +82,7 @@ const SEASONAL = [
   {
     season: "Fall",
     heading: "Gutters after Oakville's canopy sheds",
-    body: "Mature oak and maple canopy — especially in Glen Abbey and Old Oakville — fills gutters fast in October and November. A post-leaf clearing before freeze prevents ice load and fascia damage through the winter.",
+    body: "Mature oak and maple canopy, especially in Glen Abbey and Old Oakville, fills gutters fast in October and November. A post-leaf clearing before freeze prevents ice load and fascia damage through the winter.",
   },
 ];
 
@@ -153,8 +153,8 @@ function HeroSection() {
           className="reveal-init mt-7 max-w-[52ch] text-lg leading-relaxed text-muted-foreground"
           style={{ "--reveal-index": 2 } as React.CSSProperties}
         >
-          A monthly subscription for Oakville homeowners who want their home looked after year-round
-          — HVAC, gutters, plumbing, and seasonal checks — without the to-do list.
+          A monthly subscription for Oakville homeowners who want their home looked after
+          year-round, covering HVAC, gutters, plumbing, and seasonal checks, without the to-do list.
         </p>
 
         <div
@@ -376,7 +376,7 @@ function CtaSection() {
           </h2>
           <p className="mx-auto mt-5 max-w-[46ch] leading-relaxed text-sage">
             Ninety minutes, no obligation. We'll walk your home, note every system, and send you a
-            written maintenance plan — keep it or don't.
+            written maintenance plan: keep it or don't.
           </p>
           <div className="mt-9">
             <Button asChild size="xl" variant="accent">

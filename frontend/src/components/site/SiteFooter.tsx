@@ -12,7 +12,8 @@ export function SiteFooter() {
             <p className="mt-4 flex items-start gap-2 text-sm text-muted-foreground">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
               <span>
-                Insured &amp; bonded. Background-checked technicians. Family-run from the GTA.
+                Founder-run home maintenance for Oakville, Mississauga, and Milton. Photo report
+                after every visit.
               </span>
             </p>
           </div>

@@ -13,7 +13,7 @@ export const Route = createFileRoute("/milton")({
   head: () => ({
     meta: [
       {
-        title: "Home Maintenance Service Milton — HomeKept",
+        title: "Home Maintenance Service Milton: HomeKept",
       },
       {
         name: "description",
@@ -22,12 +22,12 @@ export const Route = createFileRoute("/milton")({
       },
       {
         property: "og:title",
-        content: "Home Maintenance Subscription in Milton — HomeKept",
+        content: "Home Maintenance Subscription in Milton: HomeKept",
       },
       {
         property: "og:description",
         content:
-          "Scheduled visits, vetted technicians, photo reports. Serving Milton neighbourhoods including Coates, Clarke, Willmott, Scott, and Beaty.",
+          "Scheduled visits, seasonal checklists, photo reports. Serving Milton neighbourhoods including Coates, Clarke, Willmott, Scott, and Beaty.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: CITY_URL },
@@ -155,8 +155,8 @@ function HeroSection() {
           className="reveal-init mt-7 max-w-[52ch] text-lg leading-relaxed text-muted-foreground"
           style={{ "--reveal-index": 2 } as React.CSSProperties}
         >
-          A monthly subscription for Milton homeowners who want their home looked after year-round —
-          HVAC, gutters, plumbing, and seasonal checks — without the to-do list.
+          A monthly subscription for Milton homeowners who want their home looked after year-round,
+          covering HVAC, gutters, plumbing, and seasonal checks, without the to-do list.
         </p>
 
         <div
@@ -273,7 +273,7 @@ function SeasonalSection() {
             What Milton homes <em className="font-[480] italic text-moss">need most, by season</em>
           </h2>
           <p className="mt-4 max-w-[60ch] text-base leading-relaxed text-muted-foreground">
-            Milton has grown rapidly, which means a large proportion of homes are relatively new —
+            Milton has grown rapidly, which means a large proportion of homes are relatively new,
             with maintenance needs that differ from older urban stock.
           </p>
         </div>
@@ -377,7 +377,7 @@ function CtaSection() {
           </h2>
           <p className="mx-auto mt-5 max-w-[46ch] leading-relaxed text-sage">
             Ninety minutes, no obligation. We'll walk your home, note every system, and send you a
-            written maintenance plan — keep it or don't.
+            written maintenance plan: keep it or don't.
           </p>
           <div className="mt-9">
             <Button asChild size="xl" variant="accent">

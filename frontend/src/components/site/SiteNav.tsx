@@ -8,7 +8,6 @@ const links = [
   { to: "/#how", label: "How it works" },
   { to: "/#services", label: "What's included" },
   { to: "/plans", label: "Plans" },
-  { to: "/signin", label: "Sign in" },
 ] as const;
 
 export function SiteNav() {
