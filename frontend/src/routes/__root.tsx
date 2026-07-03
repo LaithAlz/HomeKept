@@ -99,8 +99,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..900;1,9..144,400..900&family=Figtree:wght@400;500;600;700&display=swap",
       },
-      // Favicon link tags — binary assets must be produced by the founder via
-      // realfavicongenerator.net and placed in frontend/public/. See FLAG below.
+      // Favicon + brand mark link tags. Source SVG lives at public/icon.svg;
+      // PNG/ICO variants are generated from it (see public/ for the full set).
+      { rel: "icon", type: "image/svg+xml", href: "/icon.svg" },
       { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
       { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" },
       { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16x16.png" },
