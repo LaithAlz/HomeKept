@@ -1,0 +1,11 @@
+{
+  "name": "HomeKept",
+  "short_name": "HomeKept",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#F8F5EE",
+  "background_color": "#F8F5EE",
+  "display": "browser"
+}
