@@ -1,18 +1,126 @@
 import { Fragment, useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Check, Minus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Check, Loader2, Minus } from "lucide-react";
+import { Button, type ButtonProps } from "@/components/ui/button";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { cn } from "@/lib/utils";
 import { PLANS, formatCad, annualMonthlyEquivalent, type Plan, type PlanId } from "@/lib/plans";
+import { getSession } from "@/lib/auth";
+import { ApiError, post } from "@/lib/api";
 
 const searchSchema = z.object({
   tier: fallback(z.enum(["essential", "complete", "premier"]), "complete").default("complete"),
 });
+
+/** Maps the frontend's plan ids to the backend's `PlanCode` enum values. */
+const PLAN_CODE: Record<PlanId, "ESSENTIAL" | "COMPLETE" | "PREMIER"> = {
+  essential: "ESSENTIAL",
+  complete: "COMPLETE",
+  premier: "PREMIER",
+};
+
+type BillingCycle = "MONTHLY" | "ANNUAL";
+
+interface CheckoutSessionResponse {
+  checkoutUrl: string;
+}
+
+interface CheckoutState {
+  status: "idle" | "loading";
+  error: string | null;
+}
+
+const IDLE_CHECKOUT: CheckoutState = { status: "idle", error: null };
+
+const GENERIC_CHECKOUT_ERROR = "Something went wrong starting checkout. Please try again.";
+
+/**
+ * Defense-in-depth for the redirect on a money path: the backend is the
+ * source of truth for `checkoutUrl`, but a full-page `window.location`
+ * redirect is worth double-checking client-side too. Only ever returns a URL
+ * whose scheme is `https:` and whose host is exactly `checkout.stripe.com` or
+ * a `*.stripe.com` subdomain (the leading dot in `.stripe.com` matters — it's
+ * what keeps a host like `evilstripe.com` from matching). Returns `null` for
+ * anything else, including unparseable strings.
+ */
+function trustedStripeCheckoutUrl(checkoutUrl: string): string | null {
+  try {
+    const u = new URL(checkoutUrl);
+    if (
+      u.protocol === "https:" &&
+      (u.hostname === "checkout.stripe.com" || u.hostname.endsWith(".stripe.com"))
+    ) {
+      return u.toString();
+    }
+  } catch {
+    /* unparseable — fall through to null below */
+  }
+  return null;
+}
+
+/**
+ * Drives the "Choose {tier}" CTAs shared by the plan cards, the comparison
+ * table, and the mobile breakdown. State is keyed by plan id so every
+ * rendering of the same tier's CTA (there are three on desktop) reflects the
+ * same in-flight/error state rather than only the one the visitor clicked.
+ *
+ * Signed-out visitors are sent to sign in and back
+ * (`/signin?next=/plans` — a static literal, never derived from user input);
+ * signed-in visitors get a Stripe Checkout session and a full-page redirect
+ * to the (foreign-origin) checkout URL.
+ */
+function usePlanCheckout(billing: "monthly" | "annual") {
+  const navigate = useNavigate();
+  const [state, setState] = useState<Record<PlanId, CheckoutState>>({
+    essential: IDLE_CHECKOUT,
+    complete: IDLE_CHECKOUT,
+    premier: IDLE_CHECKOUT,
+  });
+
+  async function startCheckout(tier: Plan) {
+    setState((s) => ({ ...s, [tier.id]: { status: "loading", error: null } }));
+
+    try {
+      const session = await getSession();
+      if (!session) {
+        navigate({ to: "/signin", search: { next: "/plans" } });
+        return;
+      }
+
+      const billingCycle: BillingCycle = billing === "monthly" ? "MONTHLY" : "ANNUAL";
+      const { checkoutUrl } = await post<CheckoutSessionResponse>("/api/checkout/session", {
+        planCode: PLAN_CODE[tier.id],
+        billingCycle,
+        // The founding-member rate is not yet surfaced in the frontend's plan
+        // data (lib/plans.ts has no `foundingRateAvailable`), so we never opt
+        // in from here; the backend re-validates the cap regardless.
+        foundingRate: false,
+      });
+
+      const dest = trustedStripeCheckoutUrl(checkoutUrl);
+      if (!dest) {
+        setState((s) => ({ ...s, [tier.id]: { status: "idle", error: GENERIC_CHECKOUT_ERROR } }));
+        return;
+      }
+
+      // Foreign origin (Stripe-hosted) — a full navigation, not the router.
+      window.location.href = dest;
+      // Left in "loading": the page is about to unload.
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.status === 429
+          ? "You've reached the limit for checkout attempts. Please try again in a few minutes."
+          : GENERIC_CHECKOUT_ERROR;
+      setState((s) => ({ ...s, [tier.id]: { status: "idle", error: message } }));
+    }
+  }
+
+  return { state, startCheckout };
+}
 
 export const Route = createFileRoute("/plans")({
   validateSearch: zodValidator(searchSchema),
@@ -192,6 +300,7 @@ function CellMark({ value }: { value: Cell }) {
 function PlansPage() {
   const { tier: highlightedTier } = Route.useSearch();
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+  const { state: checkoutState, startCheckout } = usePlanCheckout(billing);
 
   const annualSavings = useMemo(() => {
     const monthlyEq = annualMonthlyEquivalent(complete);
@@ -231,6 +340,8 @@ function PlansPage() {
                 tier={p}
                 billing={billing}
                 highlighted={highlightedTier === p.id}
+                checkout={checkoutState[p.id]}
+                onChoose={() => startCheckout(p)}
               />
             ))}
           </div>
@@ -254,13 +365,25 @@ function PlansPage() {
 
             {/* Desktop / tablet: scrollable table */}
             <div className="mt-12 hidden md:block">
-              <ComparisonTable billing={billing} highlightedTier={highlightedTier} />
+              <ComparisonTable
+                billing={billing}
+                highlightedTier={highlightedTier}
+                checkoutState={checkoutState}
+                onChoose={startCheckout}
+              />
             </div>
 
             {/* Mobile: stacked per-tier */}
             <div className="mt-10 space-y-8 md:hidden">
               {PLANS.map((p, pi) => (
-                <MobileTierBreakdown key={p.id} tier={p} billing={billing} columnIndex={pi} />
+                <MobileTierBreakdown
+                  key={p.id}
+                  tier={p}
+                  billing={billing}
+                  columnIndex={pi}
+                  checkout={checkoutState[p.id]}
+                  onChoose={() => startCheckout(p)}
+                />
               ))}
             </div>
           </div>
@@ -368,14 +491,65 @@ function BillingToggle({
   );
 }
 
+/** Shared CTA for all three renderings of a tier's "Choose {name}" action. */
+function PlanCtaButton({
+  tier,
+  checkout,
+  onChoose,
+  variant = "default",
+  size = "default",
+  className,
+}: {
+  tier: Plan;
+  checkout: CheckoutState;
+  onChoose: () => void;
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
+  className?: string;
+}) {
+  const errorId = `checkout-error-${tier.id}`;
+  const loading = checkout.status === "loading";
+
+  return (
+    <div>
+      <Button
+        type="button"
+        variant={variant}
+        size={size}
+        className={className}
+        onClick={onChoose}
+        disabled={loading}
+        aria-describedby={checkout.error ? errorId : undefined}
+      >
+        {loading ? (
+          <>
+            Starting checkout... <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          </>
+        ) : (
+          `Choose ${tier.name}`
+        )}
+      </Button>
+      {checkout.error && (
+        <p id={errorId} role="alert" className="mt-2 text-xs font-semibold text-destructive">
+          {checkout.error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PlanCard({
   tier,
   billing,
   highlighted,
+  checkout,
+  onChoose,
 }: {
   tier: Plan;
   billing: "monthly" | "annual";
   highlighted: boolean;
+  checkout: CheckoutState;
+  onChoose: () => void;
 }) {
   const price = billing === "monthly" ? tier.monthlyPriceCad : annualMonthlyEquivalent(tier);
   const isFeatured = tier.recommended;
@@ -417,9 +591,14 @@ function PlanCard({
           : `Billed annually · ${formatCad(tier.annualPriceCad)}/yr`}
       </p>
 
-      <Button asChild size="lg" variant={isFeatured ? "accent" : "default"} className="mt-6 w-full">
-        <Link to="/book">Choose {tier.name}</Link>
-      </Button>
+      <PlanCtaButton
+        tier={tier}
+        checkout={checkout}
+        onChoose={onChoose}
+        size="lg"
+        variant={isFeatured ? "accent" : "default"}
+        className="mt-6 w-full"
+      />
 
       <ul className="mt-8 space-y-3 text-sm">
         {tier.features.map((h) => (
@@ -436,9 +615,13 @@ function PlanCard({
 function ComparisonTable({
   billing,
   highlightedTier,
+  checkoutState,
+  onChoose,
 }: {
   billing: "monthly" | "annual";
   highlightedTier: PlanId;
+  checkoutState: Record<PlanId, CheckoutState>;
+  onChoose: (tier: Plan) => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-3xl border border-border bg-card shadow-sm">
@@ -508,9 +691,13 @@ function ComparisonTable({
             <td className="p-4" />
             {PLANS.map((t) => (
               <td key={t.id} className="p-4 text-center">
-                <Button asChild size="sm" variant={t.recommended ? "accent" : "outline"}>
-                  <Link to="/book">Choose {t.name}</Link>
-                </Button>
+                <PlanCtaButton
+                  tier={t}
+                  checkout={checkoutState[t.id]}
+                  onChoose={() => onChoose(t)}
+                  size="sm"
+                  variant={t.recommended ? "accent" : "outline"}
+                />
               </td>
             ))}
           </tr>
@@ -524,10 +711,14 @@ function MobileTierBreakdown({
   tier,
   billing,
   columnIndex,
+  checkout,
+  onChoose,
 }: {
   tier: Plan;
   billing: "monthly" | "annual";
   columnIndex: number;
+  checkout: CheckoutState;
+  onChoose: () => void;
 }) {
   const price = billing === "monthly" ? tier.monthlyPriceCad : annualMonthlyEquivalent(tier);
   return (
@@ -580,14 +771,14 @@ function MobileTierBreakdown({
           </div>
         ))}
       </div>
-      <Button
-        asChild
+      <PlanCtaButton
+        tier={tier}
+        checkout={checkout}
+        onChoose={onChoose}
         size="lg"
         variant={tier.recommended ? "accent" : "default"}
         className="mt-6 w-full"
-      >
-        <Link to="/book">Choose {tier.name}</Link>
-      </Button>
+      />
     </div>
   );
 }
