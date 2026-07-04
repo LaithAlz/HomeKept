@@ -12,4 +12,18 @@ export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
   },
+  vite: {
+    server: {
+      // Dev-only: forward API calls to the local Spring backend so the app can use
+      // same-origin /api paths everywhere (in production, Cloudflare routes /api/*
+      // to the backend). Backend default port is 8080; override with BACKEND_ORIGIN
+      // when running both locally (e.g. SERVER_PORT=8081 ./gradlew bootRun).
+      proxy: {
+        "/api": {
+          target: process.env.BACKEND_ORIGIN ?? "http://localhost:8080",
+          changeOrigin: true,
+        },
+      },
+    },
+  },
 });

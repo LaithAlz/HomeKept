@@ -34,8 +34,9 @@ export const Route = createFileRoute("/book")({
 
 /* -------------------------------------------------------------------------- */
 /* Contract-accurate request shape — mirrors POST /api/bookings/walkthrough   */
-/* Endpoint is unbuilt (issue #8). Swap the mock body in submitBooking()      */
-/* for a real fetch() call when the backend is ready — one line.              */
+/* (backend/api-contract.md). leadSource is deliberately omitted: the server  */
+/* defaults it to WEBSITE_DIRECT, and UTM-driven attribution lands with the   */
+/* PostHog work (#63).                                                        */
 /* -------------------------------------------------------------------------- */
 interface BookingRequest {
   fullName: string;
@@ -51,23 +52,25 @@ interface BookingRequest {
   timeOfDay: "MORNING" | "AFTERNOON" | "EVENING";
   dayPreferences: ("MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN")[];
   notes?: string;
-  leadSource?: "WEBSITE_ORGANIC";
   contactConsent: true;
 }
 
-/** Mock submission — structured to match the real contract exactly.
- *  To wire to the live endpoint, replace this function body with:
- *    const res = await fetch("/api/bookings/walkthrough", { method: "POST",
- *      headers: { "Content-Type": "application/json" },
- *      body: JSON.stringify(payload) });
- *    if (!res.ok) throw new Error("booking_failed");
- *    return await res.json() as { id: number; status: "PENDING" };
- */
+/** The booking endpoint rate-limits at 3 submissions/IP/hour (429). */
+class BookingSubmitError extends Error {
+  constructor(readonly kind: "rate_limited" | "failed") {
+    super(kind);
+  }
+}
+
 async function submitBooking(payload: BookingRequest): Promise<{ id: number; status: "PENDING" }> {
-  // eslint-disable-next-line no-console
-  console.debug("[mock] POST /api/bookings/walkthrough", payload);
-  await new Promise((r) => setTimeout(r, 600)); // simulate network
-  return { id: Math.floor(Math.random() * 9000) + 1000, status: "PENDING" };
+  const res = await fetch("/api/bookings/walkthrough", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 429) throw new BookingSubmitError("rate_limited");
+  if (!res.ok) throw new BookingSubmitError("failed");
+  return (await res.json()) as { id: number; status: "PENDING" };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -373,7 +376,6 @@ function BookFlow() {
       timeOfDay: data.timeOfDay as TimeOfDay,
       dayPreferences: data.days,
       notes: data.notes.trim() || undefined,
-      leadSource: "WEBSITE_ORGANIC",
       contactConsent: true,
       ...(data.yearBuilt.trim() ? { yearBuilt: parseInt(data.yearBuilt, 10) } : {}),
       ...(data.sqft ? { squareFootageRange: sqftMap[data.sqft] } : {}),
@@ -393,8 +395,12 @@ function BookFlow() {
       } catch {
         /* ignore */
       }
-    } catch {
-      setSubmitError("Something went wrong. Please try again in a moment.");
+    } catch (err) {
+      setSubmitError(
+        err instanceof BookingSubmitError && err.kind === "rate_limited"
+          ? "Too many booking attempts from this connection. Please wait an hour and try again, or email hello@homekept.ca and we'll book you in."
+          : "Something went wrong. Please try again in a moment.",
+      );
       setSubmitting(false);
     }
   }
