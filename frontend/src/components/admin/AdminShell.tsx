@@ -1,4 +1,5 @@
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   BarChart3,
@@ -11,10 +12,13 @@ import {
   ListChecks,
   Tags,
   Settings,
+  Loader2,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { pendingWalkthroughs, subscribers, attention } from "@/lib/mock-admin";
+import { getSession } from "@/lib/auth";
 
 type Item = {
   to:
@@ -84,7 +88,109 @@ const groups: { label: string; items: Item[] }[] = [
   },
 ];
 
+type GuardStatus = "checking" | "authorized" | "unauthenticated" | "forbidden" | "error";
+
+/**
+ * Client-side ADMIN role guard for every `/admin/*` route.
+ *
+ * Mirrors the pattern in `AppShell` (built for `/app` in #17): this is TanStack
+ * Start with SSR on Cloudflare, and the session cookie lives on the API origin,
+ * so a server-rendered request has nothing to send `GET /api/auth/me` with — a
+ * server-side check would always look signed-out. Checking from a component
+ * effect guarantees the request only ever happens in the browser, where the
+ * cookie is present, and that SSR output never contains admin chrome or data.
+ *
+ * Two failure modes, two destinations:
+ *   - no session at all → `/signin?next=<current path>` (so a customer or a
+ *     signed-out visitor lands back here after signing in, if they're admin).
+ *   - a session that isn't role ADMIN → `/app`. A customer or technician must
+ *     never see the admin console, not even a flash of the sidebar while the
+ *     redirect is in flight — every non-"authorized" state below renders only
+ *     a loading placeholder, never `<Outlet />` or the nav.
+ */
 export function AdminShell() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [guard, setGuard] = useState<GuardStatus>("checking");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGuard("checking");
+    getSession()
+      .then((session) => {
+        if (cancelled) return;
+        if (!session) {
+          setGuard("unauthenticated");
+        } else if (session.role !== "ADMIN") {
+          setGuard("forbidden");
+        } else {
+          setGuard("authorized");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setGuard("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    if (guard === "unauthenticated") {
+      navigate({ to: "/signin", search: { next: pathname }, replace: true });
+    } else if (guard === "forbidden") {
+      navigate({ to: "/app", replace: true });
+    }
+  }, [guard, navigate, pathname]);
+
+  if (guard === "checking") {
+    return <SessionLoading />;
+  }
+
+  if (guard === "error") {
+    return <SessionError onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (guard !== "authorized") {
+    // Redirect is in flight (see effect above) — render nothing so the admin
+    // console never flashes for a signed-out visitor or a non-admin session.
+    return <SessionLoading />;
+  }
+
+  return <AdminConsole />;
+}
+
+function SessionLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-dvh items-center justify-center bg-background"
+    >
+      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <span className="sr-only">Checking your session.</span>
+    </div>
+  );
+}
+
+function SessionError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="max-w-sm text-center">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          We couldn't check your session.
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+        <div className="mt-6">
+          <Button onClick={onRetry}>Try again</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminConsole() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   const isActive = (to: string, exact?: boolean) =>
