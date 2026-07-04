@@ -3,6 +3,11 @@ package com.homekept.notification;
 import com.homekept.FakeEmailSenderConfig;
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
 import com.homekept.TestcontainersConfiguration;
+import com.homekept.booking.BookingDayOfWeek;
+import com.homekept.booking.BookingNotifier;
+import com.homekept.booking.LeadSource;
+import com.homekept.booking.TimeOfDay;
+import com.homekept.booking.WalkthroughBooking;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
 import com.homekept.identity.UserRepository;
@@ -30,9 +35,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,6 +60,7 @@ class NotificationEmailIntegrationTest {
     @Autowired PaymentFailedNotifier paymentFailedNotifier;
     @Autowired SubscriptionCancelledNotifier subscriptionCancelledNotifier;
     @Autowired ActivationNotifier activationNotifier;
+    @Autowired BookingNotifier bookingNotifier;
 
     @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
@@ -156,5 +164,46 @@ class NotificationEmailIntegrationTest {
     void unknownSubscriber_skipsSend() {
         subscriptionStartedNotifier.onSubscriptionStarted(999_999_999L, "COMPLETE");
         assertThat(email.sent).isEmpty();
+    }
+
+    @Test
+    void bookingConfirmation_sendsToBookingEmailWithSubmittedDetails() {
+        String bookingEmail = "notif-booking-" + System.nanoTime() + "@test.local";
+        WalkthroughBooking booking = new WalkthroughBooking(
+                "Priya Sharma", bookingEmail, "(905) 555-0123",
+                "14 Maple Ridge Crt", "Mississauga", "L5L 1A1",
+                1998, "1500-2500",
+                com.homekept.booking.PropertyType.DETACHED, LocalDate.of(2026, 7, 6),
+                TimeOfDay.AFTERNOON, Set.of(BookingDayOfWeek.WED, BookingDayOfWeek.THU),
+                "Friendly dog in the yard", LeadSource.WEBSITE_DIRECT, null, Instant.now());
+
+        bookingNotifier.sendBookingConfirmation(booking);
+
+        assertThat(email.sent).hasSize(1);
+        assertThat(email.sent.get(0).toEmail()).isEqualTo(bookingEmail);
+        assertThat(email.sent.get(0).subject()).isEqualTo("Your HomeKept walk-through request");
+        assertThat(email.sent.get(0).htmlBody())
+                .contains("Hi Priya,")
+                .contains("July 6, 2026")
+                .contains("afternoon")
+                .contains("Wednesday and Thursday")
+                .contains("14 Maple Ridge Crt, Mississauga");
+    }
+
+    @Test
+    void bookingConfirmation_noDayPreferences_omitsThemFromBody() {
+        String bookingEmail = "notif-booking-" + System.nanoTime() + "@test.local";
+        WalkthroughBooking booking = new WalkthroughBooking(
+                "Alex Chen", bookingEmail, "(905) 555-0000",
+                "1 Main St", "Oakville", "L6J 1A1",
+                null, null,
+                com.homekept.booking.PropertyType.SEMI, LocalDate.of(2026, 7, 13),
+                TimeOfDay.MORNING, Set.of(),
+                null, LeadSource.WEBSITE_DIRECT, null, Instant.now());
+
+        bookingNotifier.sendBookingConfirmation(booking);
+
+        assertThat(email.sent).hasSize(1);
+        assertThat(email.sent.get(0).htmlBody()).doesNotContain(", on ");
     }
 }

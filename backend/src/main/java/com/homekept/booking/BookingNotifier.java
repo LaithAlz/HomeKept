@@ -3,13 +3,8 @@ package com.homekept.booking;
 /**
  * Notification seam for booking-related emails.
  *
- * <p>The MVP default implementation ({@link DefaultBookingNotifier}) logs a placeholder
- * message. The notification slice will later register a {@code @Primary} real
- * implementation backed by SendGrid — the plain {@code @Component} default bean will
- * then be superseded without any code change here.
- *
- * <p>Pattern: plain {@code @Component} default + later {@code @Primary} real impl.
- * Do NOT use {@code @ConditionalOnMissingBean} on a component-scanned bean.
+ * <p>{@link DefaultBookingNotifier} sends the real booking-confirmation email via the
+ * notification domain's {@code EmailSender} (SendGrid) — see #11.
  */
 public interface BookingNotifier {
 
