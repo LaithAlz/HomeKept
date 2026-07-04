@@ -87,6 +87,7 @@ public class TechVisitService {
     private final CatalogService catalogService;
     private final StorageService storageService;
     private final VisitReportNotifier visitReportNotifier;
+    private final HealthScoreService healthScoreService;
     private final ZoneId renderZoneId;
 
     public TechVisitService(VisitRepository visitRepository,
@@ -99,6 +100,7 @@ public class TechVisitService {
                             CatalogService catalogService,
                             StorageService storageService,
                             VisitReportNotifier visitReportNotifier,
+                            HealthScoreService healthScoreService,
                             ZoneId renderZoneId) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
@@ -110,6 +112,7 @@ public class TechVisitService {
         this.catalogService = catalogService;
         this.storageService = storageService;
         this.visitReportNotifier = visitReportNotifier;
+        this.healthScoreService = healthScoreService;
         this.renderZoneId = renderZoneId;
     }
 
@@ -452,10 +455,11 @@ public class TechVisitService {
 
         Visit saved = visitRepository.save(visit);
 
-        // DEFER: health_score_snapshot computation — issue #53.
-        // TODO(#53): compute and save HealthScoreSnapshot for subscriber after completion.
+        // Snapshot the Home Health Score now the visit is COMPLETED (#53) — gives the
+        // dashboard delta a prior value to compare future reads against.
+        healthScoreService.snapshotOnCompletion(saved.getSubscriberId());
 
-        // Fire visit-report notification via stub (real SendGrid in the notification slice).
+        // Fire visit-report notification (real SendGrid email — the notification slice).
         visitReportNotifier.sendVisitReport(saved);
 
         log.info("tech_visit_completed visitId={} subscriberId={} durationMin={} materialsCents={}",

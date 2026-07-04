@@ -57,6 +57,13 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
             @Param("status") VisitStatus status,
             Pageable pageable);
 
+    /**
+     * The single most recent visit in a given status for a subscriber. Used by the Health
+     * Score rubric to read the latest completed visit's checklist outcomes.
+     */
+    Optional<Visit> findFirstBySubscriberIdAndStatusOrderByScheduledForDescIdDesc(
+            Long subscriberId, VisitStatus status);
+
     // ── Admin queries ─────────────────────────────────────────────────────────
 
     /** Admin: cursor-paginated visits newest-first. */

@@ -140,7 +140,7 @@ acknowledged and ignored.
 | `GET /api/app/subscription` | `{ status, planCode, billingCycle, currentPeriodEnd, picksRemaining, premiumPicksRemaining, property: { streetAddress, city, ... } }` |
 | `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }] }` |
 | `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
-| `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [...] }` — v1 rubric (weighted checklist outcomes) |
+| `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [{ id, body, severity, createdAt }] }` — v1 rubric: `score = clamp(100 − open-flag penalty (URGENT 20 / ATTENTION 10 / INFO 3) − checklist deduction (up to 15 × incomplete rate of the last completed visit), 0..100)`, computed on read; `delta` vs the most recent `health_score_snapshot` (written per completed visit); `flagged` = OPEN flags |
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
 | `GET /api/app/todos` · `POST /api/app/todos` · `DELETE /api/app/todos/{id}` | "your list" — `{ body }`; OPEN items fold into the next scheduled visit |
 | `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |

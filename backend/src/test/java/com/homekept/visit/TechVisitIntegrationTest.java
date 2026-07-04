@@ -399,6 +399,25 @@ class TechVisitIntegrationTest {
     }
 
     @Test
+    void completeVisit_writesHealthScoreSnapshot() throws Exception {
+        // Completing a visit snapshots the Home Health Score (#53) so the dashboard delta
+        // has a prior value.
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(COMPLETE_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"completionNotes\":\"done\",\"actualDurationMinutes\":90,\"materialsCostCents\":0}"))
+                .andExpect(status().isOk());
+
+        Integer snapshots = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM health_score_snapshot WHERE subscriber_id = ?",
+                Integer.class, subscriber.getId());
+        assertThat(snapshots).isEqualTo(1);
+    }
+
+    @Test
     void completeVisit_fromScheduled_returns409() throws Exception {
         // todayVisit is SCHEDULED — completing without starting is illegal.
         String body = """
