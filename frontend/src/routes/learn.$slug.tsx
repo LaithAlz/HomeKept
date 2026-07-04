@@ -50,7 +50,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-january",
     month: "January",
-    title: "What Your Ontario Home Needs in January — HomeKept",
+    title: "What Your Ontario Home Needs in January: HomeKept",
     description:
       "Mid-winter home maintenance checklist for Ontario homeowners: furnace filter check, water heater flush, attic ice-dam inspection, humidity tuning, and smoke detector sweep.",
     bodyPlaceholder:
@@ -59,7 +59,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-february",
     month: "February",
-    title: "What Your Ontario Home Needs in February — HomeKept",
+    title: "What Your Ontario Home Needs in February: HomeKept",
     description:
       "Deep-winter home care in Ontario: condensation and draft checks, basement moisture scan, tub and shower re-caulking, and garage door tune-up.",
     bodyPlaceholder:
@@ -68,7 +68,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-march",
     month: "March",
-    title: "What Your Ontario Home Needs in March — HomeKept",
+    title: "What Your Ontario Home Needs in March: HomeKept",
     description:
       "Spring thaw prep for Ontario homes: sump pump test and pit cleaning, snowmelt drainage and grading check, foundation walkaround, and floor drain inspection.",
     bodyPlaceholder:
@@ -77,7 +77,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-april",
     month: "April",
-    title: "What Your Ontario Home Needs in April — HomeKept",
+    title: "What Your Ontario Home Needs in April: HomeKept",
     description:
       "Spring readiness for Ontario homeowners: reconnecting outdoor taps, AC startup observation, spring gutter clearing, and winter-damage walkaround.",
     bodyPlaceholder:
@@ -86,7 +86,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-may",
     month: "May",
-    title: "What Your Ontario Home Needs in May — HomeKept",
+    title: "What Your Ontario Home Needs in May: HomeKept",
     description:
       "May exterior maintenance for Ontario homes: deck, railing, and fence hardware checks, screen inspection, exterior caulking, and irrigation hose check.",
     bodyPlaceholder:
@@ -95,7 +95,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-june",
     month: "June",
-    title: "What Your Ontario Home Needs in June — HomeKept",
+    title: "What Your Ontario Home Needs in June: HomeKept",
     description:
       "Summer prep for Ontario homes: full exterior caulking pass, AC condenser clean, bathroom fan cleaning, and drainage recheck.",
     bodyPlaceholder:
@@ -104,7 +104,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-july",
     month: "July",
-    title: "What Your Ontario Home Needs in July — HomeKept",
+    title: "What Your Ontario Home Needs in July: HomeKept",
     description:
       "Summer systems check for Ontario homeowners: AC performance observation, under-sink and appliance leak inspection, dryer vent deep clean, and washer hose check.",
     bodyPlaceholder:
@@ -113,7 +113,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-august",
     month: "August",
-    title: "What Your Ontario Home Needs in August — HomeKept",
+    title: "What Your Ontario Home Needs in August: HomeKept",
     description:
       "Water system maintenance for Ontario homes in August: water heater visual and temperature check, water pressure test, toilet internals, and sump pump recheck.",
     bodyPlaceholder:
@@ -122,7 +122,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-september",
     month: "September",
-    title: "What Your Ontario Home Needs in September — HomeKept",
+    title: "What Your Ontario Home Needs in September: HomeKept",
     description:
       "Pre-heating season checklist for Ontario homes: furnace filter and visual inspection, humidifier pad replacement, weatherstripping pass, and gas tune-up coordination.",
     bodyPlaceholder:
@@ -131,7 +131,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-october",
     month: "October",
-    title: "What Your Ontario Home Needs in October — HomeKept",
+    title: "What Your Ontario Home Needs in October: HomeKept",
     description:
       "Fall winterization for Ontario homes: shutting down outdoor taps, humidifier service, weatherstripping and door sweeps, eaves check, and detector sweep.",
     bodyPlaceholder:
@@ -140,7 +140,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-november",
     month: "November",
-    title: "What Your Ontario Home Needs in November — HomeKept",
+    title: "What Your Ontario Home Needs in November: HomeKept",
     description:
       "Post-leaf season home maintenance in Ontario: full gutter and downspout clearing, roof-line visual from grade, and downspout extension check.",
     bodyPlaceholder:
@@ -149,7 +149,7 @@ export const ARTICLES: Article[] = [
   {
     slug: "ontario-home-maintenance-december",
     month: "December",
-    title: "What Your Ontario Home Needs in December — HomeKept",
+    title: "What Your Ontario Home Needs in December: HomeKept",
     description:
       "Holiday season home safety checklist for Ontario homes: smoke and CO detector tests, fire extinguisher check, dryer vent recheck, and cord and space-heater walkthrough.",
     bodyPlaceholder:
@@ -164,7 +164,7 @@ export const Route = createFileRoute("/learn/$slug")({
   head: ({ params }) => {
     const article = ARTICLE_MAP.get(params.slug);
     if (!article) {
-      return { meta: [{ title: "Article not found — HomeKept" }] };
+      return { meta: [{ title: "Article not found: HomeKept" }] };
     }
     const url = `${BASE_URL}/learn/${article.slug}`;
     return {
@@ -217,7 +217,7 @@ function LearnArticlePage() {
               <span className="text-xs text-muted-foreground">Seasonal guide · Ontario</span>
             </div>
             <h1 className="mt-5 font-display text-[clamp(28px,4.5vw,56px)] font-[560] leading-[1.06] tracking-[-0.02em] text-primary">
-              {article.title.replace(" — HomeKept", "")}
+              {article.title.replace(": HomeKept", "")}
             </h1>
             <p className="mt-5 text-lg leading-relaxed text-muted-foreground">
               {article.description}
@@ -303,7 +303,7 @@ function LearnArticlePage() {
               We handle this, every month.
             </h2>
             <p className="mx-auto mt-4 max-w-[46ch] text-sm leading-relaxed text-muted-foreground">
-              HomeKept subscribers get this seasonal work done on a schedule — no to-do list, no
+              HomeKept subscribers get this seasonal work done on a schedule: no to-do list, no
               remembering, just a photo report after every visit.
             </p>
             <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">

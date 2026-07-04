@@ -9,13 +9,13 @@ import { OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 export const Route = createFileRoute("/terms")({
   head: () => ({
     meta: [
-      { title: "Terms of Service — HomeKept" },
+      { title: "Terms of Service: HomeKept" },
       {
         name: "description",
         content:
           "HomeKept terms of service: what's included in your subscription, billing and cancellation, scope of work, property access, and governing law (Ontario, Canada).",
       },
-      { property: "og:title", content: "Terms of Service — HomeKept" },
+      { property: "og:title", content: "Terms of Service: HomeKept" },
       {
         property: "og:description",
         content:
@@ -41,7 +41,7 @@ function TermsPage() {
             role="note"
             className="mb-10 rounded-2xl border border-warning/40 bg-warning/10 px-6 py-4 text-sm text-foreground"
           >
-            <strong className="font-semibold text-primary">Draft — pending legal review.</strong>{" "}
+            <strong className="font-semibold text-primary">Draft: pending legal review.</strong>{" "}
             This document has not yet been reviewed by a lawyer and is not final. Do not rely on it
             as legal advice.
           </div>
@@ -84,7 +84,7 @@ function TermsPage() {
                 </li>
                 <li>
                   Routine maintenance tasks and observational checks performed on each visit
-                  (details vary by plan — see{" "}
+                  (details vary by plan: see{" "}
                   <Link
                     to="/plans"
                     className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -112,7 +112,7 @@ function TermsPage() {
               </p>
             </Section>
 
-            <Section heading="3. Scope of work — what HomeKept does and does not do">
+            <Section heading="3. Scope of work: what HomeKept does and does not do">
               <p>
                 HomeKept performs routine home maintenance and visual/observational checks. Examples
                 include: HVAC filter replacements, gutter clearing, smoke and CO detector tests,
@@ -120,10 +120,10 @@ function TermsPage() {
               </p>
               <p>
                 <strong>HomeKept does not perform licensed trade work.</strong> Any task requiring a
-                licensed tradesperson — including but not limited to gas work, electrical panel
-                work, structural repairs, plumbing re-piping, or HVAC refrigerant handling — is
-                outside our scope. Where a visit reveals a condition that requires a licensed trade,
-                we will document it in your report and{" "}
+                licensed tradesperson, including but not limited to gas work, electrical panel work,
+                structural repairs, plumbing re-piping, or HVAC refrigerant handling, is outside our
+                scope. Where a visit reveals a condition that requires a licensed trade, we will
+                document it in your report and{" "}
                 <strong>refer it to an appropriate professional</strong>; we will not perform the
                 work ourselves.
               </p>

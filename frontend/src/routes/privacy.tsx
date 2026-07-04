@@ -9,13 +9,13 @@ import { OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 export const Route = createFileRoute("/privacy")({
   head: () => ({
     meta: [
-      { title: "Privacy Policy — HomeKept" },
+      { title: "Privacy Policy: HomeKept" },
       {
         name: "description",
         content:
           "HomeKept privacy policy: what personal information we collect, how we use it, the third-party processors we rely on, and your rights under PIPEDA.",
       },
-      { property: "og:title", content: "Privacy Policy — HomeKept" },
+      { property: "og:title", content: "Privacy Policy: HomeKept" },
       {
         property: "og:description",
         content:
@@ -41,7 +41,7 @@ function PrivacyPage() {
             role="note"
             className="mb-10 rounded-2xl border border-warning/40 bg-warning/10 px-6 py-4 text-sm text-foreground"
           >
-            <strong className="font-semibold text-primary">Draft — pending legal review.</strong>{" "}
+            <strong className="font-semibold text-primary">Draft: pending legal review.</strong>{" "}
             This document has not yet been reviewed by a lawyer and is not final. Do not rely on it
             as legal advice.
           </div>
@@ -86,7 +86,7 @@ function PrivacyPage() {
 
               <SubHeading>Account information</SubHeading>
               <ul>
-                <li>Name, email address, and phone number — provided by you at sign-up.</li>
+                <li>Name, email address, and phone number, provided by you at sign-up.</li>
               </ul>
 
               <SubHeading>Property details</SubHeading>
@@ -95,7 +95,7 @@ function PrivacyPage() {
                   Street address, unit number, city, and postal code of the property we maintain.
                 </li>
                 <li>
-                  Approximate latitude and longitude, and forward sortation area (FSA — the first
+                  Approximate latitude and longitude, and forward sortation area (FSA, the first
                   three characters of your postal code), derived from your address.
                 </li>
                 <li>Year built, approximate square-footage range, and property type.</li>
@@ -149,7 +149,7 @@ function PrivacyPage() {
                 <li>Bill you for your subscription and manage your account.</li>
                 <li>Send you visit summaries, reports, and service communications.</li>
                 <li>
-                  Send you marketing updates about HomeKept — only with your consent, as required by
+                  Send you marketing updates about HomeKept: only with your consent, as required by
                   CASL. You may withdraw consent at any time.
                 </li>
                 <li>
@@ -168,32 +168,32 @@ function PrivacyPage() {
               </p>
               <ul>
                 <li>
-                  <strong>Stripe</strong> (United States) — payment processing. Stripe's own privacy
+                  <strong>Stripe</strong> (United States): payment processing. Stripe's own privacy
                   policy governs how they handle card data.
                 </li>
                 <li>
-                  <strong>Render</strong> (United States) — our backend application server and
+                  <strong>Render</strong> (United States): our backend application server and
                   PostgreSQL database are hosted on Render. Your personal data resides on
                   Render-managed infrastructure in the US. PIPEDA requires that we ensure equivalent
                   protection regardless of where data is hosted, not that it be stored in Canada.
                 </li>
                 <li>
-                  <strong>Vercel</strong> — website hosting and edge delivery for homekept.ca.
+                  <strong>Vercel</strong>: website hosting and edge delivery for homekept.ca.
                 </li>
                 <li>
-                  <strong>SendGrid</strong> (United States) — transactional email (visit
+                  <strong>SendGrid</strong> (United States): transactional email (visit
                   confirmations, reports, account notifications).
                 </li>
                 <li>
-                  <strong>Sentry</strong> — error monitoring. Error events may include technical
+                  <strong>Sentry</strong>: error monitoring. Error events may include technical
                   context (e.g. a URL or user ID) to help us diagnose problems.
                 </li>
                 <li>
-                  <strong>PostHog</strong> (United States) — product analytics. See section 6 for
+                  <strong>PostHog</strong> (United States): product analytics. See section 6 for
                   details.
                 </li>
                 <li>
-                  <strong>Cloudflare R2</strong> (United States) — visit photographs are stored in
+                  <strong>Cloudflare R2</strong> (United States): visit photographs are stored in
                   Cloudflare's R2 object storage. Photos are secured and accessible only to
                   authorised HomeKept personnel and to you via your account.
                 </li>
@@ -211,7 +211,7 @@ function PrivacyPage() {
               </p>
               <ul>
                 <li>
-                  Analytics is <strong>cookieless</strong> — no tracking cookies are set on your
+                  Analytics is <strong>cookieless</strong>: no tracking cookies are set on your
                   device.
                 </li>
                 <li>
@@ -240,7 +240,7 @@ function PrivacyPage() {
               <p>
                 You may request deletion of your personal information at any time. A deletion
                 request is processed as a PIPEDA access/correction/deletion request. Upon
-                completion, we remove your personal data — including any linked analytics records —
+                completion, we remove your personal data, including any linked analytics records,
                 from our systems and instruct our processors to do the same, subject to any legal
                 hold obligations. Some data may be retained in anonymised or aggregated form where
                 it no longer identifies you.

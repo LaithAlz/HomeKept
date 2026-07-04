@@ -3,11 +3,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Check, Minus, Star } from "lucide-react";
+import { Check, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { cn } from "@/lib/utils";
+import { PLANS, formatCad, annualMonthlyEquivalent, type Plan, type PlanId } from "@/lib/plans";
 
 const searchSchema = z.object({
   tier: fallback(z.enum(["essential", "complete", "premier"]), "complete").default("complete"),
@@ -17,13 +18,13 @@ export const Route = createFileRoute("/plans")({
   validateSearch: zodValidator(searchSchema),
   head: () => ({
     meta: [
-      { title: "Plans — HomeKept" },
+      { title: "Plans: HomeKept" },
       {
         name: "description",
         content:
           "Compare Essential, Complete, and Premier plans for HomeKept home maintenance. Monthly or annual billing. All prices in CAD.",
       },
-      { property: "og:title", content: "HomeKept Plans — Essential, Complete, Premier" },
+      { property: "og:title", content: "HomeKept Plans: Essential, Complete, Premier" },
       {
         property: "og:description",
         content: "Pick the level of proactive home maintenance that fits your home. Pause anytime.",
@@ -37,124 +38,124 @@ export const Route = createFileRoute("/plans")({
   component: PlansPage,
 });
 
-type TierId = "essential" | "complete" | "premier";
-
-type Tier = {
-  id: TierId;
-  name: string;
-  tagline: string;
-  monthly: number;
-  annual: number;
-  highlights: string[];
-  featured?: boolean;
-};
-
-const tiers: Tier[] = [
-  {
-    id: "essential",
-    name: "Essential",
-    tagline: "Cover the basics, never miss the seasons.",
-    monthly: 129,
-    annual: 107,
-    highlights: [
-      "4 visits per year",
-      "Filter & smoke detector checks",
-      "Seasonal exterior inspection",
-      "Photo report after each visit",
-    ],
-  },
-  {
-    id: "complete",
-    name: "Complete",
-    tagline: "Our most chosen plan. The whole home, handled.",
-    monthly: 189,
-    annual: 157,
-    featured: true,
-    highlights: [
-      "12 visits per year",
-      "Full maintenance catalog",
-      "Priority scheduling",
-      "Home health score dashboard",
-      "2 free add-on services per year",
-    ],
-  },
-  {
-    id: "premier",
-    name: "Premier",
-    tagline: "White-glove care with a dedicated technician.",
-    monthly: 289,
-    annual: 241,
-    highlights: [
-      "24 visits per year",
-      "Dedicated technician",
-      "Same-week response",
-      "Concierge requests",
-      "Quarterly home review",
-    ],
-  },
-];
-
 type Cell = boolean | string;
 
 type Row = { label: string; values: [Cell, Cell, Cell] };
 
 type Group = { name: string; rows: Row[] };
 
+const [essential, complete, premier] = PLANS;
+
 const groups: Group[] = [
   {
     name: "Visits",
     rows: [
-      { label: "Scheduled visits per year", values: ["4", "12", "24"] },
-      { label: "Priority scheduling", values: [false, true, true] },
-      { label: "Same-week response", values: [false, false, true] },
-      { label: "Dedicated technician", values: [false, false, true] },
+      {
+        label: "Scheduled visits per year",
+        values: [
+          String(essential.visitsPerYear),
+          String(complete.visitsPerYear),
+          String(premier.visitsPerYear),
+        ],
+      },
+      {
+        label: "Priority scheduling (48h + emergency line)",
+        values: [
+          essential.priorityScheduling,
+          complete.priorityScheduling,
+          premier.priorityScheduling,
+        ],
+      },
+      {
+        label: "Same-week scheduling + 24h emergency",
+        values: [
+          essential.sameWeekEmergency,
+          complete.sameWeekEmergency,
+          premier.sameWeekEmergency,
+        ],
+      },
+      {
+        label: "Dedicated technician (guaranteed same person)",
+        values: [
+          essential.dedicatedTechnician,
+          complete.dedicatedTechnician,
+          premier.dedicatedTechnician,
+        ],
+      },
     ],
   },
   {
-    name: "Inclusions",
+    name: "Every visit",
     rows: [
-      { label: "HVAC filter swaps", values: [true, true, true] },
-      { label: "Smoke & CO detector tests", values: [true, true, true] },
-      { label: "Seasonal exterior inspection", values: [true, true, true] },
-      { label: "Gutter clearing", values: [false, true, true] },
-      { label: "Plumbing inspections", values: [false, true, true] },
-      { label: "Smart-home setup & tune-ups", values: [false, true, true] },
-      { label: "Full maintenance catalog", values: [false, true, true] },
+      { label: "Filter checks & swaps", values: [true, true, true] },
+      { label: "Smoke & CO detector tests + batteries", values: [true, true, true] },
+      { label: "Seasonal mechanicals walkaround", values: [true, true, true] },
+      {
+        label: "Your-list time per visit",
+        values: ["~20 min", "~20 min", "Up to 1 hr, incl. minor repairs"],
+      },
+      { label: "Photo report + Home Health Score update", values: [true, true, true] },
     ],
   },
   {
-    name: "Support",
+    name: "Picks & extras",
     rows: [
-      { label: "Photo report after each visit", values: [true, true, true] },
-      { label: "Home health score dashboard", values: [false, true, true] },
-      { label: "Email & chat support", values: [true, true, true] },
-      { label: "Phone support", values: [false, true, true] },
-      { label: "Concierge requests", values: [false, false, true] },
+      {
+        label: "Included picks per year",
+        values: [
+          String(essential.includedPicks),
+          String(complete.includedPicks),
+          String(premier.includedPicks),
+        ],
+      },
+      {
+        label: "Max Premium picks included",
+        values: [
+          String(essential.maxPremiumPicks),
+          String(complete.maxPremiumPicks),
+          String(premier.maxPremiumPicks),
+        ],
+      },
+      {
+        label: "Licensed gas tune-up coordination",
+        values: [
+          essential.gasTuneupCoordination,
+          complete.gasTuneupCoordination,
+          premier.gasTuneupCoordination,
+        ],
+      },
+      {
+        label: "Smart-home support",
+        values: [essential.smartHomeSupport, complete.smartHomeSupport, premier.smartHomeSupport],
+      },
+      {
+        label: "Minor repairs included (parts at cost)",
+        values: [essential.repairsIncluded, complete.repairsIncluded, premier.repairsIncluded],
+      },
+      {
+        label: "Annual Home Plan (5-yr capital forecast)",
+        values: [essential.annualHomePlan, complete.annualHomePlan, premier.annualHomePlan],
+      },
     ],
   },
   {
-    name: "Premium features",
-    rows: [
-      { label: "Free add-on services / year", values: ["—", "2", "Unlimited"] },
-      { label: "Subscriber discount on extra work", values: ["10%", "15%", "20%"] },
-      { label: "Quarterly home review", values: [false, false, true] },
-      { label: "Pause plan up to 3 months", values: [true, true, true] },
-    ],
+    name: "Flexibility",
+    rows: [{ label: "Pause anytime, up to 3 months a year", values: [true, true, true] }],
   },
 ];
 
 const faqs = [
   {
     q: "Can I pause my plan?",
-    a: "Yes — pause anytime for up to three months per year. Useful for travel or seasonal homes. We'll keep your schedule and pick right back up when you're ready.",
+    a: "Yes, pause anytime for up to three months per year. Useful for travel or seasonal homes. We'll keep your schedule and pick right back up when you're ready.",
   },
   {
     q: "What if I need work outside the plan?",
-    a: "We'll send a transparent, line-itemed quote before any non-routine work begins. Subscribers receive a meaningful discount on anything outside the plan.",
+    a: "We'll send a transparent, line-itemed quote before any non-routine work begins.",
   },
   {
     q: "Who are the technicians?",
-    a: "Every HomeKept technician is background-checked, fully insured, GTA-based, and trained on our standard checklist. You'll see who's coming and what they'll do before each visit.",
+    a: "Right now, HomeKept visits are run by our founders, based locally in the GTA. Every visit is photo-documented, and we stick to a clear scope: routine maintenance and visual checks, never licensed-trade work like gas, electrical, or plumbing repairs. When something needs a licensed trade, we refer you to a vetted partner.",
   },
   {
     q: "What happens if I cancel?",
@@ -166,13 +167,9 @@ const faqs = [
   },
   {
     q: "Do you serve my neighbourhood?",
-    a: "We currently serve Oakville, Mississauga, and Milton. If you're nearby and not sure, book a walk-through — we'll let you know upfront.",
+    a: "We currently serve Oakville, Mississauga, and Milton. If you're nearby and not sure, book a walk-through. We'll let you know upfront.",
   },
 ];
-
-function formatCAD(n: number) {
-  return `$${n.toLocaleString("en-CA")}`;
-}
 
 function CellMark({ value }: { value: Cell }) {
   if (value === true) {
@@ -197,8 +194,8 @@ function PlansPage() {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
 
   const annualSavings = useMemo(() => {
-    const t = tiers.find((x) => x.id === "complete")!;
-    return Math.round(((t.monthly - t.annual) / t.monthly) * 100);
+    const monthlyEq = annualMonthlyEquivalent(complete);
+    return Math.round(((complete.monthlyPriceCad - monthlyEq) / complete.monthlyPriceCad) * 100);
   }, []);
 
   return (
@@ -228,17 +225,17 @@ function PlansPage() {
         {/* Plan cards */}
         <section className="mx-auto max-w-7xl px-6 py-16 md:py-20">
           <div className="grid gap-6 md:grid-cols-3 md:gap-6">
-            {tiers.map((t) => (
+            {PLANS.map((p) => (
               <PlanCard
-                key={t.id}
-                tier={t}
+                key={p.id}
+                tier={p}
                 billing={billing}
-                highlighted={highlightedTier === t.id}
+                highlighted={highlightedTier === p.id}
               />
             ))}
           </div>
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Prices in CAD. Taxes extra. Annual plans billed once per year.
+            Prices in CAD plus HST. Annual plans billed once per year.
           </p>
         </section>
 
@@ -262,8 +259,8 @@ function PlansPage() {
 
             {/* Mobile: stacked per-tier */}
             <div className="mt-10 space-y-8 md:hidden">
-              {tiers.map((t, ti) => (
-                <MobileTierBreakdown key={t.id} tier={t} billing={billing} columnIndex={ti} />
+              {PLANS.map((p, pi) => (
+                <MobileTierBreakdown key={p.id} tier={p} billing={billing} columnIndex={pi} />
               ))}
             </div>
           </div>
@@ -295,7 +292,7 @@ function PlansPage() {
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-base text-primary-foreground/80 md:text-lg">
               Start with a free 90-minute walk-through. We'll assess your home and email a custom
-              maintenance plan the next day — no obligation.
+              maintenance plan the next day: no obligation.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Button asChild size="xl" variant="accent">
@@ -364,7 +361,7 @@ function BillingToggle({
         </button>
       </div>
       <p className="text-xs font-medium text-muted-foreground">
-        Annual saves about <span className="font-bold text-accent">{savings}%</span> — roughly two
+        Annual saves about <span className="font-bold text-accent">{savings}%</span>: roughly two
         months free.
       </p>
     </div>
@@ -376,12 +373,12 @@ function PlanCard({
   billing,
   highlighted,
 }: {
-  tier: Tier;
+  tier: Plan;
   billing: "monthly" | "annual";
   highlighted: boolean;
 }) {
-  const price = billing === "monthly" ? tier.monthly : tier.annual;
-  const isFeatured = tier.featured;
+  const price = billing === "monthly" ? tier.monthlyPriceCad : annualMonthlyEquivalent(tier);
+  const isFeatured = tier.recommended;
   const ring = highlighted
     ? "ring-2 ring-accent ring-offset-4 ring-offset-background"
     : isFeatured
@@ -398,33 +395,34 @@ function PlanCard({
     >
       {isFeatured && (
         <span className="absolute -top-3 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs font-bold uppercase tracking-wider text-accent-foreground shadow">
-          <Star className="size-3" aria-hidden="true" /> Most chosen
+          Recommended
         </span>
       )}
 
-      <h3 className="font-display text-2xl font-extrabold tracking-tight">{tier.name}</h3>
-      <p className="mt-2 min-h-[3rem] text-sm text-muted-foreground">{tier.tagline}</p>
+      <h3 className="font-display text-2xl font-extrabold tracking-tight">
+        {tier.emoji} {tier.name}
+      </h3>
+      <p className="mt-2 text-sm text-muted-foreground">{tier.tagline}</p>
+      <p className="mt-1 min-h-[2.25rem] text-xs font-medium text-foreground/60">{tier.forWho}</p>
 
-      <div className="mt-6 flex items-baseline gap-1">
+      <div className="mt-4 flex items-baseline gap-1">
         <span className="font-display text-5xl font-extrabold tracking-tight text-foreground">
-          {formatCAD(price)}
+          {formatCad(price)}
         </span>
         <span className="text-sm text-muted-foreground">/mo</span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         {billing === "monthly"
-          ? `Billed monthly · ${formatCAD(tier.monthly * 12)}/yr`
-          : `Billed annually · ${formatCAD(tier.annual * 12)}/yr`}
+          ? `Billed monthly · ${formatCad(tier.monthlyPriceCad * 12)}/yr`
+          : `Billed annually · ${formatCad(tier.annualPriceCad)}/yr`}
       </p>
 
       <Button asChild size="lg" variant={isFeatured ? "accent" : "default"} className="mt-6 w-full">
-        <Link to="/checkout" search={{ plan: tier.id }}>
-          Choose {tier.name}
-        </Link>
+        <Link to="/book">Choose {tier.name}</Link>
       </Button>
 
       <ul className="mt-8 space-y-3 text-sm">
-        {tier.highlights.map((h) => (
+        {tier.features.map((h) => (
           <li key={h} className="flex items-start gap-3">
             <Check className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden="true" />
             <span className="text-foreground/90">{h}</span>
@@ -440,7 +438,7 @@ function ComparisonTable({
   highlightedTier,
 }: {
   billing: "monthly" | "annual";
-  highlightedTier: TierId;
+  highlightedTier: PlanId;
 }) {
   return (
     <div className="overflow-x-auto rounded-3xl border border-border bg-card shadow-sm">
@@ -453,8 +451,8 @@ function ComparisonTable({
             >
               Features
             </th>
-            {tiers.map((t) => {
-              const price = billing === "monthly" ? t.monthly : t.annual;
+            {PLANS.map((t) => {
+              const price = billing === "monthly" ? t.monthlyPriceCad : annualMonthlyEquivalent(t);
               const isHi = highlightedTier === t.id;
               return (
                 <th key={t.id} scope="col" className={cn("p-6 align-top", isHi && "bg-accent/10")}>
@@ -463,7 +461,7 @@ function ComparisonTable({
                       {t.name}
                     </span>
                     <span className="mt-1 text-sm text-muted-foreground">
-                      <span className="font-bold text-foreground">{formatCAD(price)}</span>
+                      <span className="font-bold text-foreground">{formatCad(price)}</span>
                       /mo
                     </span>
                   </div>
@@ -494,7 +492,7 @@ function ComparisonTable({
                       key={i}
                       className={cn(
                         "p-4 text-center",
-                        highlightedTier === tiers[i].id && "bg-accent/5",
+                        highlightedTier === PLANS[i].id && "bg-accent/5",
                       )}
                     >
                       <CellMark value={v} />
@@ -508,12 +506,10 @@ function ComparisonTable({
         <tfoot>
           <tr className="border-t border-border bg-surface/60">
             <td className="p-4" />
-            {tiers.map((t) => (
+            {PLANS.map((t) => (
               <td key={t.id} className="p-4 text-center">
-                <Button asChild size="sm" variant={t.featured ? "accent" : "outline"}>
-                  <Link to="/checkout" search={{ plan: t.id }}>
-                    Choose {t.name}
-                  </Link>
+                <Button asChild size="sm" variant={t.recommended ? "accent" : "outline"}>
+                  <Link to="/book">Choose {t.name}</Link>
                 </Button>
               </td>
             ))}
@@ -529,22 +525,22 @@ function MobileTierBreakdown({
   billing,
   columnIndex,
 }: {
-  tier: Tier;
+  tier: Plan;
   billing: "monthly" | "annual";
   columnIndex: number;
 }) {
-  const price = billing === "monthly" ? tier.monthly : tier.annual;
+  const price = billing === "monthly" ? tier.monthlyPriceCad : annualMonthlyEquivalent(tier);
   return (
     <div
       className={cn(
         "rounded-3xl border border-border bg-card p-6 shadow-sm",
-        tier.featured && "ring-2 ring-primary",
+        tier.recommended && "ring-2 ring-primary",
       )}
     >
       <div className="flex items-baseline justify-between">
         <h3 className="font-display text-2xl font-extrabold tracking-tight">{tier.name}</h3>
         <div className="text-right">
-          <div className="font-display text-2xl font-extrabold">{formatCAD(price)}</div>
+          <div className="font-display text-2xl font-extrabold">{formatCad(price)}</div>
           <div className="text-xs text-muted-foreground">/mo</div>
         </div>
       </div>
@@ -587,12 +583,10 @@ function MobileTierBreakdown({
       <Button
         asChild
         size="lg"
-        variant={tier.featured ? "accent" : "default"}
+        variant={tier.recommended ? "accent" : "default"}
         className="mt-6 w-full"
       >
-        <Link to="/checkout" search={{ plan: tier.id }}>
-          Choose {tier.name}
-        </Link>
+        <Link to="/book">Choose {tier.name}</Link>
       </Button>
     </div>
   );

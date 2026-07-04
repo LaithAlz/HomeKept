@@ -13,7 +13,7 @@ export const Route = createFileRoute("/checkout")({
   validateSearch: zodValidator(searchSchema),
   head: () => ({
     meta: [
-      { title: "Checkout — HomeKept" },
+      { title: "Checkout: HomeKept" },
       { name: "description", content: "Complete your HomeKept subscription." },
       { name: "robots", content: "noindex" },
     ],

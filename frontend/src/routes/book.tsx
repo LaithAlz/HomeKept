@@ -8,7 +8,7 @@ import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 export const Route = createFileRoute("/book")({
   head: () => ({
     meta: [
-      { title: "Book your free walk-through — HomeKept" },
+      { title: "Book your free walk-through: HomeKept" },
       {
         name: "description",
         content:
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/book")({
       },
       {
         property: "og:title",
-        content: "Book a free home walk-through — HomeKept",
+        content: "Book a free home walk-through: HomeKept",
       },
       {
         property: "og:description",
@@ -394,7 +394,7 @@ function BookFlow() {
         /* ignore */
       }
     } catch {
-      setSubmitError("Something went wrong — please try again in a moment.");
+      setSubmitError("Something went wrong. Please try again in a moment.");
       setSubmitting(false);
     }
   }
@@ -416,7 +416,7 @@ function BookFlow() {
             Let&rsquo;s walk <em className="font-[480] italic text-moss">your home.</em>
           </h1>
           <p className="mt-2.5 text-[15px] text-muted-foreground">
-            Three quick steps — about a minute. We&rsquo;ll confirm your time within one business
+            Three quick steps, about a minute. We&rsquo;ll confirm your time within one business
             day.
           </p>
         </div>
@@ -530,7 +530,7 @@ function BookFlow() {
         {/* Fact pills */}
         <div className="relative mt-5 flex flex-wrap gap-2" aria-label="Walk-through details">
           <span className="rounded-full border border-primary-foreground/16 bg-primary-foreground/10 px-3 py-1.5 text-[12.5px]">
-            💸 $0 — completely free
+            💸 $0: completely free
           </span>
           <span className="rounded-full border border-primary-foreground/16 bg-primary-foreground/10 px-3 py-1.5 text-[12.5px]">
             ⏱️ About 90 minutes
@@ -558,7 +558,7 @@ function SumRow({ label, value }: { label: string; value: string | null }) {
           value ? "text-primary-foreground" : "font-normal text-primary-foreground/35",
         )}
       >
-        {value ?? "—"}
+        {value ?? "Not yet"}
       </dd>
     </div>
   );
@@ -640,7 +640,7 @@ function Step1({
     <div>
       <h2 className="font-display text-[25px] font-[600] text-primary">Tell us about the home.</h2>
       <p className="mt-1.5 text-[14px] text-muted-foreground">
-        Just enough to plan the visit — no measuring tape required.
+        Just enough to plan the visit, no measuring tape required.
       </p>
 
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -822,7 +822,7 @@ function Step2({
     <div>
       <h2 className="font-display text-[25px] font-[600] text-primary">When suits you?</h2>
       <p className="mt-1.5 text-[14px] text-muted-foreground">
-        Pick a week and the times that usually work — we&rsquo;ll confirm an exact slot.
+        Pick a week and the times that usually work, we&rsquo;ll confirm an exact slot.
       </p>
 
       {/* Preferred week */}
@@ -1095,8 +1095,8 @@ function ConsentToggle({
         )}
       </span>
       <span className="text-[13.5px] text-muted-foreground">
-        It&rsquo;s okay for HomeKept to contact me about my walk-through. No spam, no third parties
-        — just scheduling.
+        It&rsquo;s okay for HomeKept to contact me about my walk-through. No spam, no third parties,
+        just scheduling.
       </span>
     </label>
   );
@@ -1171,7 +1171,7 @@ function SuccessScreen({
       <ul className="mx-auto mt-8 max-w-sm space-y-3 text-left" aria-label="What happens next">
         {[
           "We confirm your exact time within one business day.",
-          "Your technician walks the home with you — 90 minutes.",
+          "Your technician walks the home with you: 90 minutes.",
           "Your written maintenance plan arrives within a week.",
         ].map((text, i) => (
           <li

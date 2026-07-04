@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BASE_URL, OG_IMAGE_DEFAULT, buildLocalBusinessSchema, canonicalUrl } from "@/lib/seo";
+import { PLANS, annualMonthlyEquivalent } from "@/lib/plans";
 import {
   ArrowRight,
   Bell,
@@ -25,17 +26,17 @@ import heroHome from "@/assets/hero-home.jpg";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "HomeKept — Home maintenance on autopilot, GTA" },
+      { title: "HomeKept: Home maintenance on autopilot, GTA" },
       {
         name: "description",
         content:
-          "HomeKept is a monthly subscription that handles routine home maintenance — HVAC, gutters, plumbing, smart-home — for homeowners in Oakville, Mississauga, and Milton.",
+          "HomeKept is a monthly subscription that handles routine home maintenance, including HVAC, gutters, plumbing, and smart-home devices, for homeowners in Oakville, Mississauga, and Milton.",
       },
-      { property: "og:title", content: "HomeKept — Home maintenance on autopilot" },
+      { property: "og:title", content: "HomeKept: Home maintenance on autopilot" },
       {
         property: "og:description",
         content:
-          "Vetted technicians, scheduled visits, photo reports. Book a free 90-minute walk-through.",
+          "Founder-run visits, seasonal checklists, photo reports. Book a free 90-minute walk-through.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: BASE_URL },
@@ -138,9 +139,8 @@ function Hero() {
 
           <p className="mt-7 max-w-[46ch] animate-reveal text-lg leading-relaxed text-muted-foreground [animation-delay:450ms]">
             A monthly subscription for homeowners who'd rather not spend weekends on filters,
-            gutters, and inspections. We schedule the visits, send the same vetted technician, and
-            report back with photos — so your home stays cared for without sitting on your to-do
-            list.
+            gutters, and inspections. We schedule the visits, run them ourselves, and report back
+            with photos, so your home stays cared for without sitting on your to-do list.
           </p>
 
           <div className="mt-9 flex animate-reveal flex-col items-start gap-5 [animation-delay:600ms] sm:flex-row sm:items-center">
@@ -199,7 +199,7 @@ function FloatingVisitCard() {
     <div className="absolute -bottom-7 left-0 w-[280px] animate-bob rounded-3xl border border-border bg-card p-4.5 shadow-lift [--bob-rotate:-1.2deg] sm:-left-8">
       <div className="mb-2.5 flex items-center justify-between">
         <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-          Your next visit
+          Example visit
         </p>
         <span className="rounded-full bg-moss/15 px-2.5 py-1 text-[11px] font-bold text-moss">
           Scheduled
@@ -209,12 +209,9 @@ function FloatingVisitCard() {
       <p className="mt-0.5 text-xs text-muted-foreground">
         Furnace filter · Smoke detector test · Gutter clearing
       </p>
-      <div className="mt-3 flex items-center gap-2.5 border-t border-dashed border-border pt-3 text-xs text-muted-foreground">
-        <span className="grid size-6 place-items-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-          M
-        </span>
-        Marcus — your lead technician
-      </div>
+      <p className="mt-3 border-t border-dashed border-border pt-3 text-xs text-muted-foreground">
+        Shown: an example visit.
+      </p>
     </div>
   );
 }
@@ -302,7 +299,7 @@ const steps = [
   {
     icon: Footprints,
     title: "We walk the home.",
-    body: "A 90-minute, no-obligation visit. We catalog every system — HVAC, plumbing, exterior, electrical — and ask how you live in the space.",
+    body: "A 90-minute, no-obligation visit. We catalog every system, including HVAC, plumbing, exterior, and electrical, and ask how you live in the space.",
   },
   {
     icon: ClipboardList,
@@ -312,7 +309,7 @@ const steps = [
   {
     icon: Calendar,
     title: "We carry it out.",
-    body: "Visits appear in the app. After each one, you get a photo report — what we did, what we noticed, and what's coming next.",
+    body: "Visits appear in the app. After each one, you get a photo report: what we did, what we noticed, and what's coming next.",
   },
 ];
 
@@ -438,55 +435,11 @@ function WhatsIncluded() {
 /* Plans preview                                                              */
 /* -------------------------------------------------------------------------- */
 
-interface PlanTier {
-  id: "essential" | "complete" | "premier";
-  name: string;
-  price: number;
-  cadence: string;
-  features: string[];
-  featured?: boolean;
-}
-
-const plans: PlanTier[] = [
-  {
-    id: "essential",
-    name: "Essential",
-    price: 129,
-    cadence: "4 visits per year · quarterly",
-    features: [
-      "Quarterly HVAC filter swaps",
-      "Smoke & CO detector tests",
-      "Seasonal exterior check",
-      "Photo report after every visit",
-    ],
-  },
-  {
-    id: "complete",
-    name: "Complete",
-    price: 189,
-    cadence: "12 visits per year · monthly",
-    features: [
-      "Everything in Essential",
-      "Monthly visits, year-round",
-      "Plumbing & leak inspections",
-      "Gutter clearing & exterior work",
-      "Priority emergency scheduling",
-    ],
-    featured: true,
-  },
-  {
-    id: "premier",
-    name: "Premier",
-    price: 289,
-    cadence: "24 visits per year · twice monthly",
-    features: [
-      "Everything in Complete",
-      "Dedicated lead technician",
-      "Smart-home setup & support",
-      "Minor repairs included",
-    ],
-  },
-];
+// "2 months free" applies uniformly across tiers (annualPriceCad = monthlyPriceCad × 10 for
+// every plan), so the savings percentage is the same regardless of which plan we compute it from.
+const annualSavingsPct = Math.round(
+  ((PLANS[0].monthlyPriceCad - annualMonthlyEquivalent(PLANS[0])) / PLANS[0].monthlyPriceCad) * 100,
+);
 
 function PlansPreview() {
   const ref = useRevealGroup<HTMLDivElement>();
@@ -500,7 +453,7 @@ function PlansPreview() {
         </div>
 
         <div className="mt-16 grid items-center gap-6 md:grid-cols-3">
-          {plans.map((plan, i) => (
+          {PLANS.map((plan, i) => (
             <div
               key={plan.id}
               data-reveal
@@ -513,15 +466,15 @@ function PlansPreview() {
         </div>
 
         <p data-reveal className="reveal-init mt-9 text-center text-sm text-muted-foreground">
-          All prices in CAD · Annual billing saves ~17% (two months free)
+          All prices in CAD. Annual billing saves about {annualSavingsPct}% (two months free).
         </p>
       </div>
     </section>
   );
 }
 
-function PlanCard({ plan }: { plan: PlanTier }) {
-  const featured = plan.featured;
+function PlanCard({ plan }: { plan: (typeof PLANS)[number] }) {
+  const featured = plan.recommended;
   return (
     <article
       className={
@@ -537,14 +490,14 @@ function PlanCard({ plan }: { plan: PlanTier }) {
         </div>
       )}
       <h3 className={"font-display text-[23px] font-semibold " + (featured ? "" : "text-primary")}>
-        {plan.name}
+        {plan.emoji} {plan.name}
       </h3>
       <p className={"mt-1 text-[13px] " + (featured ? "text-sage" : "text-muted-foreground")}>
-        {plan.cadence}
+        {plan.visitsDescription}
       </p>
       <div className="mt-5 flex items-baseline gap-1.5">
         <span className="font-display text-[54px] font-semibold leading-none tracking-tight">
-          ${plan.price}
+          ${plan.monthlyPriceCad}
         </span>
         <span className={featured ? "text-sm text-sage" : "text-sm text-muted-foreground"}>
           /mo
@@ -686,9 +639,9 @@ function HealthScorePanel() {
               Every home gets a <em className="font-[480] italic text-sage">health score.</em>
             </h2>
             <p className="mt-4 max-w-[54ch] leading-relaxed text-sage">
-              After each visit, your score updates — a single number for how well your home's
-              systems are doing, with anything that needs attention flagged and scheduled
-              automatically. (Shown: an example home.)
+              After each visit, your score updates: a single number for how well your home's systems
+              are doing, with anything that needs attention flagged and scheduled automatically.
+              (Shown: an example home.)
             </p>
             <div className="mt-7 flex flex-wrap gap-2.5">
               {healthFeatures.map((f) => (
@@ -728,7 +681,7 @@ const personas = [
   {
     eyebrow: "For first-time owners",
     headline: "Your home, finally explained.",
-    body: "Nobody hands you a manual when you buy a house. We walk you through what your home needs — and then we do it — so you learn as we go.",
+    body: "Nobody hands you a manual when you buy a house. We walk you through what your home needs, then we do it, so you learn as we go.",
     rotate: "-rotate-[0.5deg]",
   },
 ];
@@ -740,7 +693,7 @@ function Personas() {
       <div ref={ref} className="mx-auto max-w-6xl px-6">
         <div data-reveal className="reveal-init">
           <SectionHead eyebrow="For every kind of homeowner" centered>
-            We fit the home — <em className="font-[480] italic text-moss">and the people in it.</em>
+            We fit the home, <em className="font-[480] italic text-moss">and the people in it.</em>
           </SectionHead>
         </div>
 
@@ -793,8 +746,8 @@ function FinalCTA() {
             Let's walk your <em className="font-[480] italic text-honey-soft">home together.</em>
           </h2>
           <p className="mx-auto mt-5 max-w-[46ch] leading-relaxed text-sage">
-            Ninety minutes, no obligation. You'll get a written maintenance plan within a week —
-            keep it or don't. Either way, you'll finally know your house.
+            Ninety minutes, no obligation. You'll get a written maintenance plan within a week: keep
+            it or don't. Either way, you'll finally know your house.
           </p>
           <div className="mt-9">
             <Button asChild size="xl" variant="accent">
