@@ -60,7 +60,9 @@ class EmailTemplatesTest {
                 EmailTemplates.welcome("A", "https://x/app"),
                 EmailTemplates.visitComplete("A", "https://x/app"),
                 EmailTemplates.paymentFailed("A", "https://x/app/billing"),
-                EmailTemplates.subscriptionCancelled("A", "https://x/plans"));
+                EmailTemplates.subscriptionCancelled("A", "https://x/plans"),
+                EmailTemplates.bookingConfirmation("A", "July 6, 2026", "afternoon", "Wednesday and Thursday",
+                        "14 Maple Ridge Crt, Mississauga"));
 
         for (RenderedEmail e : all) {
             assertThat(e.subject()).isNotBlank();
@@ -69,5 +71,59 @@ class EmailTemplatesTest {
                     .contains("HomeKept")
                     .contains("GTA West");   // sender identification in the footer
         }
+    }
+
+    @Test
+    void bookingConfirmation_containsSubmittedDetailsAndNoCta() {
+        RenderedEmail e = EmailTemplates.bookingConfirmation(
+                "Priya", "July 6, 2026", "afternoon", "Wednesday and Thursday",
+                "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.subject()).isEqualTo("Your HomeKept walk-through request");
+        assertThat(e.htmlBody())
+                .contains("Hi Priya,")
+                .contains("within one business day")
+                .contains("July 6, 2026")
+                .contains("afternoon")
+                .contains("Wednesday and Thursday")
+                .contains("14 Maple Ridge Crt, Mississauga");
+
+        // No CTA button — nothing yet for the recipient to click.
+        assertThat(e.htmlBody()).doesNotContain("<a href=");
+    }
+
+    @Test
+    void bookingConfirmation_omitsDayPreferencesWhenBlank() {
+        RenderedEmail e = EmailTemplates.bookingConfirmation(
+                "Priya", "July 6, 2026", "afternoon", null, "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.htmlBody()).doesNotContain(", on ");
+    }
+
+    @Test
+    void bookingConfirmation_nullFirstName_fallsBackToNeutralGreeting() {
+        RenderedEmail e = EmailTemplates.bookingConfirmation(
+                null, "July 6, 2026", "afternoon", null, "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.htmlBody()).contains("Hi there,");
+    }
+
+    @Test
+    void bookingConfirmation_footerReferencesTheRequestNotMembership() {
+        RenderedEmail e = EmailTemplates.bookingConfirmation(
+                "Priya", "July 6, 2026", "afternoon", "Wednesday and Thursday",
+                "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.htmlBody())
+                .contains("This is a transactional message about your walk-through request.")
+                .doesNotContain("This is a transactional message about your HomeKept membership.");
+    }
+
+    @Test
+    void welcome_footerStillReferencesMembership() {
+        RenderedEmail e = EmailTemplates.welcome("Alice", "https://app.test/app");
+
+        assertThat(e.htmlBody())
+                .contains("This is a transactional message about your HomeKept membership.");
     }
 }

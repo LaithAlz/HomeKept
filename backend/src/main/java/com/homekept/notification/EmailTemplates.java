@@ -23,6 +23,9 @@ public final class EmailTemplates {
     private static final String INK = "#2B2B2B";
     private static final String MUTED = "#6B6B6B";
 
+    /** Footer context for the four subscriber-facing templates and the activation invite. */
+    private static final String MEMBERSHIP_FOOTER_CONTEXT = "your HomeKept membership";
+
     private EmailTemplates() {}
 
     // ── Public templates ────────────────────────────────────────────────────────
@@ -81,6 +84,34 @@ public final class EmailTemplates {
                         "Resubscribe", plansUrl));
     }
 
+    /**
+     * Walk-through booking received (#11). No CTA — there's nothing yet for the recipient to
+     * click, just the expectation the booking form already set on-screen.
+     *
+     * @param firstName             recipient's first name (nullable — falls back to "there")
+     * @param preferredWeekLabel    human-readable preferred week, e.g. "July 6, 2026"
+     * @param timeOfDayLabel        human-readable time-of-day preference, e.g. "afternoon"
+     * @param dayPreferencesLabel   human-readable day preferences, e.g. "Wednesday and Thursday"
+     *                              (nullable/blank when none were given)
+     * @param addressLabel          human-readable property address, e.g. "14 Maple Ridge Crt, Mississauga"
+     */
+    public static RenderedEmail bookingConfirmation(String firstName, String preferredWeekLabel,
+            String timeOfDayLabel, String dayPreferencesLabel, String addressLabel) {
+        String daySuffix = (dayPreferencesLabel == null || dayPreferencesLabel.isBlank())
+                ? ""
+                : ", on " + escape(dayPreferencesLabel);
+        String details = "Here's what you told us: the week of " + escape(preferredWeekLabel)
+                + ", in the " + escape(timeOfDayLabel) + daySuffix
+                + ". We'll see you at " + escape(addressLabel) + ".";
+        String body = paragraph("Thanks for booking a walk-through with HomeKept. We've received "
+                + "your request and will confirm your time within one business day.")
+                + paragraph(details);
+        return new RenderedEmail(
+                "Your HomeKept walk-through request",
+                layout("We've got your request", greeting(firstName) + body, null, null,
+                        "your walk-through request"));
+    }
+
     // ── Layout ──────────────────────────────────────────────────────────────────
 
     private static String greeting(String firstName) {
@@ -94,11 +125,35 @@ public final class EmailTemplates {
     }
 
     /**
+     * Wraps content in the shared 600px brand layout with no call-to-action button — used when
+     * there's nothing yet for the recipient to click (e.g. a plain confirmation). Uses the
+     * default "your HomeKept membership" footer context.
+     */
+    private static String layout(String heading, String bodyHtml) {
+        return layout(heading, bodyHtml, null, null, MEMBERSHIP_FOOTER_CONTEXT);
+    }
+
+    /**
      * Wraps content in the shared 600px brand layout: pine header band, cream card with pine
-     * heading + body, a honey CTA button with PINE text (WCAG), and a sender-identification
-     * footer.
+     * heading + body, an optional honey CTA button with PINE text (WCAG), and a
+     * sender-identification footer. Pass a null/blank {@code ctaUrl} to omit the button. Uses
+     * the default "your HomeKept membership" footer context.
      */
     private static String layout(String heading, String bodyHtml, String ctaLabel, String ctaUrl) {
+        return layout(heading, bodyHtml, ctaLabel, ctaUrl, MEMBERSHIP_FOOTER_CONTEXT);
+    }
+
+    /**
+     * Wraps content in the shared 600px brand layout: pine header band, cream card with pine
+     * heading + body, an optional honey CTA button with PINE text (WCAG), and a
+     * sender-identification footer. Pass a null/blank {@code ctaUrl} to omit the button.
+     *
+     * <p>{@code footerContext} is the "this is a transactional message about ___" phrase — most
+     * templates are about "your HomeKept membership", but pre-membership emails (e.g. the
+     * booking confirmation) need their own wording since the recipient isn't a member yet.
+     */
+    private static String layout(String heading, String bodyHtml, String ctaLabel, String ctaUrl,
+            String footerContext) {
         return """
                 <!DOCTYPE html>
                 <html lang="en">
@@ -113,16 +168,12 @@ public final class EmailTemplates {
                         <tr><td style="background:#ffffff;padding:28px;border:1px solid #ECE6DC;border-top:none;">
                           <h1 style="margin:0 0 16px 0;font-size:22px;line-height:1.3;color:%s;">%s</h1>
                           %s
-                          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px 0;">
-                            <tr><td style="background:%s;border-radius:6px;">
-                              <a href="%s" style="display:inline-block;padding:13px 22px;font-size:16px;font-weight:600;color:%s;text-decoration:none;">%s</a>
-                            </td></tr>
-                          </table>
+                          %s
                         </td></tr>
                         <tr><td style="background:#ffffff;padding:0 28px 24px 28px;border:1px solid #ECE6DC;border-top:none;border-radius:0 0 8px 8px;">
                           <p style="margin:16px 0 0 0;font-size:12px;line-height:1.5;color:%s;">
                             HomeKept. Subscription home maintenance in the GTA West.<br>
-                            This is a transactional message about your HomeKept membership.
+                            This is a transactional message about %s.
                           </p>
                         </td></tr>
                       </table>
@@ -135,8 +186,25 @@ public final class EmailTemplates {
                 PINE, CREAM,
                 PINE, escape(heading),
                 bodyHtml,
-                HONEY, escape(ctaUrl), PINE, escape(ctaLabel),
-                MUTED);
+                ctaBlock(ctaLabel, ctaUrl),
+                MUTED, escape(footerContext));
+    }
+
+    /**
+     * Renders the honey CTA button (PINE text, WCAG) or an empty string when the email has no
+     * call to action.
+     */
+    private static String ctaBlock(String ctaLabel, String ctaUrl) {
+        if (ctaUrl == null || ctaUrl.isBlank()) {
+            return "";
+        }
+        return """
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 4px 0;">
+                  <tr><td style="background:%s;border-radius:6px;">
+                    <a href="%s" style="display:inline-block;padding:13px 22px;font-size:16px;font-weight:600;color:%s;text-decoration:none;">%s</a>
+                  </td></tr>
+                </table>
+                """.formatted(HONEY, escape(ctaUrl), PINE, escape(ctaLabel));
     }
 
     /** Minimal HTML escaping for interpolated values (names, URLs). */
