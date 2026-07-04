@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CalendarCheck,
@@ -6,25 +6,22 @@ import {
   Circle,
   Clock,
   FileText,
-  Flag,
+  Loader2,
   RefreshCcw,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { findVisitById, type MockVisit } from "@/lib/mock-account";
+import { ApiError } from "@/lib/api";
+import { useSessionExpiredRedirect } from "@/lib/auth";
+import { formatFullDate, formatTime, formatVisitWindow, getCalendarParts } from "@/lib/format";
+import { useVisit, type AppVisitDetail, type VisitStatus } from "@/lib/visits";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/visits/$id")({
   head: () => ({
     meta: [{ title: "Visit details — HomeKept" }, { name: "robots", content: "noindex" }],
   }),
-  loader: ({ params }) => {
-    const visit = findVisitById(params.id);
-    if (!visit) throw notFound();
-    return { visit };
-  },
   component: VisitDetailPage,
-  notFoundComponent: VisitNotFound,
 });
 
 // ---------------------------------------------------------------------------
@@ -32,7 +29,29 @@ export const Route = createFileRoute("/app/visits/$id")({
 // ---------------------------------------------------------------------------
 
 function VisitDetailPage() {
-  const { visit } = Route.useLoaderData();
+  const { id } = Route.useParams();
+  const visitId = Number(id);
+  const validId = Number.isFinite(visitId);
+
+  const query = useVisit(visitId);
+  useSessionExpiredRedirect(query.error);
+
+  const is404 = query.isError && query.error instanceof ApiError && query.error.status === 404;
+
+  let body: React.ReactNode;
+  if (!validId || is404) {
+    body = <VisitNotFound />;
+  } else if (query.isLoading) {
+    body = <VisitLoading />;
+  } else if (query.isError) {
+    body = <VisitLoadError />;
+  } else if (!query.data) {
+    body = <VisitLoading />;
+  } else if (query.data.status === "SCHEDULED") {
+    body = <ScheduledDetail visit={query.data} />;
+  } else {
+    body = <CompletedDetail visit={query.data} />;
+  }
 
   return (
     <div className="px-6 py-10 md:px-10">
@@ -52,16 +71,16 @@ function VisitDetailPage() {
             /
           </li>
           <li className="text-foreground" aria-current="page">
-            {visit.status === "SCHEDULED" ? "Upcoming visit" : "Visit details"}
+            {query.data
+              ? query.data.status === "SCHEDULED"
+                ? "Upcoming visit"
+                : "Visit details"
+              : "Visit details"}
           </li>
         </ol>
       </nav>
 
-      {visit.status === "SCHEDULED" ? (
-        <ScheduledDetail visit={visit} />
-      ) : (
-        <CompletedDetail visit={visit} />
-      )}
+      {body}
     </div>
   );
 }
@@ -70,21 +89,17 @@ function VisitDetailPage() {
 // Scheduled visit
 // ---------------------------------------------------------------------------
 
-function ScheduledDetail({ visit }: { visit: MockVisit }) {
-  const date = new Date(visit.dateISO);
-  const weekday = date.toLocaleDateString("en-CA", { weekday: "long" });
-  const fullDate = date.toLocaleDateString("en-CA", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
+  const { weekday } = getCalendarParts(visit.scheduledFor);
+  const fullDate = formatFullDate(visit.scheduledFor);
+  const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
   return (
     <>
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
-          <DateBlock date={date} />
+          <DateBlock scheduledFor={visit.scheduledFor} />
           <div>
             <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
               {weekday}, {fullDate}
@@ -92,15 +107,17 @@ function ScheduledDetail({ visit }: { visit: MockVisit }) {
             <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <Clock className="size-4" aria-hidden="true" />
-                {visit.window}
+                {window}
               </span>
-              <span className="flex items-center gap-1.5">
-                <User className="size-4" aria-hidden="true" />
-                with {visit.technician}
-              </span>
+              {visit.technicianFirstName && (
+                <span className="flex items-center gap-1.5">
+                  <User className="size-4" aria-hidden="true" />
+                  with {visit.technicianFirstName}
+                </span>
+              )}
             </div>
             <div className="mt-2">
-              <StatusBadge status="SCHEDULED" />
+              <StatusBadge status={visit.status} />
             </div>
           </div>
         </div>
@@ -130,7 +147,7 @@ function ScheduledDetail({ visit }: { visit: MockVisit }) {
                 className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm"
               >
                 <CalendarCheck className="size-4 shrink-0 text-primary/60" aria-hidden="true" />
-                <span>{s.label}</span>
+                <span>{s.serviceName}</span>
               </li>
             ))}
           </ul>
@@ -177,20 +194,13 @@ function ScheduledDetail({ visit }: { visit: MockVisit }) {
 }
 
 // ---------------------------------------------------------------------------
-// Completed visit
+// Completed (and other terminal-status) visit
 // ---------------------------------------------------------------------------
 
-function CompletedDetail({ visit }: { visit: MockVisit }) {
-  const date = new Date(visit.dateISO);
-  const completedAt = visit.completedAtISO ? new Date(visit.completedAtISO) : null;
-  const weekday = date.toLocaleDateString("en-CA", { weekday: "long" });
-  const fullDate = date.toLocaleDateString("en-CA", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-
-  const visibleNotes = visit.notes.filter((n) => n.visibleToCustomer);
+function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
+  const { weekday } = getCalendarParts(visit.scheduledFor);
+  const fullDate = formatFullDate(visit.scheduledFor);
+  const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
   return (
     <>
@@ -198,7 +208,7 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
       <header>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
-            <DateBlock date={date} muted />
+            <DateBlock scheduledFor={visit.scheduledFor} muted />
             <div>
               <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
                 {weekday}, {fullDate}
@@ -206,25 +216,21 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
               <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Clock className="size-4" aria-hidden="true" />
-                  {visit.window}
+                  {window}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <User className="size-4" aria-hidden="true" />
-                  {visit.technician}
-                </span>
+                {visit.technicianFirstName && (
+                  <span className="flex items-center gap-1.5">
+                    <User className="size-4" aria-hidden="true" />
+                    {visit.technicianFirstName}
+                  </span>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge status="COMPLETED" />
-                {completedAt && (
+                <StatusBadge status={visit.status} />
+                {visit.completedAt && (
                   <span className="text-xs text-muted-foreground">
                     Completed at{" "}
-                    <time dateTime={completedAt.toISOString()}>
-                      {completedAt.toLocaleTimeString("en-CA", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                        hour12: true,
-                      })}
-                    </time>
+                    <time dateTime={visit.completedAt}>{formatTime(visit.completedAt)}</time>
                   </span>
                 )}
               </div>
@@ -232,7 +238,7 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
           </div>
 
           {/* Report link */}
-          {visit.reportId && (
+          {visit.status === "COMPLETED" && (
             <Link to="/app/reports">
               <Button variant="outline" size="sm">
                 <FileText className="size-4" aria-hidden="true" />
@@ -242,8 +248,7 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
           )}
         </div>
 
-        {/* Summary */}
-        {visit.summary && <p className="mt-4 max-w-2xl text-muted-foreground">{visit.summary}</p>}
+        <p className="mt-4 max-w-2xl text-muted-foreground">{visit.name}</p>
       </header>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
@@ -278,35 +283,21 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
                       />
                     )}
                     <span className={cn("font-medium", !s.completed && "text-muted-foreground")}>
-                      {s.label}
+                      {s.serviceName}
                     </span>
                   </div>
-                  {s.note && <p className="ml-7 mt-1 text-xs text-muted-foreground">{s.note}</p>}
+                  {s.technicianNotes && (
+                    <p className="ml-7 mt-1 text-xs text-muted-foreground">{s.technicianNotes}</p>
+                  )}
                 </li>
               ))}
             </ul>
           </section>
-
-          {/* Flagged item */}
-          {visit.flagged && (
-            <section aria-labelledby="flagged-heading">
-              <h2
-                id="flagged-heading"
-                className="text-xs font-bold uppercase tracking-wide text-muted-foreground"
-              >
-                Flagged item
-              </h2>
-              <div className="mt-3 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50/60 px-4 py-3">
-                <Flag className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden="true" />
-                <p className="text-sm text-amber-900">{visit.flagged}</p>
-              </div>
-            </section>
-          )}
         </div>
 
         {/* Sidebar: notes + report */}
         <div className="space-y-4">
-          {visibleNotes.length > 0 && (
+          {visit.completionNotes && (
             <section
               aria-labelledby="notes-heading"
               className="rounded-3xl border border-border bg-card p-6"
@@ -314,17 +305,11 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
               <h2 id="notes-heading" className="font-display text-base font-bold text-foreground">
                 Technician notes
               </h2>
-              <ul className="mt-3 space-y-3" role="list">
-                {visibleNotes.map((n) => (
-                  <li key={n.id} className="text-sm text-muted-foreground">
-                    {n.body}
-                  </li>
-                ))}
-              </ul>
+              <p className="mt-3 text-sm text-muted-foreground">{visit.completionNotes}</p>
             </section>
           )}
 
-          {visit.reportId && (
+          {visit.status === "COMPLETED" && (
             <div className="rounded-3xl border border-border bg-card p-6">
               <h2 className="font-display text-base font-bold text-foreground">Visit report</h2>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -347,8 +332,40 @@ function CompletedDetail({ visit }: { visit: MockVisit }) {
 }
 
 // ---------------------------------------------------------------------------
-// Not found
+// Loading / error / not found
 // ---------------------------------------------------------------------------
+
+function VisitLoading() {
+  return (
+    <div
+      className="flex items-center justify-center gap-3 py-20 text-sm text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+      Loading visit details.
+    </div>
+  );
+}
+
+function VisitLoadError() {
+  return (
+    <div className="mx-auto max-w-md py-20 text-center">
+      <h1 className="font-display text-2xl font-semibold text-primary">
+        We couldn't load this visit.
+      </h1>
+      <p className="mt-3 text-sm text-muted-foreground">Check your connection and try again.</p>
+      <div className="mt-8">
+        <Link to="/app/visits">
+          <Button>
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back to visits
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function VisitNotFound() {
   return (
@@ -376,10 +393,8 @@ function VisitNotFound() {
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function DateBlock({ date, muted }: { date: Date; muted?: boolean }) {
-  const month = date.toLocaleString("en-CA", { month: "short" });
-  const day = date.getDate();
-  const weekday = date.toLocaleDateString("en-CA", { weekday: "long" });
+function DateBlock({ scheduledFor, muted }: { scheduledFor: string; muted?: boolean }) {
+  const { month, day, weekday } = getCalendarParts(scheduledFor);
 
   return (
     <div
@@ -397,19 +412,49 @@ function DateBlock({ date, muted }: { date: Date; muted?: boolean }) {
   );
 }
 
-function StatusBadge({ status }: { status: "SCHEDULED" | "COMPLETED" }) {
-  if (status === "COMPLETED") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
-        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-        Completed
-      </span>
-    );
-  }
+const STATUS_STYLES: Record<
+  VisitStatus,
+  { className: string; icon: typeof CheckCircle2; label: string }
+> = {
+  SCHEDULED: { className: "bg-primary/10 text-primary", icon: CalendarCheck, label: "Scheduled" },
+  IN_PROGRESS: {
+    className: "bg-primary/10 text-primary",
+    icon: CalendarCheck,
+    label: "In progress",
+  },
+  COMPLETED: {
+    className: "bg-emerald-100 text-emerald-800",
+    icon: CheckCircle2,
+    label: "Completed",
+  },
+  INCOMPLETE: {
+    className: "bg-amber-100 text-amber-800",
+    icon: Circle,
+    label: "Incomplete",
+  },
+  CANCELLED: {
+    className: "bg-muted text-muted-foreground",
+    icon: Circle,
+    label: "Cancelled",
+  },
+  RESCHEDULED: {
+    className: "bg-muted text-muted-foreground",
+    icon: RefreshCcw,
+    label: "Rescheduled",
+  },
+};
+
+function StatusBadge({ status }: { status: VisitStatus }) {
+  const { className, icon: Icon, label } = STATUS_STYLES[status];
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-      <CalendarCheck className="size-3.5" aria-hidden="true" />
-      Scheduled
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+        className,
+      )}
+    >
+      <Icon className="size-3.5" aria-hidden="true" />
+      {label}
     </span>
   );
 }

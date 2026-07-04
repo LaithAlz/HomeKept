@@ -13,6 +13,8 @@
  * forward. See `AppShell` for the guard that enforces this.
  */
 
+import { useEffect } from "react";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { ApiError, get, post } from "@/lib/api";
 
 export type Role = "CUSTOMER" | "TECHNICIAN" | "ADMIN";
@@ -46,4 +48,24 @@ export async function logout(): Promise<void> {
     // clears cookies unconditionally and never leaks token validity, so
     // there is nothing actionable to surface here.
   }
+}
+
+/**
+ * Redirects to sign-in when a query/mutation fails with 401.
+ *
+ * `/app/*` routes are guarded by `AppShell` before they render, so this
+ * should be rare in normal use — it only fires if the session cookie
+ * expires mid-visit. Mirrors the exact redirect `AppShell`'s guard performs
+ * (same destination, same `next` param) rather than introducing a new auth
+ * flow.
+ */
+export function useSessionExpiredRedirect(error: unknown): void {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useEffect(() => {
+    if (error instanceof ApiError && error.status === 401) {
+      navigate({ to: "/signin", search: { next: pathname }, replace: true });
+    }
+  }, [error, navigate, pathname]);
 }
