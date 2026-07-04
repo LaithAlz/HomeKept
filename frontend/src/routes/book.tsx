@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
 import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
+import { ApiError, post } from "@/lib/api";
 
 export const Route = createFileRoute("/book")({
   head: () => ({
@@ -34,8 +35,7 @@ export const Route = createFileRoute("/book")({
 
 /* -------------------------------------------------------------------------- */
 /* Contract-accurate request shape — mirrors POST /api/bookings/walkthrough   */
-/* Endpoint is unbuilt (issue #8). Swap the mock body in submitBooking()      */
-/* for a real fetch() call when the backend is ready — one line.              */
+/* See backend/api-contract.md for the exact field spec.                      */
 /* -------------------------------------------------------------------------- */
 interface BookingRequest {
   fullName: string;
@@ -55,20 +55,46 @@ interface BookingRequest {
   contactConsent: true;
 }
 
-/** Mock submission — structured to match the real contract exactly.
- *  To wire to the live endpoint, replace this function body with:
- *    const res = await fetch("/api/bookings/walkthrough", { method: "POST",
- *      headers: { "Content-Type": "application/json" },
- *      body: JSON.stringify(payload) });
- *    if (!res.ok) throw new Error("booking_failed");
- *    return await res.json() as { id: number; status: "PENDING" };
- */
-async function submitBooking(payload: BookingRequest): Promise<{ id: number; status: "PENDING" }> {
-  // eslint-disable-next-line no-console
-  console.debug("[mock] POST /api/bookings/walkthrough", payload);
-  await new Promise((r) => setTimeout(r, 600)); // simulate network
-  return { id: Math.floor(Math.random() * 9000) + 1000, status: "PENDING" };
+function submitBooking(payload: BookingRequest): Promise<{ id: number; status: "PENDING" }> {
+  return post<{ id: number; status: "PENDING" }>("/api/bookings/walkthrough", payload);
 }
+
+/**
+ * Maps a backend validation field name (the request payload key, per
+ * api-contract.md) to the local form field it corresponds to. Fields with no
+ * entry here have no dedicated input on the form (e.g. `notes`,
+ * `squareFootageRange`) and fall back to the general submit error line.
+ */
+const BACKEND_FIELD_TO_FORM: Partial<Record<string, keyof FormData>> = {
+  fullName: "fullName",
+  email: "email",
+  phone: "phone",
+  streetAddress: "address",
+  city: "city",
+  postalCode: "postalCode",
+  yearBuilt: "yearBuilt",
+  propertyType: "propertyType",
+  preferredWeek: "preferredWeek",
+  timeOfDay: "timeOfDay",
+  dayPreferences: "days",
+  contactConsent: "consent",
+};
+
+/** Which wizard step each mapped form field lives on. */
+const FORM_FIELD_STEP: Partial<Record<keyof FormData, 1 | 2 | 3>> = {
+  address: 1,
+  city: 1,
+  postalCode: 1,
+  propertyType: 1,
+  yearBuilt: 1,
+  preferredWeek: 2,
+  timeOfDay: 2,
+  days: 2,
+  fullName: 3,
+  email: 3,
+  phone: 3,
+  consent: 3,
+};
 
 /* -------------------------------------------------------------------------- */
 /* Constants                                                                   */
@@ -393,9 +419,59 @@ function BookFlow() {
       } catch {
         /* ignore */
       }
-    } catch {
-      setSubmitError("Something went wrong. Please try again in a moment.");
+    } catch (err) {
       setSubmitting(false);
+
+      if (err instanceof ApiError && err.status === 429) {
+        setSubmitError(
+          "You've reached the limit for booking requests. Please try again in about an hour.",
+        );
+        return;
+      }
+
+      if (
+        err instanceof ApiError &&
+        err.status === 400 &&
+        err.code === "VALIDATION_FAILED" &&
+        err.fields
+      ) {
+        const mappedErrors: FieldErrors = {};
+        const unmappedMessages: string[] = [];
+        let earliestStep: 1 | 2 | 3 | null = null;
+
+        for (const [backendField, message] of Object.entries(err.fields)) {
+          const formField = BACKEND_FIELD_TO_FORM[backendField];
+          if (!formField) {
+            unmappedMessages.push(message);
+            continue;
+          }
+          mappedErrors[formField] = message;
+          const fieldStep = FORM_FIELD_STEP[formField];
+          if (fieldStep && (earliestStep === null || fieldStep < earliestStep)) {
+            earliestStep = fieldStep;
+          }
+        }
+
+        if (Object.keys(mappedErrors).length) setErrors(mappedErrors);
+        if (earliestStep) setStep(earliestStep);
+        setSubmitError(
+          unmappedMessages.length > 0
+            ? unmappedMessages.join(" ")
+            : Object.keys(mappedErrors).length > 0
+              ? null
+              : "Please check your answers and try again.",
+        );
+        return;
+      }
+
+      if (err instanceof ApiError && err.status === 400) {
+        setSubmitError(err.message);
+        return;
+      }
+
+      setSubmitError(
+        "Something went wrong on our end. Your answers are saved, please try again in a moment.",
+      );
     }
   }
 
