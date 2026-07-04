@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Home,
   CalendarCheck,
@@ -9,10 +9,14 @@ import {
   Settings,
   Menu,
   X,
+  LogOut,
+  Loader2,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { Button } from "@/components/ui/button";
 import { subscriber } from "@/lib/mock-account";
 import { cn } from "@/lib/utils";
+import { getSession, logout } from "@/lib/auth";
 
 const navItems = [
   { to: "/app", label: "Home", icon: Home, exact: true },
@@ -23,15 +27,71 @@ const navItems = [
   { to: "/app/settings", label: "Settings", icon: Settings, exact: false },
 ] as const;
 
+type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "error";
+
+/**
+ * Client-side auth guard for every `/app/*` route.
+ *
+ * This is intentionally NOT a `beforeLoad`: this is TanStack Start with SSR
+ * on Cloudflare, and the auth cookies live on the API origin, so a
+ * server-rendered request has nothing to send `GET /api/auth/me` with — a
+ * server-side check would always look signed-out. Checking from a
+ * component effect guarantees the request only ever happens in the
+ * browser, where the cookie is present.
+ */
 export function AppShell() {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [guard, setGuard] = useState<GuardStatus>("checking");
+  const [attempt, setAttempt] = useState(0);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGuard("checking");
+    getSession()
+      .then((session) => {
+        if (cancelled) return;
+        setGuard(session ? "authenticated" : "unauthenticated");
+      })
+      .catch(() => {
+        if (!cancelled) setGuard("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  useEffect(() => {
+    if (guard !== "unauthenticated") return;
+    navigate({ to: "/signin", search: { next: pathname }, replace: true });
+  }, [guard, navigate, pathname]);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await logout();
+    navigate({ to: "/signin", replace: true });
+  }
+
+  if (guard === "checking") {
+    return <SessionLoading />;
+  }
+
+  if (guard === "error") {
+    return <SessionError onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (guard === "unauthenticated") {
+    // Redirect is in flight (see effect above) — render nothing so the
+    // dashboard's mock content never flashes for a signed-out visitor.
+    return <SessionLoading />;
+  }
 
   const isActive = (to: string, exact: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
 
-  const initials =
-    `${subscriber.firstName[0] ?? ""}${subscriber.lastName[0] ?? ""}`.toUpperCase();
+  const initials = `${subscriber.firstName[0] ?? ""}${subscriber.lastName[0] ?? ""}`.toUpperCase();
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -85,6 +145,15 @@ export function AppShell() {
                 </div>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-foreground/80 hover:bg-surface hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Sign out
+            </button>
           </nav>
         </div>
       )}
@@ -139,6 +208,15 @@ export function AppShell() {
                 </div>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="mt-1 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-surface hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+            >
+              <LogOut className="size-4 shrink-0" aria-hidden="true" />
+              Sign out
+            </button>
           </div>
         </aside>
 
@@ -159,5 +237,34 @@ function Avatar({ initials }: { initials: string }) {
     >
       {initials}
     </span>
+  );
+}
+
+function SessionLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-dvh items-center justify-center bg-background"
+    >
+      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <span className="sr-only">Loading your account.</span>
+    </div>
+  );
+}
+
+function SessionError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
+      <div className="max-w-sm text-center">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
+          We couldn't check your session.
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+        <div className="mt-6">
+          <Button onClick={onRetry}>Try again</Button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TechRouteImport } from './routes/tech'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as SigninRouteImport } from './routes/signin'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PlansRouteImport } from './routes/plans'
 import { Route as OakvilleRouteImport } from './routes/oakville'
@@ -56,6 +57,11 @@ const TechRoute = TechRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SigninRoute = SigninRouteImport.update({
+  id: '/signin',
+  path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
   '/terms': typeof TermsRoute
@@ -254,6 +261,7 @@ export interface FileRoutesByTo {
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
   '/terms': typeof TermsRoute
@@ -290,6 +298,7 @@ export interface FileRoutesById {
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
   '/terms': typeof TermsRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/signin'
     | '/sitemap.xml'
     | '/tech'
     | '/terms'
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/signin'
     | '/sitemap.xml'
     | '/tech'
     | '/terms'
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/signin'
     | '/sitemap.xml'
     | '/tech'
     | '/terms'
@@ -431,6 +443,7 @@ export interface RootRouteChildren {
   OakvilleRoute: typeof OakvilleRoute
   PlansRoute: typeof PlansRoute
   PrivacyRoute: typeof PrivacyRoute
+  SigninRoute: typeof SigninRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TechRoute: typeof TechRoute
   TermsRoute: typeof TermsRoute
@@ -458,6 +471,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signin': {
+      id: '/signin'
+      path: '/signin'
+      fullPath: '/signin'
+      preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -747,6 +767,7 @@ const rootRouteChildren: RootRouteChildren = {
   OakvilleRoute: OakvilleRoute,
   PlansRoute: PlansRoute,
   PrivacyRoute: PrivacyRoute,
+  SigninRoute: SigninRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TechRoute: TechRoute,
   TermsRoute: TermsRoute,
