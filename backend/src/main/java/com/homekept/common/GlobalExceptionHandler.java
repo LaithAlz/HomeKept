@@ -19,6 +19,8 @@ import com.homekept.subscription.SubscriberNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.homekept.identity.exception.AuthenticationException;
+import com.homekept.identity.exception.InvalidPasswordResetRequestException;
+import com.homekept.identity.exception.InvalidPasswordResetTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -146,6 +148,28 @@ public class GlobalExceptionHandler {
                                                                        HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_TOKEN", "Activation link is invalid or has expired", requestId(request)));
+    }
+
+    /**
+     * Password reset request validation failure (e.g. password too short).
+     * The message is a pre-canned safe string set by {@code AuthService}.
+     */
+    @ExceptionHandler(InvalidPasswordResetRequestException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidPasswordResetRequest(InvalidPasswordResetRequestException ex,
+                                                                            HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
+    }
+
+    /**
+     * Password reset token invalid, expired, or already consumed.
+     * Returns a generic 400 message — the reason label is not leaked beyond a safe code.
+     */
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidPasswordResetToken(InvalidPasswordResetTokenException ex,
+                                                                          HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_TOKEN", "Password reset link is invalid or has expired", requestId(request)));
     }
 
     /**

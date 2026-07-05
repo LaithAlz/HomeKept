@@ -73,6 +73,17 @@ public final class EmailTemplates {
                         "Update payment method", billingUrl));
     }
 
+    /** Password reset link (30-minute expiry). */
+    public static RenderedEmail passwordReset(String firstName, String resetUrl) {
+        String body = paragraph("We received a request to reset your HomeKept password. Use the "
+                + "link below to choose a new one. This link expires in 30 minutes. If you did "
+                + "not request this, you can ignore this email and nothing will change.");
+        return new RenderedEmail(
+                "Reset your HomeKept password",
+                layout("Reset your password", greeting(firstName) + body,
+                        "Reset my password", resetUrl, "your password reset request"));
+    }
+
     /** Subscription cancelled (terminal). */
     public static RenderedEmail subscriptionCancelled(String firstName, String plansUrl) {
         String body = paragraph("Your HomeKept membership has been cancelled. We're sorry to "

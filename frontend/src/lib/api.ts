@@ -79,7 +79,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 204) return undefined as T;
 
-  return (await res.json()) as T;
+  // Several endpoints answer a 2xx with an empty body (e.g. POST
+  // /api/auth/login, /refresh, /forgot, /reset all use
+  // ResponseEntity.ok().build() / status(ACCEPTED).build()). res.json() on
+  // an empty body throws a SyntaxError, which would make a successful
+  // request look like a failure to callers. Read as text first and only
+  // parse when there's something to parse.
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export function get<T>(path: string, init?: RequestInit): Promise<T> {

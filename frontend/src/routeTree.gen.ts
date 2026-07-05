@@ -13,11 +13,13 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TechRouteImport } from './routes/tech'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SigninRouteImport } from './routes/signin'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PlansRouteImport } from './routes/plans'
 import { Route as OakvilleRouteImport } from './routes/oakville'
 import { Route as MississaugaRouteImport } from './routes/mississauga'
 import { Route as MiltonRouteImport } from './routes/milton'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as DesignSystemRouteImport } from './routes/design-system'
 import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BookRouteImport } from './routes/book'
@@ -66,6 +68,11 @@ const SigninRoute = SigninRouteImport.update({
   path: '/signin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PrivacyRoute = PrivacyRouteImport.update({
   id: '/privacy',
   path: '/privacy',
@@ -89,6 +96,11 @@ const MississaugaRoute = MississaugaRouteImport.update({
 const MiltonRoute = MiltonRouteImport.update({
   id: '/milton',
   path: '/milton',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesignSystemRoute = DesignSystemRouteImport.update({
@@ -235,11 +247,13 @@ export interface FileRoutesByFullPath {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -271,11 +285,13 @@ export interface FileRoutesByTo {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -310,11 +326,13 @@ export interface FileRoutesById {
   '/book': typeof BookRoute
   '/checkout': typeof CheckoutRoute
   '/design-system': typeof DesignSystemRoute
+  '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
   '/oakville': typeof OakvilleRoute
   '/plans': typeof PlansRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-password': typeof ResetPasswordRoute
   '/signin': typeof SigninRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tech': typeof TechRoute
@@ -350,11 +368,13 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/forgot-password'
     | '/milton'
     | '/mississauga'
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/reset-password'
     | '/signin'
     | '/sitemap.xml'
     | '/tech'
@@ -386,11 +406,13 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/forgot-password'
     | '/milton'
     | '/mississauga'
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/reset-password'
     | '/signin'
     | '/sitemap.xml'
     | '/tech'
@@ -424,11 +446,13 @@ export interface FileRouteTypes {
     | '/book'
     | '/checkout'
     | '/design-system'
+    | '/forgot-password'
     | '/milton'
     | '/mississauga'
     | '/oakville'
     | '/plans'
     | '/privacy'
+    | '/reset-password'
     | '/signin'
     | '/sitemap.xml'
     | '/tech'
@@ -463,11 +487,13 @@ export interface RootRouteChildren {
   BookRoute: typeof BookRoute
   CheckoutRoute: typeof CheckoutRoute
   DesignSystemRoute: typeof DesignSystemRoute
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
   MiltonRoute: typeof MiltonRoute
   MississaugaRoute: typeof MississaugaRoute
   OakvilleRoute: typeof OakvilleRoute
   PlansRoute: typeof PlansRoute
   PrivacyRoute: typeof PrivacyRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
   SigninRoute: typeof SigninRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TechRoute: typeof TechRoute
@@ -505,6 +531,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SigninRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/privacy': {
       id: '/privacy'
       path: '/privacy'
@@ -538,6 +571,13 @@ declare module '@tanstack/react-router' {
       path: '/milton'
       fullPath: '/milton'
       preLoaderRoute: typeof MiltonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/design-system': {
@@ -804,11 +844,13 @@ const rootRouteChildren: RootRouteChildren = {
   BookRoute: BookRoute,
   CheckoutRoute: CheckoutRoute,
   DesignSystemRoute: DesignSystemRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   MiltonRoute: MiltonRoute,
   MississaugaRoute: MississaugaRoute,
   OakvilleRoute: OakvilleRoute,
   PlansRoute: PlansRoute,
   PrivacyRoute: PrivacyRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
   SigninRoute: SigninRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TechRoute: TechRoute,

@@ -2,6 +2,8 @@ package com.homekept.identity;
 
 import com.homekept.identity.dto.MeResponse;
 import com.homekept.identity.exception.AuthenticationException;
+import com.homekept.identity.exception.InvalidPasswordResetRequestException;
+import com.homekept.identity.exception.InvalidPasswordResetTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -29,17 +31,23 @@ public class AuthService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final LoginRateLimiter rateLimiter;
+    private final PasswordResetTokenService passwordResetTokenService;
+    private final PasswordResetNotifier passwordResetNotifier;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
                        RefreshTokenService refreshTokenService,
-                       LoginRateLimiter rateLimiter) {
+                       LoginRateLimiter rateLimiter,
+                       PasswordResetTokenService passwordResetTokenService,
+                       PasswordResetNotifier passwordResetNotifier) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTokenService = refreshTokenService;
         this.rateLimiter = rateLimiter;
+        this.passwordResetTokenService = passwordResetTokenService;
+        this.passwordResetNotifier = passwordResetNotifier;
         // Compute the timing-equalizer hash once at startup (cost-12, same as real hashes).
         this.dummyBcryptHash = passwordEncoder.encode("timing-equalizer-not-a-credential");
     }
@@ -174,6 +182,61 @@ public class AuthService {
         String accessToken = jwtService.issueAccessToken(user);
         String refreshToken = refreshTokenService.createToken(user);
         return new TokenPair(accessToken, refreshToken);
+    }
+
+    /**
+     * Requests a password reset for the given email. Always completes normally — the
+     * controller returns 202 whether or not the email belongs to an account (no
+     * enumeration, per api-contract.md).
+     *
+     * <p>Timing: when the email is unknown, {@link PasswordResetTokenService#mintDummy()}
+     * runs the same nonce/HMAC computation as a real mint so the two branches' CPU cost is
+     * close (same idea as the dummy bcrypt comparison in {@link #login}). See that method's
+     * Javadoc for the documented residual timing risk from the outbound email call.
+     *
+     * @param email the email address submitted on the forgot-password form
+     */
+    @Transactional
+    public void forgotPassword(String email) {
+        String normalizedEmail = email.strip().toLowerCase(java.util.Locale.ROOT);
+        User user = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
+
+        if (user == null) {
+            passwordResetTokenService.mintDummy();
+            return;
+        }
+
+        PasswordResetTokenService.MintResult mint = passwordResetTokenService.mint(user);
+        passwordResetNotifier.sendResetLink(user.getEmail(), user.getFirstName(), mint.rawToken(), user.getId());
+    }
+
+    /**
+     * Completes a password reset: validates and consumes the token, sets the new bcrypt
+     * password, revokes all the user's refresh tokens, and issues a fresh token pair so the
+     * caller is signed in immediately (per api-contract.md).
+     *
+     * @param rawToken    the raw reset token from the reset link
+     * @param newPassword the new plaintext password (bcrypt-hashed here)
+     * @throws InvalidPasswordResetRequestException if the password is null or shorter than
+     *         8 characters
+     * @throws InvalidPasswordResetTokenException if the token is invalid, expired, or consumed
+     */
+    @Transactional
+    public TokenPair resetPassword(String rawToken, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new InvalidPasswordResetRequestException("Password must be at least 8 characters");
+        }
+
+        Long userId = passwordResetTokenService.validateAndConsume(rawToken);
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new InvalidPasswordResetTokenException("INVALID"));
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        refreshTokenService.revokeAll(user.getId());
+
+        return issueTokensFor(user);
     }
 
     /**
