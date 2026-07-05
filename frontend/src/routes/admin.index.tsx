@@ -1,21 +1,6 @@
-import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import {
-  Download,
-  Plus,
-  Search,
-  ChevronUp,
-  ChevronDown,
-  ChevronsUpDown,
-  AlertTriangle,
-  CreditCard,
-  UserMinus,
-  CalendarX,
-  CheckCircle2,
-  Circle,
-  Loader2,
-  X,
-} from "lucide-react";
+import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Download, Plus, AlertTriangle, CreditCard, CalendarClock, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,19 +18,14 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { formatDateShort, formatDateTime, formatTodayLong, type Plan } from "@/lib/mock-admin";
 import {
-  attention,
-  formatCAD,
-  formatDateShort,
-  formatDateTime,
-  formatTodayLong,
-  pendingWalkthroughs,
-  subscribers,
-  type Plan,
-  type Subscriber,
-  type SubscriberStatus,
-} from "@/lib/mock-admin";
-import { useAdminDashboard, formatCentsCAD } from "@/lib/admin";
+  useAdminDashboard,
+  useAdminSubscribers,
+  useAdminBookings,
+  useAdminRescheduleRequests,
+  formatCentsCAD,
+} from "@/lib/admin";
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({
@@ -54,8 +34,41 @@ export const Route = createFileRoute("/admin/")({
   component: AdminDashboard,
 });
 
-type SortKey = "name" | "plan" | "status" | "nextVisit" | "mrr";
-type SortDir = "asc" | "desc";
+const STATUS_LABEL: Record<string, string> = {
+  PENDING_ACTIVATION: "Pending activation",
+  ACTIVE: "Active",
+  PAUSED: "Paused",
+  PAYMENT_ISSUE: "Payment issue",
+  CANCELLED: "Cancelled",
+};
+
+const STATUS_TONE: Record<string, string> = {
+  PENDING_ACTIVATION: "bg-sky-500/10 text-sky-700",
+  ACTIVE: "bg-emerald-500/10 text-emerald-700",
+  PAUSED: "bg-muted text-muted-foreground",
+  PAYMENT_ISSUE: "bg-rose-500/10 text-rose-700",
+  CANCELLED: "bg-muted text-muted-foreground",
+};
+
+const PLAN_LABEL: Record<string, string> = {
+  ESSENTIAL: "Essential",
+  COMPLETE: "Complete",
+  PREMIER: "Premier",
+};
+
+/**
+ * `preferredWeek` is a LocalDate ("YYYY-MM-DD") with no time-of-day meaning.
+ * Anchoring it to UTC noon before formatting with an explicit UTC timeZone
+ * avoids an off-by-one day depending on the viewer's local timezone. Mirrors
+ * the identical helper in `admin.walkthroughs.tsx`.
+ */
+function formatWeekOf(dateStr: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${dateStr}T12:00:00Z`));
+}
 
 function AdminDashboard() {
   const [newBookingOpen, setNewBookingOpen] = useState(false);
@@ -65,56 +78,6 @@ function AdminDashboard() {
     isError: dashboardError,
     refetch: refetchDashboard,
   } = useAdminDashboard();
-
-  // Filter + sort state
-  const [query, setQuery] = useState("");
-  const [planFilter, setPlanFilter] = useState<"all" | Plan>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | SubscriberStatus>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("name");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
-  }
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = subscribers.filter((s) => {
-      if (planFilter !== "all" && s.plan !== planFilter) return false;
-      if (statusFilter !== "all" && s.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.street.toLowerCase().includes(q) ||
-        s.neighbourhood.toLowerCase().includes(q) ||
-        s.city.toLowerCase().includes(q)
-      );
-    });
-
-    return list.slice().sort((a, b) => {
-      const dir = sortDir === "asc" ? 1 : -1;
-      switch (sortKey) {
-        case "name":
-          return a.name.localeCompare(b.name) * dir;
-        case "plan":
-          return a.plan.localeCompare(b.plan) * dir;
-        case "status":
-          return a.status.localeCompare(b.status) * dir;
-        case "mrr":
-          return (a.mrr - b.mrr) * dir;
-        case "nextVisit": {
-          const av = a.nextVisit?.date ?? "";
-          const bv = b.nextVisit?.date ?? "";
-          return av.localeCompare(bv) * dir;
-        }
-      }
-    });
-  }, [query, planFilter, statusFilter, sortKey, sortDir]);
 
   return (
     <>
@@ -191,118 +154,8 @@ function AdminDashboard() {
           />
         </section>
 
-        {/* Subscribers table */}
-        <section
-          aria-labelledby="subs-h"
-          className="rounded-2xl border border-border bg-card shadow-sm"
-        >
-          <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h2 id="subs-h" className="font-display text-lg font-bold tracking-tight">
-                Recent subscribers
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                {filtered.length} of {subscribers.length} shown
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search name or address"
-                  className="h-9 w-full pl-9 sm:w-64"
-                  aria-label="Search subscribers"
-                />
-              </div>
-              <Select
-                value={statusFilter}
-                onValueChange={(v) => setStatusFilter(v as "all" | SubscriberStatus)}
-              >
-                <SelectTrigger className="h-9 w-full sm:w-40" aria-label="Status filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="first-visit">First visit</SelectItem>
-                  <SelectItem value="payment-issue">Payment issue</SelectItem>
-                  <SelectItem value="at-risk">At risk</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as "all" | Plan)}>
-                <SelectTrigger className="h-9 w-full sm:w-36" aria-label="Plan filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All plans</SelectItem>
-                  <SelectItem value="Essential">Essential</SelectItem>
-                  <SelectItem value="Complete">Complete</SelectItem>
-                  <SelectItem value="Premier">Premier</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[840px] border-collapse text-left text-sm">
-              <thead className="bg-surface/60 text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <Th
-                    label="Subscriber"
-                    sortKey="name"
-                    activeSortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <Th
-                    label="Plan"
-                    sortKey="plan"
-                    activeSortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <Th
-                    label="Status"
-                    sortKey="status"
-                    activeSortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <Th
-                    label="Next visit"
-                    sortKey="nextVisit"
-                    activeSortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                  />
-                  <Th
-                    label="MRR"
-                    sortKey="mrr"
-                    activeSortKey={sortKey}
-                    sortDir={sortDir}
-                    onSort={toggleSort}
-                    align="right"
-                  />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s) => (
-                  <SubscriberRow key={s.id} subscriber={s} />
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-10 text-center text-sm text-muted-foreground">
-                      No subscribers match these filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        {/* Recent subscribers */}
+        <RecentSubscribersPanel />
 
         {/* Two-column section */}
         <section className="grid gap-6 xl:grid-cols-2">
@@ -348,134 +201,105 @@ function MetricCard({
 }
 
 // ---------------------------------------------------------------------------
-// Table
+// Panel loading / error helpers (shared shape across the three panels below)
 // ---------------------------------------------------------------------------
 
-function Th({
-  label,
-  sortKey,
-  activeSortKey,
-  sortDir,
-  onSort,
-  align = "left",
-}: {
-  label: string;
-  sortKey: SortKey;
-  activeSortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (k: SortKey) => void;
-  align?: "left" | "right";
-}) {
-  const isActive = sortKey === activeSortKey;
-  const Icon = !isActive ? ChevronsUpDown : sortDir === "asc" ? ChevronUp : ChevronDown;
+function PanelLoading({ label }: { label: string }) {
   return (
-    <th scope="col" className={cn("p-3", align === "right" && "text-right")}>
-      <button
-        type="button"
-        onClick={() => onSort(sortKey)}
-        aria-sort={isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-        className={cn(
-          "inline-flex items-center gap-1 font-bold uppercase tracking-wider hover:text-foreground",
-          isActive ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {label}
-        <Icon className="size-3" />
-      </button>
-    </th>
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+    >
+      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      {label}
+    </div>
   );
 }
 
-function SubscriberRow({ subscriber: s }: { subscriber: Subscriber }) {
+function PanelError({ label, onRetry }: { label: string; onRetry: () => void }) {
   return (
-    <tr className="border-t border-border hover:bg-surface/40">
-      <td className="p-3">
-        <div className="font-semibold text-foreground">{s.name}</div>
-        <div className="text-xs text-muted-foreground">
-          {s.street} · {s.neighbourhood}, {s.city}
+    <div
+      role="alert"
+      className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-destructive"
+    >
+      <span>{label}</span>
+      <Button size="sm" variant="outline" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recent subscribers
+// ---------------------------------------------------------------------------
+
+function RecentSubscribersPanel() {
+  const { data: subscribers, isLoading, isError, refetch } = useAdminSubscribers({ limit: 6 });
+
+  return (
+    <section
+      aria-labelledby="subs-h"
+      className="rounded-2xl border border-border bg-card shadow-sm"
+    >
+      <header className="flex items-center justify-between border-b border-border p-4">
+        <div>
+          <h2 id="subs-h" className="font-display text-lg font-bold tracking-tight">
+            Recent subscribers
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {subscribers ? `${subscribers.length} most recent` : "Loading subscribers."}
+          </p>
         </div>
-      </td>
-      <td className="p-3">
-        <PlanPill plan={s.plan} />
-      </td>
-      <td className="p-3">
-        <StatusPill status={s.status} />
-      </td>
-      <td className="p-3 text-sm">
-        {s.nextVisit ? (
-          <>
-            <div className="font-medium text-foreground">{formatDateShort(s.nextVisit.date)}</div>
-            <div className="text-xs text-muted-foreground">{s.nextVisit.technician}</div>
-          </>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </td>
-      <td className="p-3 text-right font-semibold tabular-nums">
-        {s.mrr === 0 ? <span className="text-muted-foreground">—</span> : formatCAD(s.mrr)}
-      </td>
-    </tr>
-  );
-}
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/subscribers">See all</Link>
+        </Button>
+      </header>
 
-function PlanPill({ plan }: { plan: Plan }) {
-  const cls =
-    plan === "Premier"
-      ? "bg-primary text-primary-foreground"
-      : plan === "Complete"
-        ? "bg-accent/15 text-accent"
-        : "border border-border bg-surface text-foreground";
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider",
-        cls,
+      {isLoading && <PanelLoading label="Loading subscribers." />}
+      {isError && !isLoading && (
+        <PanelError label="We couldn't load subscribers." onRetry={() => void refetch()} />
       )}
-    >
-      {plan}
-    </span>
-  );
-}
 
-function StatusPill({ status }: { status: SubscriberStatus }) {
-  const map: Record<SubscriberStatus, { label: string; cls: string; dot: string }> = {
-    active: {
-      label: "Active",
-      cls: "bg-accent/15 text-accent",
-      dot: "bg-accent",
-    },
-    "first-visit": {
-      label: "First visit",
-      cls: "bg-primary/10 text-primary",
-      dot: "bg-primary",
-    },
-    "payment-issue": {
-      label: "Payment issue",
-      cls: "bg-destructive/15 text-destructive",
-      dot: "bg-destructive",
-    },
-    "at-risk": {
-      label: "At risk",
-      cls: "bg-destructive/10 text-destructive",
-      dot: "bg-destructive",
-    },
-    paused: {
-      label: "Paused",
-      cls: "bg-surface text-muted-foreground border border-border",
-      dot: "bg-muted-foreground",
-    },
-  };
-  const s = map[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-        s.cls,
+      {subscribers && subscribers.length === 0 && (
+        <p className="p-6 text-sm text-muted-foreground">No subscribers yet.</p>
       )}
-    >
-      <span className={cn("size-1.5 rounded-full", s.dot)} aria-hidden="true" />
-      {s.label}
-    </span>
+
+      {subscribers && subscribers.length > 0 && (
+        <ul className="divide-y divide-border">
+          {subscribers.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <Link
+                  to="/admin/subscribers"
+                  className="font-semibold text-foreground hover:underline"
+                >
+                  Subscriber #{s.id}
+                </Link>
+                <p className="text-xs text-muted-foreground">
+                  {s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "No plan yet"}
+                  {s.foundingRate ? " · Founding rate" : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-medium",
+                    STATUS_TONE[s.status] ?? "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {STATUS_LABEL[s.status] ?? s.status}
+                </span>
+                <span className="text-sm font-semibold tabular-nums">
+                  {formatCentsCAD(s.mrrCents)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -484,6 +308,13 @@ function StatusPill({ status }: { status: SubscriberStatus }) {
 // ---------------------------------------------------------------------------
 
 function PendingWalkthroughsPanel() {
+  const {
+    data: bookings,
+    isLoading,
+    isError,
+    refetch,
+  } = useAdminBookings({ status: "PENDING", limit: 6 });
+
   return (
     <article
       aria-labelledby="walk-h"
@@ -494,64 +325,87 @@ function PendingWalkthroughsPanel() {
           <h2 id="walk-h" className="font-display text-lg font-bold tracking-tight">
             Pending walk-throughs
           </h2>
-          <p className="text-xs text-muted-foreground">{pendingWalkthroughs.length} upcoming</p>
+          <p className="text-xs text-muted-foreground">
+            {bookings ? `${bookings.length} awaiting confirmation` : "Loading walk-throughs."}
+          </p>
         </div>
-        <Button variant="ghost" size="sm">
-          See all
+        <Button variant="ghost" size="sm" asChild>
+          <Link to="/admin/walkthroughs">See all</Link>
         </Button>
       </header>
-      <ul className="divide-y divide-border">
-        {pendingWalkthroughs.map((w) => (
-          <li key={w.id} className="flex items-start gap-3 p-4">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-xs font-bold text-foreground/80">
-              {formatDateShort(w.date)
-                .split(" ")
-                .map((p) => p)
-                .join(" ")}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="truncate font-semibold text-foreground">{w.homeowner}</p>
-                <span className="shrink-0 text-xs text-muted-foreground">
-                  {formatDateTime(w.date)}
-                </span>
+
+      {isLoading && <PanelLoading label="Loading walk-throughs." />}
+      {isError && !isLoading && (
+        <PanelError
+          label="We couldn't load the walk-through pipeline."
+          onRetry={() => void refetch()}
+        />
+      )}
+
+      {bookings && bookings.length === 0 && (
+        <p className="p-6 text-sm text-muted-foreground">
+          No walk-throughs are awaiting confirmation.
+        </p>
+      )}
+
+      {bookings && bookings.length > 0 && (
+        <ul className="divide-y divide-border">
+          {bookings.map((b) => (
+            <li key={b.id} className="flex items-start gap-3 p-4">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground">
+                <CalendarClock className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="truncate font-semibold text-foreground">{b.fullName}</p>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {b.scheduledFor
+                      ? formatDateTime(b.scheduledFor)
+                      : `Week of ${formatWeekOf(b.preferredWeek)}`}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {b.city} ·{" "}
+                  <span className="rounded-md bg-surface px-1.5 py-0.5 font-semibold text-foreground/80">
+                    {b.leadSource}
+                  </span>
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {w.city} ·{" "}
-                <span className="rounded-md bg-surface px-1.5 py-0.5 font-semibold text-foreground/80">
-                  {w.source}
-                </span>
-              </p>
-            </div>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                w.confirmed
-                  ? "bg-accent/15 text-accent"
-                  : "bg-surface text-muted-foreground border border-border",
-              )}
-            >
-              {w.confirmed ? <CheckCircle2 className="size-3" /> : <Circle className="size-3" />}
-              {w.confirmed ? "Confirmed" : "Unconfirmed"}
-            </span>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
     </article>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Needs attention
+// Needs attention — derived from two real signals: subscribers whose status
+// is PAYMENT_ISSUE, and PENDING customer reschedule requests. No other field
+// exposed by the admin endpoints maps cleanly to "needs attention" without
+// inventing content, so those are the only two categories shown here.
 // ---------------------------------------------------------------------------
 
-const attentionIcon = {
-  "payment-failure": CreditCard,
-  "churn-risk": UserMinus,
-  "unassigned-visit": CalendarX,
-} as const;
-
 function NeedsAttentionPanel() {
+  const {
+    data: subscribers,
+    isLoading: subsLoading,
+    isError: subsError,
+    refetch: refetchSubs,
+  } = useAdminSubscribers({ limit: 100 });
+  const {
+    data: rescheduleRequests,
+    isLoading: rrLoading,
+    isError: rrError,
+    refetch: refetchRR,
+  } = useAdminRescheduleRequests();
+
+  const isLoading = subsLoading || rrLoading;
+  const isError = subsError || rrError;
+  const paymentIssues = (subscribers ?? []).filter((s) => s.status === "PAYMENT_ISSUE");
+  const pendingReschedules = rescheduleRequests ?? [];
+  const totalOpen = paymentIssues.length + pendingReschedules.length;
+
   return (
     <article aria-labelledby="att-h" className="rounded-2xl border border-border bg-card shadow-sm">
       <header className="flex items-center justify-between border-b border-border p-4">
@@ -561,36 +415,67 @@ function NeedsAttentionPanel() {
             Needs attention
           </h2>
         </div>
-        <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">
-          {attention.length} open
-        </span>
+        {!isLoading && !isError && (
+          <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">
+            {totalOpen} open
+          </span>
+        )}
       </header>
-      <ul className="divide-y divide-border">
-        {attention.map((a) => {
-          const Icon = attentionIcon[a.kind];
-          return (
-            <li key={a.id} className="flex items-start gap-3 p-4">
-              <span
-                className={cn(
-                  "inline-flex size-9 shrink-0 items-center justify-center rounded-lg",
-                  a.kind === "payment-failure" && "bg-destructive/15 text-destructive",
-                  a.kind === "churn-risk" && "bg-destructive/10 text-destructive",
-                  a.kind === "unassigned-visit" && "bg-primary/10 text-primary",
-                )}
-              >
-                <Icon className="size-4" />
+
+      {isLoading && <PanelLoading label="Loading." />}
+      {isError && !isLoading && (
+        <PanelError
+          label="We couldn't load these signals."
+          onRetry={() => {
+            void refetchSubs();
+            void refetchRR();
+          }}
+        />
+      )}
+
+      {!isLoading && !isError && totalOpen === 0 && (
+        <p className="p-6 text-sm text-muted-foreground">Nothing needs attention right now.</p>
+      )}
+
+      {!isLoading && !isError && totalOpen > 0 && (
+        <ul className="divide-y divide-border">
+          {paymentIssues.map((s) => (
+            <li key={`sub-${s.id}`} className="flex items-start gap-3 p-4">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/15 text-destructive">
+                <CreditCard className="size-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground">{a.title}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{a.detail}</p>
+                <p className="font-semibold text-foreground">Subscriber #{s.id}: payment issue</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {s.planCode ? `${PLAN_LABEL[s.planCode] ?? s.planCode} plan` : "No plan on file"}{" "}
+                  · {formatCentsCAD(s.mrrCents)} MRR
+                </p>
               </div>
-              <Button size="sm" variant="outline" className="shrink-0">
-                {a.action}
+              <Button size="sm" variant="outline" className="shrink-0" asChild>
+                <Link to="/admin/subscribers">View</Link>
               </Button>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+          {pendingReschedules.map((r) => (
+            <li key={`rr-${r.id}`} className="flex items-start gap-3 p-4">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <CalendarClock className="size-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-foreground">
+                  Reschedule request: visit #{r.visitId}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Subscriber #{r.subscriberId} · Requested {formatDateShort(r.createdAt)}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" className="shrink-0" asChild>
+                <Link to="/admin/visits">View</Link>
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
     </article>
   );
 }
