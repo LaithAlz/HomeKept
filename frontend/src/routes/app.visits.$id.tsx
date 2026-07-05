@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Circle,
   Clock,
-  FileText,
   Loader2,
   RefreshCcw,
   User,
@@ -172,7 +171,8 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-1 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-              You'll receive a photo report after the visit — usually within a few hours.
+              You'll receive a visit report with the checklist and technician notes afterward,
+              usually within a few hours.
             </li>
             <li className="flex items-start gap-2">
               <span className="mt-1 size-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
@@ -206,52 +206,40 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
     <>
       {/* Header */}
       <header>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <DateBlock scheduledFor={visit.scheduledFor} muted />
-            <div>
-              <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
-                {weekday}, {fullDate}
-              </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex items-start gap-4">
+          <DateBlock scheduledFor={visit.scheduledFor} muted />
+          <div>
+            <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
+              {weekday}, {fullDate}
+            </h1>
+            <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Clock className="size-4" aria-hidden="true" />
+                {window}
+              </span>
+              {visit.technicianFirstName && (
                 <span className="flex items-center gap-1.5">
-                  <Clock className="size-4" aria-hidden="true" />
-                  {window}
+                  <User className="size-4" aria-hidden="true" />
+                  {visit.technicianFirstName}
                 </span>
-                {visit.technicianFirstName && (
-                  <span className="flex items-center gap-1.5">
-                    <User className="size-4" aria-hidden="true" />
-                    {visit.technicianFirstName}
-                  </span>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge status={visit.status} />
-                {visit.completedAt && (
-                  <span className="text-xs text-muted-foreground">
-                    Completed at{" "}
-                    <time dateTime={visit.completedAt}>{formatTime(visit.completedAt)}</time>
-                  </span>
-                )}
-              </div>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StatusBadge status={visit.status} />
+              {visit.completedAt && (
+                <span className="text-xs text-muted-foreground">
+                  Completed at{" "}
+                  <time dateTime={visit.completedAt}>{formatTime(visit.completedAt)}</time>
+                </span>
+              )}
             </div>
           </div>
-
-          {/* Report link */}
-          {visit.status === "COMPLETED" && (
-            <Link to="/app/reports">
-              <Button variant="outline" size="sm">
-                <FileText className="size-4" aria-hidden="true" />
-                Open report
-              </Button>
-            </Link>
-          )}
         </div>
 
         <p className="mt-4 max-w-2xl text-muted-foreground">{visit.name}</p>
       </header>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+      <div className={cn("mt-8 grid gap-6", visit.completionNotes && "lg:grid-cols-[1fr_360px]")}>
         {/* Services */}
         <div className="space-y-6">
           <section aria-labelledby="services-heading">
@@ -295,9 +283,9 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
           </section>
         </div>
 
-        {/* Sidebar: notes + report */}
-        <div className="space-y-4">
-          {visit.completionNotes && (
+        {/* Sidebar: notes */}
+        {visit.completionNotes && (
+          <div className="space-y-4">
             <section
               aria-labelledby="notes-heading"
               className="rounded-3xl border border-border bg-card p-6"
@@ -307,25 +295,8 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
               </h2>
               <p className="mt-3 text-sm text-muted-foreground">{visit.completionNotes}</p>
             </section>
-          )}
-
-          {visit.status === "COMPLETED" && (
-            <div className="rounded-3xl border border-border bg-card p-6">
-              <h2 className="font-display text-base font-bold text-foreground">Visit report</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Full photo report with all checklist items and technician commentary.
-              </p>
-              <div className="mt-4">
-                <Link to="/app/reports">
-                  <Button size="sm" className="w-full">
-                    <FileText className="size-4" aria-hidden="true" />
-                    Open full report
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );
