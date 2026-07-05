@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Camera,
-  StickyNote,
+  Flag as FlagIcon,
   CheckCircle2,
   Circle,
   ChevronDown,
@@ -14,9 +14,34 @@ import {
   CheckCheck,
   Sparkles,
   X,
+  PlayCircle,
+  KeyRound,
+  AlertTriangle,
+  Ban,
+  RefreshCw,
+  ImageOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
+import { getSession, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
+import { formatFullDate, formatTime } from "@/lib/format";
+import {
+  useCompleteVisit,
+  useCreateFlag,
+  useIncompleteVisit,
+  usePatchService,
+  useStartVisit,
+  useTechDaySheet,
+  useUploadPhoto,
+  type FlagResponse,
+  type FlagSeverity,
+  type TechIncompleteVisitResponse,
+  type TechVisitListItem,
+  type VisitServiceItem,
+  type VisitStatus,
+  type VisitType,
+} from "@/lib/tech";
 
 export const Route = createFileRoute("/tech")({
   head: () => ({
@@ -31,93 +56,7 @@ export const Route = createFileRoute("/tech")({
 });
 
 // ============================================================================
-// Types & mock data
-// ============================================================================
-
-type Status = "in-progress" | "upcoming" | "done";
-type PlanTier = "Essential" | "Complete" | "Premier";
-
-interface ChecklistItem {
-  id: string;
-  label: string;
-  done: boolean;
-}
-
-interface Visit {
-  id: string;
-  customer: string;
-  address: string;
-  city: string;
-  start: string; // "10:00 AM"
-  durationMin: number;
-  plan: PlanTier;
-  status: Status;
-  checklist: ChecklistItem[];
-  photos: string[]; // object URLs
-  notes: string[];
-}
-
-const initialVisits: Visit[] = [
-  {
-    id: "v1",
-    customer: "Priya Sharma",
-    address: "14 Maple Ridge Crt, Erin Mills",
-    city: "Mississauga",
-    start: "10:00 AM",
-    durationMin: 75,
-    plan: "Complete",
-    status: "in-progress",
-    photos: [],
-    notes: [],
-    checklist: [
-      { id: "c1", label: "Furnace filter swap", done: true },
-      { id: "c2", label: "Smoke + CO detector test", done: true },
-      { id: "c3", label: "AC startup check", done: false },
-      { id: "c4", label: "Gutter clearing — front", done: false },
-      { id: "c5", label: "Hose bib reconnection", done: false },
-    ],
-  },
-  {
-    id: "v2",
-    customer: "Mark & Helen Chen",
-    address: "27 Bronte Creek Dr",
-    city: "Oakville",
-    start: "12:30 PM",
-    durationMin: 90,
-    plan: "Premier",
-    status: "upcoming",
-    photos: [],
-    notes: [],
-    checklist: [
-      { id: "c1", label: "Quarterly home walkaround", done: false },
-      { id: "c2", label: "Dryer vent inspection", done: false },
-      { id: "c3", label: "Sump pump test", done: false },
-      { id: "c4", label: "Smart thermostat tune-up", done: false },
-    ],
-  },
-  {
-    id: "v3",
-    customer: "Daniel Nguyen",
-    address: "8 Whitehorn Pl",
-    city: "Milton",
-    start: "3:00 PM",
-    durationMin: 60,
-    plan: "Essential",
-    status: "upcoming",
-    photos: [],
-    notes: [],
-    checklist: [
-      { id: "c1", label: "First-visit home assessment", done: false },
-      { id: "c2", label: "Filter & detector inventory", done: false },
-      { id: "c3", label: "Seasonal exterior check", done: false },
-    ],
-  },
-];
-
-const STORAGE_KEY = "homekept:tech:visits-v1";
-
-// ============================================================================
-// App shell
+// App shell + auth/role guard
 // ============================================================================
 
 function TechApp() {
@@ -125,40 +64,251 @@ function TechApp() {
     <div className="min-h-dvh bg-background">
       {/* Phone frame on wider screens, full-bleed on phones */}
       <div className="mx-auto w-full max-w-[420px] md:my-8 md:overflow-hidden md:rounded-[2.5rem] md:border md:border-border md:shadow-2xl">
-        <TechShell />
+        <TechGuard />
       </div>
     </div>
   );
 }
 
-function TechShell() {
-  const [visits, setVisits] = useState<Visit[]>(() => loadVisits());
-  const [expandedId, setExpandedId] = useState<string>(() => {
-    const current = (loadVisits().find((v) => v.status === "in-progress") ??
-      loadVisits().find((v) => v.status === "upcoming"));
-    return current?.id ?? "";
-  });
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [noteFor, setNoteFor] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+type GuardStatus = "checking" | "authorized" | "unauthenticated" | "wrong-role" | "error";
 
-  // Persist locally — works offline by default.
+/**
+ * Client-side auth + role guard for `/tech`.
+ *
+ * Mirrors `AppShell`'s guard (`frontend/src/components/app/AppShell.tsx`):
+ * this is deliberately NOT a `beforeLoad`. This is TanStack Start with SSR on
+ * Cloudflare and the auth cookie lives on the API origin, so a server-side
+ * check has nothing to send `GET /api/auth/me` with — it would always look
+ * signed out. Checking from an effect guarantees the request only ever
+ * happens in the browser, where the cookie is present. SSR (and the first
+ * client render, before the effect resolves) renders only `GuardLoading` —
+ * the real day sheet (decrypted access notes + customer PII) never mounts,
+ * and its data query never fires, until the guard has confirmed both
+ * "signed in" and "role === TECHNICIAN".
+ *
+ * Rules: signed out → `/signin?next=<current path>`; signed in but wrong
+ * role → `/app` (mirrors `AppShell`'s destination for a rejected session).
+ */
+function TechGuard() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const [status, setStatus] = useState<GuardStatus>("checking");
+  const [session, setSession] = useState<Session | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripPhotos(visits)));
-    } catch {
-      // ignore quota
-    }
-  }, [visits]);
+    let cancelled = false;
+    setStatus("checking");
+    getSession()
+      .then((s) => {
+        if (cancelled) return;
+        if (!s) {
+          setStatus("unauthenticated");
+        } else if (s.role !== "TECHNICIAN") {
+          setStatus("wrong-role");
+        } else {
+          setSession(s);
+          setStatus("authorized");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
 
-  const inProgress = visits.filter((v) => v.status === "in-progress");
-  const upcoming = visits.filter((v) => v.status === "upcoming");
-  const done = visits.filter((v) => v.status === "done");
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      navigate({ to: "/signin", search: { next: pathname }, replace: true });
+    } else if (status === "wrong-role") {
+      navigate({ to: "/app", replace: true });
+    }
+  }, [status, navigate, pathname]);
+
+  if (status === "error") {
+    return <GuardError onRetry={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (status === "authorized" && session) {
+    return <TechShell technician={session} />;
+  }
+
+  // "checking" | "unauthenticated" | "wrong-role" — a redirect is in flight
+  // for the latter two. Render only a loading placeholder so nothing from
+  // the day sheet ever flashes for a signed-out or non-technician visitor.
+  return <GuardLoading />;
+}
+
+function GuardLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-dvh items-center justify-center bg-background"
+    >
+      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <span className="sr-only">Loading today's visits.</span>
+    </div>
+  );
+}
+
+function GuardError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex min-h-dvh items-center justify-center bg-background px-6 text-center">
+      <div>
+        <h1 className="font-display text-xl font-bold tracking-tight">
+          We couldn't check your session.
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
+        <div className="mt-6">
+          <Button onClick={onRetry}>Try again</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function messageFor(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  return "Something went wrong. Try again.";
+}
+
+// ============================================================================
+// Day sheet (authorized content only)
+// ============================================================================
+
+interface PhotoAttempt {
+  key: string;
+  previewUrl: string;
+  status: "uploading" | "done" | "error";
+  error?: string;
+}
+
+function TechShell({ technician }: { technician: Session }) {
+  const navigate = useNavigate();
+  const dayQuery = useTechDaySheet(true);
+  useSessionExpiredRedirect(dayQuery.error);
+
+  const visits = useMemo(() => dayQuery.data ?? [], [dayQuery.data]);
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const hasAutoExpanded = useRef(false);
+  useEffect(() => {
+    if (hasAutoExpanded.current || !dayQuery.data) return;
+    hasAutoExpanded.current = true;
+    const current =
+      dayQuery.data.find((v) => v.status === "IN_PROGRESS") ??
+      dayQuery.data.find((v) => v.status === "SCHEDULED");
+    setExpandedId(current?.id ?? null);
+  }, [dayQuery.data]);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [incompleteId, setIncompleteId] = useState<number | null>(null);
+  const [flagForId, setFlagForId] = useState<number | null>(null);
+  const [followUpNotice, setFollowUpNotice] = useState<string | null>(null);
+
+  const [errorsByVisit, setErrorsByVisit] = useState<Record<number, string>>({});
+  const [flagsByVisit, setFlagsByVisit] = useState<Record<number, FlagResponse[]>>({});
+  const [photosByVisit, setPhotosByVisit] = useState<Record<number, PhotoAttempt[]>>({});
+  const previewUrlsRef = useRef<string[]>([]);
+
+  // Object URLs used for local photo previews aren't persistable and must be
+  // released when the page goes away. This ref intentionally accumulates
+  // across renders (it isn't a DOM node ref) — the cleanup below needs the
+  // value *at unmount*, not a snapshot captured at mount time.
+  useEffect(() => {
+    return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  function setVisitError(id: number, message: string) {
+    setErrorsByVisit((prev) => ({ ...prev, [id]: message }));
+  }
+  function clearVisitError(id: number) {
+    setErrorsByVisit((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  const startMutation = useStartVisit();
+  const patchServiceMutation = usePatchService();
+  const uploadPhotoMutation = useUploadPhoto();
+  const completeMutation = useCompleteVisit();
+  const incompleteMutation = useIncompleteVisit();
+  const createFlagMutation = useCreateFlag();
+
+  function handleStart(visit: TechVisitListItem) {
+    clearVisitError(visit.id);
+    startMutation.mutate(visit.id, {
+      onSuccess: () => setExpandedId(visit.id),
+      onError: (err) => setVisitError(visit.id, messageFor(err)),
+    });
+  }
+
+  function handleToggleItem(visit: TechVisitListItem, item: VisitServiceItem) {
+    clearVisitError(visit.id);
+    patchServiceMutation.mutate(
+      {
+        visitId: visit.id,
+        visitServiceId: item.id,
+        request: { completed: !item.completed, technicianNotes: item.technicianNotes },
+      },
+      { onError: (err) => setVisitError(visit.id, messageFor(err)) },
+    );
+  }
+
+  function handlePhotoSelected(visit: TechVisitListItem, file: File) {
+    const key = crypto.randomUUID();
+    const previewUrl = URL.createObjectURL(file);
+    previewUrlsRef.current.push(previewUrl);
+    setPhotosByVisit((prev) => ({
+      ...prev,
+      [visit.id]: [...(prev[visit.id] ?? []), { key, previewUrl, status: "uploading" }],
+    }));
+    uploadPhotoMutation.mutate(
+      { visitId: visit.id, file },
+      {
+        onSuccess: () => {
+          setPhotosByVisit((prev) => ({
+            ...prev,
+            [visit.id]: (prev[visit.id] ?? []).map((p) =>
+              p.key === key ? { ...p, status: "done" } : p,
+            ),
+          }));
+        },
+        onError: (err) => {
+          setPhotosByVisit((prev) => ({
+            ...prev,
+            [visit.id]: (prev[visit.id] ?? []).map((p) =>
+              p.key === key ? { ...p, status: "error", error: messageFor(err) } : p,
+            ),
+          }));
+        },
+      },
+    );
+  }
+
+  async function handleSignOut() {
+    await logout();
+    navigate({ to: "/signin", replace: true });
+  }
+
+  const inProgress = visits.filter((v) => v.status === "IN_PROGRESS");
+  const upcoming = visits.filter((v) => v.status === "SCHEDULED");
+  const closed = visits.filter((v) => v.status !== "IN_PROGRESS" && v.status !== "SCHEDULED");
 
   const totalCount = visits.length;
-  const doneCount = done.length;
+  const closedCount = closed.length;
   const totalHours = useMemo(
-    () => Math.round((visits.reduce((s, v) => s + v.durationMin, 0) / 60) * 10) / 10,
+    () => Math.round((visits.reduce((s, v) => s + v.durationMinutes, 0) / 60) * 10) / 10,
     [visits],
   );
   const routeSummary = useMemo(() => {
@@ -173,68 +323,22 @@ function TechShell() {
     return ordered.join(" → ");
   }, [visits]);
 
-  const today = new Date().toLocaleDateString("en-CA", {
-    weekday: "long",
-    month: "short",
-    day: "numeric",
-  });
+  // Rendered in America/Toronto — the timezone the day sheet is computed in
+  // on the backend — rather than the device's local timezone.
+  const today = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Toronto",
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+      }).format(new Date()),
+    [],
+  );
 
-  function toggleItem(visitId: string, itemId: string) {
-    setVisits((prev) =>
-      prev.map((v) =>
-        v.id === visitId
-          ? {
-              ...v,
-              checklist: v.checklist.map((c) =>
-                c.id === itemId ? { ...c, done: !c.done } : c,
-              ),
-            }
-          : v,
-      ),
-    );
-  }
-
-  function addPhoto(visitId: string, file: File) {
-    const url = URL.createObjectURL(file);
-    setVisits((prev) =>
-      prev.map((v) =>
-        v.id === visitId ? { ...v, photos: [...v.photos, url] } : v,
-      ),
-    );
-  }
-
-  function addNote(visitId: string, text: string) {
-    setVisits((prev) =>
-      prev.map((v) =>
-        v.id === visitId ? { ...v, notes: [...v.notes, text] } : v,
-      ),
-    );
-  }
-
-  function completeVisit(visitId: string) {
-    setVisits((prev) => {
-      const next = prev.map((v) =>
-        v.id === visitId
-          ? {
-              ...v,
-              status: "done" as Status,
-              checklist: v.checklist.map((c) => ({ ...c, done: true })),
-            }
-          : v,
-      );
-      // auto-expand next upcoming and promote to in-progress
-      const nextUp = next.find((v) => v.status === "upcoming");
-      if (nextUp) {
-        setExpandedId(nextUp.id);
-        return next.map((v) =>
-          v.id === nextUp.id ? { ...v, status: "in-progress" } : v,
-        );
-      }
-      setExpandedId("");
-      return next;
-    });
-    setConfirmId(null);
-  }
+  const confirmVisit = confirmId ? visits.find((v) => v.id === confirmId) : undefined;
+  const incompleteVisit = incompleteId ? visits.find((v) => v.id === incompleteId) : undefined;
+  const flagVisit = flagForId ? visits.find((v) => v.id === flagForId) : undefined;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground [padding-top:env(safe-area-inset-top)]">
@@ -246,7 +350,7 @@ function TechShell() {
               {today}
             </p>
             <h1 className="mt-0.5 font-display text-2xl font-extrabold tracking-tight">
-              Hey, Marcus.
+              Hey, {technician.firstName}.
             </h1>
           </div>
           <button
@@ -261,111 +365,223 @@ function TechShell() {
       </header>
 
       <main className="flex-1 space-y-4 px-4 pb-32 pt-4">
-        {/* Today summary */}
-        <TodaySummary
-          totalCount={totalCount}
-          doneCount={doneCount}
-          totalHours={totalHours}
-          route={routeSummary}
-        />
-
-        {/* In progress */}
-        {inProgress.length > 0 && (
-          <Group label="In progress" tone="primary">
-            {inProgress.map((v) => (
-              <VisitCard
-                key={v.id}
-                visit={v}
-                expanded={expandedId === v.id}
-                onToggleExpand={() =>
-                  setExpandedId((id) => (id === v.id ? "" : v.id))
-                }
-                onToggleItem={(itemId) => toggleItem(v.id, itemId)}
-                onAddPhoto={(f) => addPhoto(v.id, f)}
-                onAddNote={() => setNoteFor(v.id)}
-                onComplete={() => setConfirmId(v.id)}
-              />
-            ))}
-          </Group>
-        )}
-
-        {/* Upcoming */}
-        {upcoming.length > 0 && (
-          <Group label="Up next" tone="muted">
-            {upcoming.map((v) => (
-              <VisitCard
-                key={v.id}
-                visit={v}
-                expanded={expandedId === v.id}
-                onToggleExpand={() =>
-                  setExpandedId((id) => (id === v.id ? "" : v.id))
-                }
-                onToggleItem={(itemId) => toggleItem(v.id, itemId)}
-                onAddPhoto={(f) => addPhoto(v.id, f)}
-                onAddNote={() => setNoteFor(v.id)}
-                onComplete={() => setConfirmId(v.id)}
-              />
-            ))}
-          </Group>
-        )}
-
-        {/* Done */}
-        {done.length > 0 && (
-          <Group label="Done" tone="dim">
-            {done.map((v) => (
-              <VisitCard
-                key={v.id}
-                visit={v}
-                dim
-                expanded={expandedId === v.id}
-                onToggleExpand={() =>
-                  setExpandedId((id) => (id === v.id ? "" : v.id))
-                }
-                onToggleItem={(itemId) => toggleItem(v.id, itemId)}
-                onAddPhoto={(f) => addPhoto(v.id, f)}
-                onAddNote={() => setNoteFor(v.id)}
-                onComplete={() => setConfirmId(v.id)}
-              />
-            ))}
-          </Group>
-        )}
-
-        {done.length === totalCount && (
-          <div className="mt-6 rounded-3xl border border-border bg-card p-6 text-center">
-            <Sparkles className="mx-auto size-6 text-accent" />
-            <p className="mt-2 font-display text-lg font-bold">Day complete.</p>
-            <p className="text-sm text-muted-foreground">
-              Reports queued. Drive safe.
-            </p>
+        {followUpNotice && (
+          <div
+            role="status"
+            className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm text-foreground/90"
+          >
+            <span>{followUpNotice}</span>
+            <button
+              type="button"
+              onClick={() => setFollowUpNotice(null)}
+              aria-label="Dismiss"
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" aria-hidden="true" />
+            </button>
           </div>
+        )}
+
+        {dayQuery.isLoading && <DaySheetLoading />}
+
+        {dayQuery.isError && <DaySheetError onRetry={() => dayQuery.refetch()} />}
+
+        {!dayQuery.isLoading && !dayQuery.isError && totalCount === 0 && <NoVisitsToday />}
+
+        {!dayQuery.isLoading && !dayQuery.isError && totalCount > 0 && (
+          <>
+            <TodaySummary
+              totalCount={totalCount}
+              doneCount={closedCount}
+              totalHours={totalHours}
+              route={routeSummary}
+            />
+
+            {inProgress.length > 0 && (
+              <Group label="In progress" tone="primary">
+                {inProgress.map((v) => (
+                  <VisitCard
+                    key={v.id}
+                    visit={v}
+                    expanded={expandedId === v.id}
+                    onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
+                    onStart={() => handleStart(v)}
+                    starting={startMutation.isPending && startMutation.variables === v.id}
+                    onToggleItem={(item) => handleToggleItem(v, item)}
+                    togglingServiceId={
+                      patchServiceMutation.isPending &&
+                      patchServiceMutation.variables?.visitId === v.id
+                        ? patchServiceMutation.variables.visitServiceId
+                        : null
+                    }
+                    onPhotoSelected={(file) => handlePhotoSelected(v, file)}
+                    photoAttempts={photosByVisit[v.id] ?? []}
+                    onFlag={() => setFlagForId(v.id)}
+                    flags={flagsByVisit[v.id] ?? []}
+                    onComplete={() => setConfirmId(v.id)}
+                    errorMessage={errorsByVisit[v.id] ?? null}
+                    onDismissError={() => clearVisitError(v.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {upcoming.length > 0 && (
+              <Group label="Up next" tone="muted">
+                {upcoming.map((v) => (
+                  <VisitCard
+                    key={v.id}
+                    visit={v}
+                    expanded={expandedId === v.id}
+                    onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
+                    onStart={() => handleStart(v)}
+                    starting={startMutation.isPending && startMutation.variables === v.id}
+                    onToggleItem={(item) => handleToggleItem(v, item)}
+                    togglingServiceId={
+                      patchServiceMutation.isPending &&
+                      patchServiceMutation.variables?.visitId === v.id
+                        ? patchServiceMutation.variables.visitServiceId
+                        : null
+                    }
+                    onPhotoSelected={(file) => handlePhotoSelected(v, file)}
+                    photoAttempts={photosByVisit[v.id] ?? []}
+                    onFlag={() => setFlagForId(v.id)}
+                    flags={flagsByVisit[v.id] ?? []}
+                    onComplete={() => setConfirmId(v.id)}
+                    errorMessage={errorsByVisit[v.id] ?? null}
+                    onDismissError={() => clearVisitError(v.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {closed.length > 0 && (
+              <Group label="Done" tone="dim">
+                {closed.map((v) => (
+                  <VisitCard
+                    key={v.id}
+                    visit={v}
+                    dim
+                    expanded={expandedId === v.id}
+                    onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
+                    onStart={() => handleStart(v)}
+                    starting={false}
+                    onToggleItem={(item) => handleToggleItem(v, item)}
+                    togglingServiceId={null}
+                    onPhotoSelected={(file) => handlePhotoSelected(v, file)}
+                    photoAttempts={photosByVisit[v.id] ?? []}
+                    onFlag={() => setFlagForId(v.id)}
+                    flags={flagsByVisit[v.id] ?? []}
+                    onComplete={() => setConfirmId(v.id)}
+                    errorMessage={errorsByVisit[v.id] ?? null}
+                    onDismissError={() => clearVisitError(v.id)}
+                  />
+                ))}
+              </Group>
+            )}
+
+            {closedCount === totalCount && (
+              <div className="mt-6 rounded-3xl border border-border bg-card p-6 text-center">
+                <Sparkles className="mx-auto size-6 text-accent" aria-hidden="true" />
+                <p className="mt-2 font-display text-lg font-bold">Day complete.</p>
+                <p className="text-sm text-muted-foreground">Reports queued. Drive safe.</p>
+              </div>
+            )}
+          </>
         )}
       </main>
 
       {/* Bottom safe-area spacer */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none h-[env(safe-area-inset-bottom)]"
-      />
+      <div aria-hidden="true" className="pointer-events-none h-[env(safe-area-inset-bottom)]" />
 
       {/* Modals */}
-      {confirmId && (
-        <ConfirmDialog
-          visit={visits.find((v) => v.id === confirmId)!}
+      {confirmVisit && (
+        <CompleteVisitSheet
+          visit={confirmVisit}
+          mutation={completeMutation}
           onCancel={() => setConfirmId(null)}
-          onConfirm={() => completeVisit(confirmId)}
-        />
-      )}
-      {noteFor && (
-        <NoteSheet
-          visit={visits.find((v) => v.id === noteFor)!}
-          onCancel={() => setNoteFor(null)}
-          onSave={(text) => {
-            addNote(noteFor, text);
-            setNoteFor(null);
+          onCompleted={() => setConfirmId(null)}
+          onSwitchToIncomplete={() => {
+            setConfirmId(null);
+            setIncompleteId(confirmVisit.id);
           }}
         />
       )}
-      {menuOpen && <MenuSheet onClose={() => setMenuOpen(false)} />}
+      {incompleteVisit && (
+        <IncompleteSheet
+          visit={incompleteVisit}
+          mutation={incompleteMutation}
+          onCancel={() => setIncompleteId(null)}
+          onCompleted={(res) => {
+            setIncompleteId(null);
+            setFollowUpNotice(
+              `Follow-up visit scheduled for ${formatFullDate(res.followUpScheduledFor)}.`,
+            );
+          }}
+        />
+      )}
+      {flagVisit && (
+        <FlagSheet
+          visit={flagVisit}
+          mutation={createFlagMutation}
+          onCancel={() => setFlagForId(null)}
+          onSaved={(flag) => {
+            setFlagsByVisit((prev) => ({
+              ...prev,
+              [flagVisit.id]: [...(prev[flagVisit.id] ?? []), flag],
+            }));
+            setFlagForId(null);
+          }}
+        />
+      )}
+      {menuOpen && (
+        <MenuSheet
+          technician={technician}
+          onClose={() => setMenuOpen(false)}
+          onSignOut={handleSignOut}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Day-sheet loading / error / empty states
+// ============================================================================
+
+function DaySheetLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex flex-col items-center gap-3 rounded-3xl border border-border bg-card p-10 text-center"
+    >
+      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      <p className="text-sm text-muted-foreground">Loading today's visits…</p>
+    </div>
+  );
+}
+
+function DaySheetError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="rounded-3xl border border-border bg-card p-6 text-center">
+      <AlertTriangle className="mx-auto size-6 text-destructive" aria-hidden="true" />
+      <p className="mt-2 font-display text-lg font-bold">Couldn't load today's visits.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Check your connection and try again.</p>
+      <div className="mt-4">
+        <Button variant="outline" onClick={onRetry}>
+          Try again
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function NoVisitsToday() {
+  return (
+    <div className="rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
+      <p className="font-display text-lg font-bold">No visits today.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Check back tomorrow morning.</p>
     </div>
   );
 }
@@ -414,9 +630,7 @@ function TodaySummary({
         </div>
         <div className="ml-2 h-10 w-px bg-primary-foreground/20" />
         <div>
-          <div className="font-display text-2xl font-bold leading-none">
-            {totalHours}h
-          </div>
+          <div className="font-display text-2xl font-bold leading-none">{totalHours}h</div>
           <div className="mt-1 text-xs text-primary-foreground/70">est.</div>
         </div>
       </div>
@@ -480,29 +694,44 @@ function VisitCard({
   expanded,
   dim,
   onToggleExpand,
+  onStart,
+  starting,
   onToggleItem,
-  onAddPhoto,
-  onAddNote,
+  togglingServiceId,
+  onPhotoSelected,
+  photoAttempts,
+  onFlag,
+  flags,
   onComplete,
+  errorMessage,
+  onDismissError,
 }: {
-  visit: Visit;
+  visit: TechVisitListItem;
   expanded: boolean;
   dim?: boolean;
   onToggleExpand: () => void;
-  onToggleItem: (id: string) => void;
-  onAddPhoto: (f: File) => void;
-  onAddNote: () => void;
+  onStart: () => void;
+  starting: boolean;
+  onToggleItem: (item: VisitServiceItem) => void;
+  togglingServiceId: number | null;
+  onPhotoSelected: (file: File) => void;
+  photoAttempts: PhotoAttempt[];
+  onFlag: () => void;
+  flags: FlagResponse[];
   onComplete: () => void;
+  errorMessage: string | null;
+  onDismissError: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const completedCount = visit.checklist.filter((c) => c.done).length;
+  const completedCount = visit.services.filter((s) => s.completed).length;
+  const hasAccessNotes = visit.accessNotes.trim().length > 0;
 
   return (
     <article
       className={cn(
         "overflow-hidden rounded-3xl border bg-card shadow-sm transition-opacity",
-        visit.status === "in-progress" && "border-accent ring-1 ring-accent/40",
-        visit.status !== "in-progress" && "border-border",
+        visit.status === "IN_PROGRESS" && "border-accent ring-1 ring-accent/40",
+        visit.status !== "IN_PROGRESS" && "border-border",
         dim && "opacity-70",
       )}
     >
@@ -516,7 +745,7 @@ function VisitCard({
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-bold">
             <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
-            {visit.start}
+            {formatTime(visit.scheduledFor)}
           </div>
           <StatusPill status={visit.status} />
         </div>
@@ -524,10 +753,11 @@ function VisitCard({
         <div className="mt-2 flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate font-display text-lg font-bold tracking-tight">
-              {visit.customer}
+              {visit.streetAddress}
+              {visit.unit ? `, Unit ${visit.unit}` : ""}
             </h3>
             <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {visit.address} · {visit.city}
+              {visit.city} · {visit.postalCode}
             </p>
           </div>
           <span
@@ -539,134 +769,221 @@ function VisitCard({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{visit.durationMin} min</span>
+          <span>{visit.durationMinutes} min</span>
           <span aria-hidden="true">·</span>
           <span>
-            {completedCount}/{visit.checklist.length} items
+            {completedCount}/{visit.services.length} items
           </span>
           <span aria-hidden="true">·</span>
-          <PlanChip plan={visit.plan} />
+          <VisitTypeChip type={visit.type} name={visit.name} />
         </div>
       </button>
 
       {expanded && (
-        <div
-          id={`visit-body-${visit.id}`}
-          className="border-t border-border px-4 pb-4 pt-3"
-        >
+        <div id={`visit-body-${visit.id}`} className="border-t border-border px-4 pb-4 pt-3">
+          {hasAccessNotes ? (
+            <div className="mb-4 flex items-start gap-2 rounded-2xl bg-surface px-3 py-3">
+              <KeyRound
+                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                  Access notes
+                </p>
+                <p className="mt-1 whitespace-pre-line text-sm text-foreground/90">
+                  {visit.accessNotes}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mb-4 text-xs text-muted-foreground">No access notes on file.</p>
+          )}
+
           <ul className="space-y-1">
-            {visit.checklist.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => onToggleItem(c.id)}
-                  aria-pressed={c.done}
-                  className="flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left text-base active:bg-surface/70"
-                >
-                  {c.done ? (
-                    <CheckCircle2
-                      className="size-6 shrink-0 text-accent"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <Circle
-                      className="size-6 shrink-0 text-muted-foreground"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1",
-                      c.done && "text-muted-foreground line-through",
-                    )}
+            {visit.services.map((s) => {
+              const isToggling = togglingServiceId === s.id;
+              return (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    onClick={() => onToggleItem(s)}
+                    disabled={isToggling}
+                    aria-pressed={s.completed}
+                    className="flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left text-base active:bg-surface/70 disabled:opacity-60"
                   >
-                    {c.label}
-                  </span>
-                </button>
-              </li>
-            ))}
+                    {isToggling ? (
+                      <Loader2
+                        className="size-6 shrink-0 animate-spin text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : s.completed ? (
+                      <CheckCircle2 className="size-6 shrink-0 text-accent" aria-hidden="true" />
+                    ) : (
+                      <Circle
+                        className="size-6 shrink-0 text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1",
+                        s.completed && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {s.serviceName}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
 
-          {visit.photos.length > 0 && (
+          {photoAttempts.length > 0 && (
             <div className="mt-4">
               <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Photos ({visit.photos.length})
+                Photos ({photoAttempts.length})
               </p>
               <div className="grid grid-cols-4 gap-2">
-                {visit.photos.map((src, i) => (
-                  <img
-                    key={i}
-                    src={src}
-                    alt=""
-                    className="aspect-square w-full rounded-xl object-cover"
-                  />
+                {photoAttempts.map((p) => (
+                  <div
+                    key={p.key}
+                    className="relative aspect-square w-full overflow-hidden rounded-xl"
+                  >
+                    <img src={p.previewUrl} alt="" className="size-full object-cover" />
+                    {p.status === "uploading" && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-foreground/40">
+                        <Loader2
+                          className="size-4 animate-spin text-background"
+                          aria-hidden="true"
+                        />
+                      </div>
+                    )}
+                    {p.status === "error" && (
+                      <div
+                        className="absolute inset-0 flex items-center justify-center bg-destructive/70"
+                        title={p.error ?? "Upload failed."}
+                      >
+                        <ImageOff
+                          className="size-4 text-destructive-foreground"
+                          aria-hidden="true"
+                        />
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
+              {photoAttempts.some((p) => p.status === "error") && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Some photos couldn't be saved. Photo storage isn't turned on yet.
+                </p>
+              )}
             </div>
           )}
 
-          {visit.notes.length > 0 && (
+          {flags.length > 0 && (
             <div className="mt-4 space-y-2">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Notes ({visit.notes.length})
+                Flags ({flags.length})
               </p>
-              {visit.notes.map((n, i) => (
-                <p
-                  key={i}
+              {flags.map((f) => (
+                <div
+                  key={f.id}
                   className="rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90"
                 >
-                  {n}
-                </p>
+                  <SeverityTag severity={f.severity} />
+                  <p className="mt-1">{f.body}</p>
+                </div>
               ))}
             </div>
           )}
 
-          {/* Action bar */}
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="sr-only"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onAddPhoto(f);
-                e.target.value = "";
-              }}
-            />
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              onClick={() => fileRef.current?.click()}
-              className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
+          {errorMessage && (
+            <div
+              role="alert"
+              className="mt-4 flex items-start justify-between gap-2 rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
             >
-              <Camera className="size-5" />
-              Photo
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              onClick={onAddNote}
-              className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
-            >
-              <StickyNote className="size-5" />
-              Note
-            </Button>
+              <span>{errorMessage}</span>
+              <button
+                type="button"
+                onClick={onDismissError}
+                aria-label="Dismiss"
+                className="shrink-0"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+          )}
+
+          {/* Action bar — only offer a transition control legal for this
+              visit's current status: Start only from SCHEDULED, and
+              Photo/Flag/Complete only once IN_PROGRESS. */}
+          {visit.status === "SCHEDULED" && (
             <Button
               type="button"
               size="lg"
               variant="accent"
-              onClick={onComplete}
-              disabled={visit.status === "done"}
-              className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
+              onClick={onStart}
+              disabled={starting}
+              className="mt-5 h-14 w-full rounded-2xl"
             >
-              <CheckCheck className="size-5" />
-              {visit.status === "done" ? "Done" : "Complete"}
+              {starting ? (
+                <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+              ) : (
+                <>
+                  <PlayCircle className="size-5" aria-hidden="true" />
+                  Start visit
+                </>
+              )}
             </Button>
-          </div>
+          )}
+
+          {visit.status === "IN_PROGRESS" && (
+            <div className="mt-5 grid grid-cols-3 gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoSelected(f);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <Camera className="size-5" />
+                Photo
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={onFlag}
+                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <FlagIcon className="size-5" />
+                Flag
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="accent"
+                onClick={onComplete}
+                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <CheckCheck className="size-5" />
+                Complete
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -674,27 +991,42 @@ function VisitCard({
 }
 
 // ============================================================================
-// Pills
+// Pills / chips
 // ============================================================================
 
-function StatusPill({ status }: { status: Status }) {
-  const map = {
-    "in-progress": {
-      label: "In progress",
-      cls: "bg-accent text-accent-foreground",
-      icon: <Loader2 className="size-3 animate-spin" aria-hidden="true" />,
-    },
-    upcoming: {
+function StatusPill({ status }: { status: VisitStatus }) {
+  const map: Record<VisitStatus, { label: string; cls: string; icon: React.ReactNode }> = {
+    SCHEDULED: {
       label: "Up next",
       cls: "bg-surface text-foreground border border-border",
       icon: <Clock className="size-3" aria-hidden="true" />,
     },
-    done: {
+    IN_PROGRESS: {
+      label: "In progress",
+      cls: "bg-accent text-accent-foreground",
+      icon: <Loader2 className="size-3 animate-spin" aria-hidden="true" />,
+    },
+    COMPLETED: {
       label: "Done",
       cls: "bg-primary/10 text-primary",
       icon: <CheckCheck className="size-3" aria-hidden="true" />,
     },
-  } as const;
+    INCOMPLETE: {
+      label: "Incomplete",
+      cls: "border border-warning/40 bg-warning/15 text-foreground",
+      icon: <AlertTriangle className="size-3" aria-hidden="true" />,
+    },
+    CANCELLED: {
+      label: "Cancelled",
+      cls: "bg-surface text-muted-foreground border border-border",
+      icon: <Ban className="size-3" aria-hidden="true" />,
+    },
+    RESCHEDULED: {
+      label: "Rescheduled",
+      cls: "bg-surface text-muted-foreground border border-border",
+      icon: <RefreshCw className="size-3" aria-hidden="true" />,
+    },
+  };
   const s = map[status];
   return (
     <span
@@ -709,13 +1041,15 @@ function StatusPill({ status }: { status: Status }) {
   );
 }
 
-function PlanChip({ plan }: { plan: PlanTier }) {
+function VisitTypeChip({ type, name }: { type: VisitType; name: string }) {
   const cls =
-    plan === "Premier"
+    type === "WARRANTY"
       ? "bg-primary text-primary-foreground"
-      : plan === "Complete"
+      : type === "EXTRA"
         ? "bg-accent/15 text-accent"
-        : "bg-surface text-foreground border border-border";
+        : type === "WALKTHROUGH"
+          ? "bg-info/15 text-info"
+          : "bg-surface text-foreground border border-border"; // ROUTINE
   return (
     <span
       className={cn(
@@ -723,7 +1057,27 @@ function PlanChip({ plan }: { plan: PlanTier }) {
         cls,
       )}
     >
-      {plan}
+      {name}
+    </span>
+  );
+}
+
+function SeverityTag({ severity }: { severity: FlagSeverity }) {
+  const cls =
+    severity === "URGENT"
+      ? "bg-destructive text-destructive-foreground"
+      : severity === "ATTENTION"
+        ? "bg-warning text-warning-foreground"
+        : "bg-info text-info-foreground";
+  const label = severity === "URGENT" ? "Urgent" : severity === "ATTENTION" ? "Attention" : "Info";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+        cls,
+      )}
+    >
+      {label}
     </span>
   );
 }
@@ -732,33 +1086,145 @@ function PlanChip({ plan }: { plan: PlanTier }) {
 // Modals
 // ============================================================================
 
-function ConfirmDialog({
+function CompleteVisitSheet({
   visit,
+  mutation,
   onCancel,
-  onConfirm,
+  onCompleted,
+  onSwitchToIncomplete,
 }: {
-  visit: Visit;
+  visit: TechVisitListItem;
+  mutation: ReturnType<typeof useCompleteVisit>;
   onCancel: () => void;
-  onConfirm: () => void;
+  onCompleted: () => void;
+  onSwitchToIncomplete: () => void;
 }) {
-  const remaining = visit.checklist.filter((c) => !c.done).length;
+  const [durationMinutes, setDurationMinutes] = useState(String(visit.durationMinutes));
+  const [materialsCost, setMaterialsCost] = useState("0");
+  const [materialsNotes, setMaterialsNotes] = useState("");
+  const [completionNotes, setCompletionNotes] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const remaining = visit.services.filter((s) => !s.completed).length;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const duration = Number.parseInt(durationMinutes, 10);
+    if (!Number.isFinite(duration) || duration < 1) {
+      setFormError("Enter the time actually spent on site, in minutes.");
+      return;
+    }
+    const costDollars = Number.parseFloat(materialsCost || "0");
+    if (!Number.isFinite(costDollars) || costDollars < 0) {
+      setFormError("Enter a materials cost of 0 or more.");
+      return;
+    }
+    setFormError(null);
+    mutation.mutate(
+      {
+        visitId: visit.id,
+        request: {
+          completionNotes: completionNotes.trim() || null,
+          actualDurationMinutes: duration,
+          materialsCostCents: Math.round(costDollars * 100),
+          materialsNotes: materialsNotes.trim() || null,
+        },
+      },
+      {
+        onSuccess: () => onCompleted(),
+        onError: (err) => setFormError(messageFor(err)),
+      },
+    );
+  }
+
   return (
     <Overlay onClose={onCancel}>
-      <div className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <h3 className="font-display text-xl font-bold tracking-tight">
-            Complete this visit?
-          </h3>
+          <h3 className="font-display text-xl font-bold tracking-tight">Complete this visit?</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            {visit.customer} · {visit.address}
+            {visit.streetAddress}
+            {visit.unit ? `, Unit ${visit.unit}` : ""} · {visit.city}
           </p>
           {remaining > 0 && (
             <p className="mt-3 rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90">
-              {remaining} item{remaining === 1 ? "" : "s"} still unchecked. They'll
-              be marked complete.
+              {remaining} item{remaining === 1 ? "" : "s"} still unchecked. They'll be marked
+              complete.
             </p>
           )}
         </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label
+              htmlFor="actual-duration"
+              className="text-xs font-semibold text-muted-foreground"
+            >
+              Time on site (min)
+            </label>
+            <input
+              id="actual-duration"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <div>
+            <label htmlFor="materials-cost" className="text-xs font-semibold text-muted-foreground">
+              Materials cost ($)
+            </label>
+            <input
+              id="materials-cost"
+              type="number"
+              min={0}
+              step="0.01"
+              inputMode="decimal"
+              value={materialsCost}
+              onChange={(e) => setMaterialsCost(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="materials-notes" className="text-xs font-semibold text-muted-foreground">
+            What materials? (optional)
+          </label>
+          <input
+            id="materials-notes"
+            type="text"
+            value={materialsNotes}
+            onChange={(e) => setMaterialsNotes(e.target.value)}
+            placeholder="e.g. furnace filter, 2 AA batteries"
+            className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        <div>
+          <label htmlFor="completion-notes" className="text-xs font-semibold text-muted-foreground">
+            Notes for the report (optional)
+          </label>
+          <textarea
+            id="completion-notes"
+            rows={3}
+            value={completionNotes}
+            onChange={(e) => setCompletionNotes(e.target.value)}
+            className="mt-1 w-full resize-none rounded-2xl border border-border bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {formError}
+          </p>
+        )}
+
         <div className="flex gap-2">
           <Button
             type="button"
@@ -769,48 +1235,204 @@ function ConfirmDialog({
             Cancel
           </Button>
           <Button
-            type="button"
+            type="submit"
             variant="accent"
             className="h-12 flex-1 rounded-2xl"
-            onClick={onConfirm}
+            disabled={mutation.isPending}
           >
-            Complete
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              "Complete"
+            )}
           </Button>
         </div>
-      </div>
+
+        <button
+          type="button"
+          onClick={onSwitchToIncomplete}
+          className="mx-auto block text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          Can't finish this visit? Mark it incomplete instead.
+        </button>
+      </form>
     </Overlay>
   );
 }
 
-function NoteSheet({
+function IncompleteSheet({
   visit,
+  mutation,
   onCancel,
-  onSave,
+  onCompleted,
 }: {
-  visit: Visit;
+  visit: TechVisitListItem;
+  mutation: ReturnType<typeof useIncompleteVisit>;
   onCancel: () => void;
-  onSave: (text: string) => void;
+  onCompleted: (response: TechIncompleteVisitResponse) => void;
 }) {
-  const [text, setText] = useState("");
+  const [reason, setReason] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setFormError("Add a short reason so the office knows what happened.");
+      return;
+    }
+    setFormError(null);
+    mutation.mutate(
+      { visitId: visit.id, request: { reason: reason.trim() } },
+      {
+        onSuccess: (res) => onCompleted(res),
+        onError: (err) => setFormError(messageFor(err)),
+      },
+    );
+  }
+
   return (
     <Overlay onClose={onCancel}>
-      <div className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <h3 className="font-display text-xl font-bold tracking-tight">
-            Add a note
+            Mark this visit incomplete
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            For {visit.customer}'s file.
+          <p className="mt-1 text-sm text-muted-foreground">
+            {visit.streetAddress}
+            {visit.unit ? `, Unit ${visit.unit}` : ""} · {visit.city}
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            A follow-up visit will be scheduled automatically, about a week from now.
           </p>
         </div>
+        <label htmlFor="incomplete-reason" className="sr-only">
+          Reason
+        </label>
         <textarea
+          id="incomplete-reason"
           autoFocus
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={5}
-          placeholder="Anything the office or next tech should know…"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={4}
+          placeholder="What kept this visit from being finished?"
           className="w-full resize-none rounded-2xl border border-border bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {formError}
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 flex-1 rounded-2xl"
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button type="submit" className="h-12 flex-1 rounded-2xl" disabled={mutation.isPending}>
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              "Mark incomplete"
+            )}
+          </Button>
+        </div>
+      </form>
+    </Overlay>
+  );
+}
+
+const SEVERITY_OPTIONS: { value: FlagSeverity; label: string }[] = [
+  { value: "INFO", label: "Info" },
+  { value: "ATTENTION", label: "Attention" },
+  { value: "URGENT", label: "Urgent" },
+];
+
+function FlagSheet({
+  visit,
+  mutation,
+  onCancel,
+  onSaved,
+}: {
+  visit: TechVisitListItem;
+  mutation: ReturnType<typeof useCreateFlag>;
+  onCancel: () => void;
+  onSaved: (flag: FlagResponse) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [severity, setSeverity] = useState<FlagSeverity>("INFO");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!body.trim()) return;
+    setFormError(null);
+    mutation.mutate(
+      { visitId: visit.id, request: { body: body.trim(), severity } },
+      {
+        onSuccess: (flag) => onSaved(flag),
+        onError: (err) => setFormError(messageFor(err)),
+      },
+    );
+  }
+
+  return (
+    <Overlay onClose={onCancel}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <h3 className="font-display text-xl font-bold tracking-tight">Raise a flag</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Shared with the office. May carry forward to the next visit.
+          </p>
+        </div>
+
+        <div role="radiogroup" aria-label="Severity" className="grid grid-cols-3 gap-2">
+          {SEVERITY_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              role="radio"
+              aria-checked={severity === opt.value}
+              onClick={() => setSeverity(opt.value)}
+              className={cn(
+                "h-10 rounded-xl border text-sm font-semibold transition-colors",
+                severity === opt.value
+                  ? "border-transparent bg-primary text-primary-foreground"
+                  : "border-border bg-background text-foreground/80 hover:bg-surface",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <label htmlFor="flag-body" className="sr-only">
+          What did you notice?
+        </label>
+        <textarea
+          id="flag-body"
+          autoFocus
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          rows={5}
+          placeholder="What did you notice?"
+          className="w-full resize-none rounded-2xl border border-border bg-background p-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+
+        {formError && (
+          <p
+            role="alert"
+            className="rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {formError}
+          </p>
+        )}
+
         <div className="flex gap-2">
           <Button
             type="button"
@@ -821,26 +1443,37 @@ function NoteSheet({
             Cancel
           </Button>
           <Button
-            type="button"
+            type="submit"
             className="h-12 flex-1 rounded-2xl"
-            onClick={() => text.trim() && onSave(text.trim())}
-            disabled={!text.trim()}
+            disabled={!body.trim() || mutation.isPending}
           >
-            Save
+            {mutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              "Save flag"
+            )}
           </Button>
         </div>
-      </div>
+      </form>
     </Overlay>
   );
 }
 
-function MenuSheet({ onClose }: { onClose: () => void }) {
+function MenuSheet({
+  technician,
+  onClose,
+  onSignOut,
+}: {
+  technician: Session;
+  onClose: () => void;
+  onSignOut: () => void;
+}) {
   return (
     <Overlay onClose={onClose}>
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-display text-xl font-bold tracking-tight">
-            Marcus T.
+            {technician.firstName} {technician.lastName.charAt(0)}.
           </h3>
           <button
             type="button"
@@ -851,31 +1484,29 @@ function MenuSheet({ onClose }: { onClose: () => void }) {
             <X className="size-5" />
           </button>
         </div>
-        <p className="text-sm text-muted-foreground">
-          HomeKept Technician · GTA route
-        </p>
+        <p className="text-sm text-muted-foreground">HomeKept Technician · GTA route</p>
         <ul className="mt-2 divide-y divide-border rounded-2xl border border-border">
-          {["My week", "Saved photos", "Help & contact", "Sign out"].map((l) => (
-            <li
-              key={l}
-              className="px-4 py-3 text-sm font-medium text-foreground/90"
-            >
+          {["My week", "Saved photos", "Help & contact"].map((l) => (
+            <li key={l} className="px-4 py-3 text-sm font-medium text-foreground/90">
               {l}
             </li>
           ))}
+          <li>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="w-full px-4 py-3 text-left text-sm font-medium text-foreground/90 hover:bg-surface"
+            >
+              Sign out
+            </button>
+          </li>
         </ul>
       </div>
     </Overlay>
   );
 }
 
-function Overlay({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
+function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -899,26 +1530,4 @@ function Overlay({
       </div>
     </div>
   );
-}
-
-// ============================================================================
-// Persistence helpers
-// ============================================================================
-
-function stripPhotos(visits: Visit[]): Visit[] {
-  // Object URLs aren't persistable; drop them from storage.
-  return visits.map((v) => ({ ...v, photos: [] }));
-}
-
-function loadVisits(): Visit[] {
-  if (typeof window === "undefined") return initialVisits;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialVisits;
-    const parsed = JSON.parse(raw) as Visit[];
-    if (!Array.isArray(parsed) || parsed.length === 0) return initialVisits;
-    return parsed;
-  } catch {
-    return initialVisits;
-  }
 }
