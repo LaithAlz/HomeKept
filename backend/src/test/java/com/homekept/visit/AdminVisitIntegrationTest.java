@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,10 +40,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests for {@link AdminVisitController} —
- * {@code POST /api/admin/visits} and {@code PATCH /api/admin/visits/{id}}.
+ * {@code GET /api/admin/visits}, {@code POST /api/admin/visits}, and
+ * {@code PATCH /api/admin/visits/{id}}.
  *
  * <p>Covers:
  * <ul>
+ *   <li>GET list → 200 array, newest first; includes a freshly created visit.</li>
+ *   <li>GET list with status filter → only matching visits; invalid status → 400.</li>
+ *   <li>GET list cursor pagination → page 2 ids all less than the cursor.</li>
  *   <li>POST → 201; creates visit + visit_service rows; technicianUserId optional.</li>
  *   <li>POST with unknown serviceIds → 400.</li>
  *   <li>PATCH reschedule → old visit RESCHEDULED + new SCHEDULED row.</li>
@@ -59,6 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminVisitIntegrationTest {
 
     private static final String CREATE_URL = "/api/admin/visits";
+    private static final String LIST_URL   = "/api/admin/visits";
     private static final String PATCH_URL  = "/api/admin/visits/{id}";
     private static final String LOGIN_URL  = "/api/auth/login";
 
@@ -148,6 +154,115 @@ class AdminVisitIntegrationTest {
             userRepository.deleteById(userId);
         }
         createdUserIds.clear();
+    }
+
+    // ── GET /api/admin/visits — list ─────────────────────────────────────────
+
+    @Test
+    void listVisits_asAdmin_returns200WithArray() throws Exception {
+        mockMvc.perform(get(LIST_URL)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void listVisits_includesCreatedVisit_newestFirst() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        MvcResult result = mockMvc.perform(get(LIST_URL + "?limit=50")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(body, "$[*].id");
+        assertThat(ids).contains(visit.getId().intValue());
+    }
+
+    @Test
+    void listVisits_returnsExpectedFields() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        MvcResult result = mockMvc.perform(get(LIST_URL + "?limit=50")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> subscriberIds = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].subscriberId");
+        List<String> statuses = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].status");
+        List<String> types = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].type");
+
+        assertThat(subscriberIds).containsExactly(targetSubscriber.getId().intValue());
+        assertThat(statuses).containsExactly("SCHEDULED");
+        assertThat(types).containsExactly("ROUTINE");
+    }
+
+    @Test
+    void listVisits_statusFilter_returnsOnlyMatchingStatus() throws Exception {
+        Visit scheduled = seedScheduledVisit();
+        Visit cancelled = seedScheduledVisit();
+        cancelled.setStatus(VisitStatus.CANCELLED);
+        visitRepository.save(cancelled);
+
+        MvcResult result = mockMvc.perform(get(LIST_URL + "?status=CANCELLED&limit=100")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(body, "$[*].id");
+        assertThat(ids).contains(cancelled.getId().intValue());
+        assertThat(ids).doesNotContain(scheduled.getId().intValue());
+    }
+
+    @Test
+    void listVisits_invalidStatus_returns400() throws Exception {
+        mockMvc.perform(get(LIST_URL + "?status=NOT_A_REAL_STATUS")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void listVisits_cursorPagination_returnsNewestFirst() throws Exception {
+        // Seed two visits — the newest-first ordering guarantees the second one seeded
+        // (higher id) is returned by the first (limit=1) page.
+        seedScheduledVisit();
+        seedScheduledVisit();
+
+        MvcResult page1 = mockMvc.perform(get(LIST_URL + "?limit=1")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn();
+
+        List<Integer> page1Ids = com.jayway.jsonpath.JsonPath.read(
+                page1.getResponse().getContentAsString(), "$[*].id");
+        Long cursor = page1Ids.get(0).longValue();
+
+        // Page 2 using cursor — all returned ids must be less than the cursor.
+        mockMvc.perform(get(LIST_URL + "?limit=100&cursor=" + cursor)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id >= " + cursor + ")]").isEmpty());
+    }
+
+    @Test
+    void listVisits_asCustomer_returns403() throws Exception {
+        mockMvc.perform(get(LIST_URL)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listVisits_anonymous_returns401() throws Exception {
+        mockMvc.perform(get(LIST_URL))
+                .andExpect(status().isUnauthorized());
     }
 
     // ── POST /api/admin/visits — create ──────────────────────────────────────

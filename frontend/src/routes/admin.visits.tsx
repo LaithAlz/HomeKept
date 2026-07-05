@@ -1,136 +1,207 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, MapPin, User } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { subscribers, formatDateTime } from "@/lib/mock-admin";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { formatDateTime } from "@/lib/mock-admin";
+import { useAdminVisits, formatCentsCAD, type AdminVisitListItem } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/visits")({
   head: () => ({
-    meta: [
-      { title: "Visits — HomeKept Admin" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Visits — HomeKept Admin" }, { name: "robots", content: "noindex" }],
   }),
   component: VisitsPage,
 });
 
-type Status = "scheduled" | "in-progress" | "completed" | "unassigned";
+const STATUS_LABEL: Record<string, string> = {
+  SCHEDULED: "Scheduled",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  INCOMPLETE: "Incomplete",
+  CANCELLED: "Cancelled",
+  RESCHEDULED: "Rescheduled",
+};
 
-interface VisitRow {
-  id: string;
-  customer: string;
-  city: string;
-  plan: string;
-  date: string;
-  tech: string;
-  status: Status;
-  services: number;
-}
+const STATUS_TONE: Record<string, string> = {
+  SCHEDULED: "bg-sky-500/10 text-sky-700",
+  IN_PROGRESS: "bg-emerald-500/10 text-emerald-700",
+  COMPLETED: "bg-muted text-muted-foreground",
+  INCOMPLETE: "bg-amber-500/10 text-amber-700",
+  CANCELLED: "bg-muted text-muted-foreground",
+  RESCHEDULED: "bg-sky-500/10 text-sky-700",
+};
 
-function build(): VisitRow[] {
-  const rows: VisitRow[] = subscribers
-    .filter((s) => s.nextVisit)
-    .map((s, i) => ({
-      id: `v_${s.id}`,
-      customer: s.name,
-      city: `${s.city} · ${s.neighbourhood}`,
-      plan: s.plan,
-      date: s.nextVisit!.date,
-      tech: s.nextVisit!.technician,
-      status: s.nextVisit!.technician === "Unassigned" ? "unassigned" : i === 0 ? "in-progress" : "scheduled",
-      services: 3 + (i % 3),
-    }));
-  // a few completed
-  const past = ["Priya Sharma", "Mark & Helen Chen", "Greg & Lisa Park"];
-  past.forEach((name, i) => {
-    rows.push({
-      id: `pv_${i}`,
-      customer: name,
-      city: "Mississauga · Erin Mills",
-      plan: "Complete",
-      date: new Date(Date.now() - (i + 1) * 86400000 * 7).toISOString(),
-      tech: "Marcus T.",
-      status: "completed",
-      services: 4,
-    });
-  });
-  return rows;
-}
-
-const TABS: { id: Status | "all"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "in-progress", label: "In progress" },
-  { id: "scheduled", label: "Scheduled" },
-  { id: "unassigned", label: "Unassigned" },
-  { id: "completed", label: "Completed" },
-];
-
-const TONE: Record<Status, string> = {
-  scheduled: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  "in-progress": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  completed: "bg-muted text-muted-foreground",
-  unassigned: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+const TYPE_LABEL: Record<string, string> = {
+  ROUTINE: "Routine",
+  EXTRA: "Extra",
+  WARRANTY: "Warranty",
+  WALKTHROUGH: "Walkthrough",
 };
 
 function VisitsPage() {
-  const [tab, setTab] = useState<Status | "all">("all");
-  const rows = build();
-  const filtered = tab === "all" ? rows : rows.filter((r) => r.status === tab);
+  const { data: visits, isLoading, isError, refetch } = useAdminVisits({ limit: 100 });
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<string>("all");
+  const [type, setType] = useState<string>("all");
+
+  const rows = useMemo(() => {
+    if (!visits) return [];
+    return visits.filter((v) => {
+      if (status !== "all" && v.status !== status) return false;
+      if (type !== "all" && v.type !== type) return false;
+      if (q && !String(v.subscriberId).includes(q.trim())) return false;
+      return true;
+    });
+  }, [visits, q, status, type]);
 
   return (
     <div className="px-6 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl font-extrabold tracking-tight">Visits</h1>
-          <p className="mt-1 text-sm text-muted-foreground">All scheduled, in-progress, and completed visits.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {visits ? `${rows.length} of ${visits.length} visits` : "Loading visits…"}
+          </p>
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {TABS.map((t) => {
-          const count = t.id === "all" ? rows.length : rows.filter((r) => r.status === t.id).length;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={cn(
-                "rounded-full px-3.5 py-1.5 text-sm transition",
-                tab === t.id ? "bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground border border-border",
-              )}
-            >
-              {t.label} <span className="ml-1 opacity-70">{count}</span>
-            </button>
-          );
-        })}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="relative w-full sm:w-56">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <label htmlFor="visit-search" className="sr-only">
+            Search by subscriber ID
+          </label>
+          <Input
+            id="visit-search"
+            placeholder="Search by subscriber ID"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-44" aria-label="Filter by status">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            {Object.entries(STATUS_LABEL).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={type} onValueChange={setType}>
+          <SelectTrigger className="w-40" aria-label="Filter by type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            {Object.entries(TYPE_LABEL).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
-      <div className="mt-4 space-y-2">
-        {filtered.map((v) => (
-          <div key={v.id} className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card p-4">
-            <div className={cn("rounded-full px-2 py-0.5 text-xs font-medium", TONE[v.status])}>
-              {v.status.replace("-", " ")}
-            </div>
-            <div className="flex-1 min-w-[200px]">
-              <div className="font-medium">{v.customer}</div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {v.city}</span>
-                <span>{v.plan} · {v.services} services</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" /> {formatDateTime(v.date)}
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className={v.tech === "Unassigned" ? "text-amber-700 dark:text-amber-300" : ""}>{v.tech}</span>
-            </div>
-            <Button size="sm" variant="outline">
-              {v.status === "unassigned" ? "Assign" : v.status === "completed" ? "View report" : "Open"}
-            </Button>
-          </div>
-        ))}
-      </div>
+      {isLoading && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
+        >
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          Loading visits.
+        </div>
+      )}
+
+      {isError && !isLoading && (
+        <div
+          role="alert"
+          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          <span>We couldn't load visits.</span>
+          <Button size="sm" variant="outline" onClick={() => void refetch()}>
+            Try again
+          </Button>
+        </div>
+      )}
+
+      {visits && (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3">Visit</th>
+                <th className="px-2 py-3">Type</th>
+                <th className="px-2 py-3">Status</th>
+                <th className="px-2 py-3">Scheduled for</th>
+                <th className="px-2 py-3">Technician</th>
+                <th className="px-2 py-3 text-right">Materials</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((v) => (
+                <VisitRow key={v.id} visit={v} />
+              ))}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No visits match these filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
+  );
+}
+
+function VisitRow({ visit: v }: { visit: AdminVisitListItem }) {
+  return (
+    <tr className="border-t border-border hover:bg-muted/30">
+      <td className="px-4 py-3">
+        <div className="font-medium text-foreground">Visit #{v.id}</div>
+        <div className="text-xs text-muted-foreground">
+          Subscriber #{v.subscriberId} · Property #{v.propertyId}
+        </div>
+      </td>
+      <td className="px-2 py-3">{TYPE_LABEL[v.type] ?? v.type}</td>
+      <td className="px-2 py-3">
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-xs font-medium",
+            STATUS_TONE[v.status] ?? "bg-muted text-muted-foreground",
+          )}
+        >
+          {STATUS_LABEL[v.status] ?? v.status}
+        </span>
+      </td>
+      <td className="px-2 py-3">{formatDateTime(v.scheduledFor)}</td>
+      <td className="px-2 py-3">
+        {v.technicianId ? (
+          `Tech #${v.technicianId}`
+        ) : (
+          <span className="text-amber-700">Unassigned</span>
+        )}
+      </td>
+      <td className="px-2 py-3 text-right tabular-nums">{formatCentsCAD(v.materialsCostCents)}</td>
+    </tr>
   );
 }

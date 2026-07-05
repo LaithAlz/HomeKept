@@ -199,6 +199,15 @@ public class BookingService {
         return AdminBookingDetail.from(saved);
     }
 
+    /**
+     * Returns the count of walk-through bookings still PENDING (booked but not yet
+     * confirmed by admin). Used by the admin dashboard aggregate.
+     */
+    @Transactional(readOnly = true)
+    public long countPendingWalkthroughs() {
+        return bookingRepository.countByStatus(BookingStatus.PENDING);
+    }
+
     // ── Cross-domain accessors (used by subscription domain) ──────────────────
 
     /**

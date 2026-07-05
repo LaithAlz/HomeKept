@@ -5,6 +5,7 @@ import com.homekept.subscription.SubscriberNotFoundException;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AdminCreateVisitRequest;
 import com.homekept.visit.dto.AdminPatchVisitRequest;
+import com.homekept.visit.dto.AdminVisitListItem;
 import com.homekept.visit.dto.AdminVisitResponse;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
@@ -12,6 +13,7 @@ import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.VisitNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,6 +48,7 @@ public class VisitAdminService {
     private static final Logger log = LoggerFactory.getLogger(VisitAdminService.class);
 
     static final int DEFAULT_DURATION_MINUTES = 120;
+    private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
@@ -115,6 +118,54 @@ public class VisitAdminService {
                 saved.getId(), subscriber.getId(), createdServices.size());
 
         return toResponse(saved, toServiceItemsFromEntities(createdServices));
+    }
+
+    /**
+     * Returns a cursor-paginated list of visits for the admin console.
+     * Ordered by id descending (newest first). If {@code status} is provided, filters
+     * by that status; otherwise returns all statuses.
+     *
+     * @param status optional status filter (name of {@link VisitStatus})
+     * @param cursor optional id cursor (exclusive upper bound — return rows with id &lt; cursor)
+     * @param limit  optional page size (defaults to {@value DEFAULT_PAGE_SIZE}, capped at 100)
+     * @throws InvalidVisitRequestException if {@code status} is not a valid {@link VisitStatus}
+     */
+    @Transactional(readOnly = true)
+    public List<AdminVisitListItem> listVisits(String status, Long cursor, Integer limit) {
+        int pageSize = resolveLimit(limit);
+        PageRequest pageable = PageRequest.of(0, pageSize);
+
+        List<Visit> visits;
+
+        if (status != null && !status.isBlank()) {
+            VisitStatus visitStatus;
+            try {
+                visitStatus = VisitStatus.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new InvalidVisitRequestException("Invalid status value: " + status);
+            }
+
+            visits = (cursor != null)
+                    ? visitRepository.findByStatusAndIdLessThanOrderByIdDesc(visitStatus, cursor, pageable)
+                    : visitRepository.findByStatusOrderByIdDesc(visitStatus, pageable);
+        } else {
+            visits = (cursor != null)
+                    ? visitRepository.findByIdLessThanOrderByIdDesc(cursor, pageable)
+                    : visitRepository.findAllByOrderByIdDesc(pageable);
+        }
+
+        return visits.stream()
+                .map(AdminVisitListItem::from)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns the count of SCHEDULED visits with {@code scheduledFor} at or after now.
+     * Used by the admin dashboard aggregate ("upcoming visits").
+     */
+    @Transactional(readOnly = true)
+    public long countUpcomingVisits() {
+        return visitRepository.countByStatusAndScheduledForGreaterThanEqual(VisitStatus.SCHEDULED, Instant.now());
     }
 
     /**
@@ -245,6 +296,13 @@ public class VisitAdminService {
         Visit saved = visitRepository.save(visit);
         log.info("admin_visit_cancelled visitId={} subscriberId={}", saved.getId(), saved.getSubscriberId());
         return toResponse(saved, loadServiceItems(saved.getId()));
+    }
+
+    private int resolveLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(limit, 100);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

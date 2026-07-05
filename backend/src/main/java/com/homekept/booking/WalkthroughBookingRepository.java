@@ -34,4 +34,10 @@ public interface WalkthroughBookingRepository extends JpaRepository<WalkthroughB
      * All statuses — first page.
      */
     List<WalkthroughBooking> findAllByOrderByIdDesc(Pageable pageable);
+
+    /**
+     * Count of bookings in the given status. Used by the admin dashboard aggregate
+     * ("pending walk-throughs" = count of PENDING bookings, i.e. not yet confirmed).
+     */
+    long countByStatus(BookingStatus status);
 }

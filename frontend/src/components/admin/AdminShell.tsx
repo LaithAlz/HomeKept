@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -17,8 +17,8 @@ import {
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { pendingWalkthroughs, subscribers, attention } from "@/lib/mock-admin";
 import { getSession } from "@/lib/auth";
+import { useAdminDashboard } from "@/lib/admin";
 
 type Item = {
   to:
@@ -38,55 +38,6 @@ type Item = {
   count?: number;
   exact?: boolean;
 };
-
-const groups: { label: string; items: Item[] }[] = [
-  {
-    label: "Overview",
-    items: [
-      { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
-      { to: "/admin/metrics", label: "Metrics", icon: BarChart3 },
-    ],
-  },
-  {
-    label: "Customers",
-    items: [
-      {
-        to: "/admin/subscribers",
-        label: "Subscribers",
-        icon: Users,
-        count: subscribers.length,
-      },
-      { to: "/admin/leads", label: "Leads", icon: Inbox, count: 9 },
-      {
-        to: "/admin/walkthroughs",
-        label: "Walk-throughs",
-        icon: CalendarClock,
-        count: pendingWalkthroughs.length,
-      },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      {
-        to: "/admin/visits",
-        label: "Visits",
-        icon: Wrench,
-        count: attention.filter((a) => a.kind === "unassigned-visit").length,
-      },
-      { to: "/admin/routes", label: "Routes", icon: MapIcon },
-      { to: "/admin/technicians", label: "Technicians", icon: HardHat },
-    ],
-  },
-  {
-    label: "Setup",
-    items: [
-      { to: "/admin/catalog", label: "Service catalog", icon: ListChecks },
-      { to: "/admin/plans", label: "Plans", icon: Tags },
-      { to: "/admin/settings", label: "Settings", icon: Settings },
-    ],
-  },
-];
 
 type GuardStatus = "checking" | "authorized" | "unauthenticated" | "forbidden" | "error";
 
@@ -190,8 +141,68 @@ function SessionError({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/**
+ * Sidebar badge counts come from `GET /api/admin/dashboard` — the same aggregate
+ * the dashboard home page renders — so a badge can never disagree with what the
+ * dashboard cards show. This hook only ever mounts here, inside `AdminConsole`,
+ * which `AdminShell` renders exclusively once `guard === "authorized"` — so the
+ * request never fires for a signed-out visitor or a non-admin session.
+ */
 function AdminConsole() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { data: dashboard } = useAdminDashboard();
+
+  const groups: { label: string; items: Item[] }[] = useMemo(
+    () => [
+      {
+        label: "Overview",
+        items: [
+          { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
+          { to: "/admin/metrics", label: "Metrics", icon: BarChart3 },
+        ],
+      },
+      {
+        label: "Customers",
+        items: [
+          {
+            to: "/admin/subscribers",
+            label: "Subscribers",
+            icon: Users,
+            count: dashboard?.activeSubscribers,
+          },
+          { to: "/admin/leads", label: "Leads", icon: Inbox },
+          {
+            to: "/admin/walkthroughs",
+            label: "Walk-throughs",
+            icon: CalendarClock,
+            count: dashboard?.pendingWalkthroughs,
+          },
+        ],
+      },
+      {
+        label: "Operations",
+        items: [
+          {
+            to: "/admin/visits",
+            label: "Visits",
+            icon: Wrench,
+            count: dashboard?.upcomingVisits,
+          },
+          { to: "/admin/routes", label: "Routes", icon: MapIcon },
+          { to: "/admin/technicians", label: "Technicians", icon: HardHat },
+        ],
+      },
+      {
+        label: "Setup",
+        items: [
+          { to: "/admin/catalog", label: "Service catalog", icon: ListChecks },
+          { to: "/admin/plans", label: "Plans", icon: Tags },
+          { to: "/admin/settings", label: "Settings", icon: Settings },
+        ],
+      },
+    ],
+    [dashboard],
+  );
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
