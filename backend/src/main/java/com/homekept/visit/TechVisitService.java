@@ -174,6 +174,20 @@ public class TechVisitService {
             List<VisitServiceItem> services = toServiceItems(
                     servicesByVisitId.getOrDefault(visit.getId(), List.of()), serviceNames);
 
+            // Todos folded into THIS visit (TodoItem.visitId == visit.id) — includes items
+            // already marked DONE/DECLINED so the tech can see what was already handled.
+            List<TodoResponse> todos = todoItemRepository.findByVisitId(visit.getId()).stream()
+                    .map(this::toTodoResponse)
+                    .collect(Collectors.toList());
+
+            // OPEN flags on this visit's subscriber — prior observations shown for context
+            // (flags are subscriber-scoped; see TechVisitListItem javadoc).
+            List<FlagResponse> flags = flagRepository
+                    .findBySubscriberIdAndStatusOrderByCreatedAtDesc(visit.getSubscriberId(), FlagStatus.OPEN)
+                    .stream()
+                    .map(this::toFlagResponse)
+                    .collect(Collectors.toList());
+
             result.add(new TechVisitListItem(
                     visit.getId(),
                     resolveVisitName(visit),
@@ -186,7 +200,9 @@ public class TechVisitService {
                     property.getCity(),
                     property.getPostalCode(),
                     decryptedNotes,  // plaintext access notes — NEVER log this value
-                    services
+                    services,
+                    todos,
+                    flags
             ));
         }
         return result;
