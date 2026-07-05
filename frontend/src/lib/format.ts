@@ -66,6 +66,19 @@ export function greetingFor(date: Date = new Date()): "morning" | "afternoon" | 
   return "evening";
 }
 
+/**
+ * Formats integer cents as whole-dollar CAD, e.g. `14900` -> `"$149"`.
+ * Money is always integer cents on the wire (never floats) — divide by 100 only for
+ * display. Mirrors the `formatCentsCAD` convention in `@/lib/admin`.
+ */
+export function formatCentsCad(cents: number): string {
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   const diffMs = now.getTime() - then.getTime();

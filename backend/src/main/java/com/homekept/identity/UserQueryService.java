@@ -36,4 +36,20 @@ public class UserQueryService {
 
     /** The minimal contact info needed to address an email. */
     public record UserContact(String email, String firstName) {}
+
+    /**
+     * Resolves the full name + email for a user id, for the customer app's account/settings
+     * page. Never includes the password hash or any other internal field.
+     *
+     * @param userId the identity-domain user id
+     * @return the profile, or empty if no such user
+     */
+    @Transactional(readOnly = true)
+    public Optional<UserProfile> findProfileById(Long userId) {
+        return userRepository.findById(userId)
+                .map(u -> new UserProfile(u.getFirstName(), u.getLastName(), u.getEmail()));
+    }
+
+    /** Full name + email for the customer app's account/settings page. */
+    public record UserProfile(String firstName, String lastName, String email) {}
 }
