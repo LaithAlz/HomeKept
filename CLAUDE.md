@@ -47,10 +47,13 @@ boundary (merging, hand-write artifacts, secrets, pricing) live in
 - **Domain boundaries:** a domain may call another domain's service, never its
   repository or entities. Domain-first packages (`com.homekept.<domain>`).
 - **Ownership failures return 404, not 403** (don't leak existence). 403 = wrong role.
-- **Text on honey (#DE8F3F) surfaces is pine (#1E3A2B), never white** (WCAG).
+- **Text on the amber accent (#d29a44) is the dark ink (#11201a), never white** (WCAG).
 - **No fabricated social proof** in any customer-facing copy (Competition Act).
-- Frontend uses the v2 design system tokens in `frontend/src/styles.css`; reference
-  mockups in `mockups/v2/`. Match existing conventions; format only files you touch
+- Frontend design system is "Considered Modern" (deep evergreen on soft fog, amber spark).
+  **Colour tokens are the single source of truth in `frontend/src/styles/theme.css`**; the
+  Tailwind mapping, radii, type and utilities live in `frontend/src/styles.css`. Style through
+  the semantic tokens (`bg-primary`, `text-muted-foreground`, `bg-accent`, …), never hardcode a
+  brand hex in a component. Match existing conventions; format only files you touch
   (`bunx prettier --write <files>` — repo-wide lint is not clean yet).
 
 ## Commands

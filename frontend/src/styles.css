@@ -1,21 +1,26 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
+@import "./styles/theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
 /*
- * HomeKept design system — "Soft Keeping" (v2).
- * Direction: warm cream base, deep pine primary, honey accent; organic shapes,
- * ambient light, gentle motion. Reference: mockups/v2/.
- * Typography: Fraunces (display) + Figtree (body).
- * Note: text on honey surfaces is always pine, never white (WCAG AA).
+ * HomeKept design system — "Considered Modern".
+ * Deep evergreen on a soft fog ground with a warm amber spark; medium curves,
+ * sans-forward type, quiet structural craft. Colour tokens are the single source
+ * of truth in styles/theme.css; this file holds the Tailwind mapping, radii,
+ * type, shadows, animations and base layer.
+ * Accent rule: text on the amber accent is the dark ink, never white (WCAG AA).
  */
 
 @theme inline {
-  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Sans-forward for all-ages legibility. No webfont is loaded; these are
+     honest system stacks. A brand face can be added later via @font-face. */
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --radius-sm: calc(var(--radius) - 8px);
   --radius-md: calc(var(--radius) - 4px);
@@ -70,124 +75,14 @@
   --color-honey: var(--honey);
   --color-honey-soft: var(--honey-soft);
 
-  --shadow-soft: 0 1px 2px rgb(30 58 43 / 0.04), 0 8px 24px rgb(30 58 43 / 0.07);
-  --shadow-lift: 0 4px 12px rgb(30 58 43 / 0.06), 0 24px 48px rgb(30 58 43 / 0.12);
+  --shadow-soft: 0 1px 2px rgb(12 52 39 / 0.05), 0 8px 24px rgb(12 52 39 / 0.08);
+  --shadow-lift: 0 4px 12px rgb(9 45 33 / 0.08), 0 24px 48px rgb(9 45 33 / 0.14);
 }
 
 :root {
+  /* Shape scale base. The radius-* tokens in @theme derive from this.
+     Colour tokens live in styles/theme.css. */
   --radius: 1rem;
-
-  /* Brand surfaces */
-  --background: #f8f5ee; /* Cream */
-  --foreground: #22312a; /* Ink */
-  --paper: #f8f5ee;
-  --surface: #f0ebdf; /* Cream, deeper */
-
-  --card: #fffefa;
-  --card-foreground: #22312a;
-  --popover: #fffefa;
-  --popover-foreground: #22312a;
-
-  --primary: #1e3a2b; /* Pine */
-  --primary-foreground: #f8f5ee;
-
-  --secondary: #f0ebdf;
-  --secondary-foreground: #1e3a2b;
-
-  --muted: #f0ebdf;
-  --muted-foreground: #5c6b60;
-
-  --accent: #de8f3f; /* Honey */
-  --accent-foreground: #1e3a2b; /* Pine on honey — never white */
-
-  --destructive: #b5482f;
-  --destructive-foreground: #fffefa;
-
-  --success: #3e7050;
-  --success-foreground: #fffefa;
-
-  --warning: #de8f3f;
-  --warning-foreground: #1e3a2b;
-
-  --info: #4a6b8a;
-  --info-foreground: #fffefa;
-
-  --border: rgb(30 58 43 / 0.1);
-  --input: rgb(30 58 43 / 0.14);
-  --ring: rgb(222 143 63 / 0.55);
-
-  --sidebar: #f8f5ee;
-  --sidebar-foreground: #22312a;
-  --sidebar-primary: #1e3a2b;
-  --sidebar-primary-foreground: #f8f5ee;
-  --sidebar-accent: #f0ebdf;
-  --sidebar-accent-foreground: #1e3a2b;
-  --sidebar-border: rgb(30 58 43 / 0.1);
-  --sidebar-ring: rgb(222 143 63 / 0.5);
-
-  /* v2 palette extensions */
-  --pine: #1e3a2b;
-  --pine-2: #2a4d39;
-  --moss: #5e7d62;
-  --sage: #a9bfac;
-  --honey: #de8f3f;
-  --honey-soft: #f4d9b8;
-}
-
-.dark {
-  --background: #16241c;
-  --foreground: #f0ede4;
-  --paper: #16241c;
-  --surface: #1e3a2b;
-
-  --card: #1c2f24;
-  --card-foreground: #f0ede4;
-  --popover: #1c2f24;
-  --popover-foreground: #f0ede4;
-
-  --primary: #f0ede4;
-  --primary-foreground: #1e3a2b;
-
-  --secondary: #243d2f;
-  --secondary-foreground: #f0ede4;
-
-  --muted: #243d2f;
-  --muted-foreground: #a9bfac;
-
-  --accent: #de8f3f;
-  --accent-foreground: #1e3a2b;
-
-  --destructive: #d06a52;
-  --destructive-foreground: #fffefa;
-
-  --success: #6f9c7f;
-  --success-foreground: #16241c;
-
-  --warning: #e8a55f;
-  --warning-foreground: #1e3a2b;
-
-  --info: #7d9cba;
-  --info-foreground: #16241c;
-
-  --border: rgb(255 255 255 / 0.1);
-  --input: rgb(255 255 255 / 0.14);
-  --ring: rgb(222 143 63 / 0.6);
-
-  --sidebar: #1c2f24;
-  --sidebar-foreground: #f0ede4;
-  --sidebar-primary: #f0ede4;
-  --sidebar-primary-foreground: #1e3a2b;
-  --sidebar-accent: #243d2f;
-  --sidebar-accent-foreground: #f0ede4;
-  --sidebar-border: rgb(255 255 255 / 0.1);
-  --sidebar-ring: rgb(222 143 63 / 0.6);
-
-  --pine: #f0ede4;
-  --pine-2: #2a4d39;
-  --moss: #6f9c7f;
-  --sage: #a9bfac;
-  --honey: #de8f3f;
-  --honey-soft: #f4d9b8;
 }
 
 @keyframes reveal {

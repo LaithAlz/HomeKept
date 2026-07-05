@@ -504,7 +504,7 @@ function BookFlow() {
         <div
           ref={cardRef}
           className={cn(
-            "animate-reveal mt-6 rounded-[34px] border border-border bg-card p-7 shadow-[0_24px_50px_-30px_rgba(30,58,43,0.35)] sm:p-10",
+            "animate-reveal mt-6 rounded-[34px] border border-border bg-card p-7 shadow-[0_24px_50px_-30px_rgba(9,45,33,0.35)] sm:p-10",
             "[animation-delay:180ms]",
             shaking && "animate-shake",
           )}
@@ -559,7 +559,7 @@ function BookFlow() {
 
       {/* ── Live summary sidebar ── */}
       <aside
-        className="relative animate-reveal overflow-hidden rounded-[30px] bg-primary p-7 text-primary-foreground shadow-[0_28px_56px_-28px_rgba(30,58,43,0.55)] lg:sticky lg:top-28 lg:self-start"
+        className="relative animate-reveal overflow-hidden rounded-[30px] bg-primary p-7 text-primary-foreground shadow-[0_28px_56px_-28px_rgba(9,45,33,0.55)] lg:sticky lg:top-28 lg:self-start"
         style={{ "--reveal-index": 2 } as React.CSSProperties}
         aria-label="Walk-through summary"
       >
@@ -1287,8 +1287,8 @@ function fieldCls(invalid: boolean) {
   return cn(
     "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
     "placeholder:text-muted-foreground/60",
-    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(94,125,98,0.15)]",
-    invalid && "border-destructive bg-[#FDF6F3] focus:border-destructive",
+    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(92,125,112,0.15)]",
+    invalid && "border-destructive bg-destructive/5 focus:border-destructive",
     !invalid && "border-transparent",
   );
 }
