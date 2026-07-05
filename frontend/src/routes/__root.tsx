@@ -81,7 +81,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "A monthly subscription that handles routine home maintenance for homeowners in Oakville, Mississauga, and Milton. Founder-run visits, seasonal checklists, photo reports.",
       },
       { name: "author", content: "HomeKept" },
-      { name: "theme-color", content: "#F8F5EE" },
+      { name: "theme-color", content: "#edf1ec" },
       { property: "og:title", content: "HomeKept: Proactive home maintenance for the GTA" },
       {
         property: "og:description",

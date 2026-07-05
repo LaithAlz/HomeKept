@@ -1,0 +1,132 @@
+/*
+ * HomeKept palette — single source of truth for colour.
+ * Design system: "Considered Modern". A sophisticated deep evergreen on a soft
+ * cool fog, with a warm amber used only as a spark. Semantic colours (good /
+ * warning / destructive) are separate from the brand accent.
+ *
+ * This file defines ONLY colour token values (light in :root, dark in .dark).
+ * The Tailwind mapping (--color-* -> utilities), radii, fonts, shadows,
+ * animations and base layer live in styles.css. To restyle the whole app,
+ * change values here; every component inherits through the semantic tokens.
+ *
+ * Accent contrast rule (WCAG AA): text on the amber accent is the dark ink
+ * (--accent-foreground), never white.
+ */
+
+:root {
+  /* Surfaces: fog ground, white cards, a deeper inset */
+  --background: #edf1ec; /* Fog */
+  --foreground: #11201a; /* Spruce ink */
+  --paper: #edf1ec;
+  --surface: #e5ebe4; /* Fog, deeper (insets, sections) */
+
+  --card: #ffffff;
+  --card-foreground: #11201a;
+  --popover: #ffffff;
+  --popover-foreground: #11201a;
+
+  /* Brand. Primary is a deep evergreen: dark enough that the amber accent
+     eyebrows (#d29a44 = 4.69:1) and light sage labels (6.4:1) that sit ON
+     primary panels clear WCAG AA. A brighter evergreen lives on in --ring and
+     component hover states. */
+  --primary: #0d4132; /* Evergreen, deep */
+  --primary-foreground: #eef6f0;
+
+  --secondary: #e5ebe4;
+  --secondary-foreground: #0d4132;
+
+  --muted: #e5ebe4;
+  --muted-foreground: #55655c;
+
+  --accent: #d29a44; /* Amber (warm spark) */
+  --accent-foreground: #11201a; /* Dark ink on amber, never white (WCAG) */
+
+  /* Semantic (separate from the brand accent) */
+  --destructive: #c1503a;
+  --destructive-foreground: #ffffff;
+  --success: #0a6b44; /* Deep enough to read as text on a light success tint (AA) */
+  --success-foreground: #ffffff;
+  --warning: #d29a44;
+  --warning-foreground: #11201a;
+  --info: #2f6f7a;
+  --info-foreground: #ffffff;
+
+  /* Lines / focus */
+  --border: rgb(17 32 26 / 0.1);
+  --input: rgb(17 32 26 / 0.16);
+  --ring: rgb(15 122 85 / 0.5); /* Brand-green focus ring */
+
+  /* Sidebar / app chrome */
+  --sidebar: #edf1ec;
+  --sidebar-foreground: #11201a;
+  --sidebar-primary: #0d4132;
+  --sidebar-primary-foreground: #eef6f0;
+  --sidebar-accent: #e5ebe4;
+  --sidebar-accent-foreground: #0d4132;
+  --sidebar-border: rgb(17 32 26 / 0.1);
+  --sidebar-ring: rgb(15 122 85 / 0.45);
+
+  /* Named brand hues (used directly by a few components) */
+  --pine: #0d4132; /* Evergreen anchor (matches --primary) */
+  --pine-2: #0a3228; /* Evergreen, deeper */
+  --moss: #5c7d70; /* Muted green, secondary text/labels */
+  --sage: #b9c8bf; /* Light green-grey, soft borders */
+  --honey: #d29a44; /* Amber (alias of accent) */
+  --honey-soft: #f6ead1; /* Soft amber tint */
+}
+
+.dark {
+  --background: #0a120e;
+  --foreground: #e8f2ec;
+  --paper: #0a120e;
+  --surface: #16231d;
+
+  --card: #111c16;
+  --card-foreground: #e8f2ec;
+  --popover: #111c16;
+  --popover-foreground: #e8f2ec;
+
+  /* Primary inverts to a light ink in dark: keeps headings (text-primary)
+     readable and makes primary surfaces light-on-dark, matching the app's
+     existing convention. */
+  --primary: #e8f2ec;
+  --primary-foreground: #0b3527;
+
+  --secondary: #1b2a23;
+  --secondary-foreground: #e8f2ec;
+
+  --muted: #1b2a23;
+  --muted-foreground: #a4b9ae;
+
+  --accent: #dca954;
+  --accent-foreground: #0a120e;
+
+  --destructive: #dd6a51;
+  --destructive-foreground: #ffffff;
+  --success: #33b381;
+  --success-foreground: #07231a;
+  --warning: #dca954;
+  --warning-foreground: #0a120e;
+  --info: #6fb0bb;
+  --info-foreground: #07231a;
+
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: rgb(63 185 140 / 0.55);
+
+  --sidebar: #111c16;
+  --sidebar-foreground: #e8f2ec;
+  --sidebar-primary: #e8f2ec;
+  --sidebar-primary-foreground: #0b3527;
+  --sidebar-accent: #1b2a23;
+  --sidebar-accent-foreground: #e8f2ec;
+  --sidebar-border: rgb(255 255 255 / 0.1);
+  --sidebar-ring: rgb(63 185 140 / 0.55);
+
+  --pine: #e8f2ec;
+  --pine-2: #123f34;
+  --moss: #7fb0a0;
+  --sage: #9fb8ab;
+  --honey: #dca954;
+  --honey-soft: #2e2510;
+}

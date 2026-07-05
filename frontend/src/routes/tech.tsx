@@ -53,7 +53,7 @@ export const Route = createFileRoute("/tech")({
       { title: "Today — HomeKept Tech" },
       { name: "robots", content: "noindex" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { name: "theme-color", content: "#1a3c2a" },
+      { name: "theme-color", content: "#123f34" },
     ],
   }),
   component: TechApp,

@@ -153,7 +153,7 @@ function SignInPage() {
         <div
           ref={cardRef}
           className={cn(
-            "rounded-[30px] border border-border bg-card p-8 shadow-[0_28px_56px_-28px_rgba(30,58,43,0.35)]",
+            "rounded-[30px] border border-border bg-card p-8 shadow-[0_28px_56px_-28px_rgba(9,45,33,0.35)]",
             shaking && "animate-shake",
           )}
         >
@@ -267,8 +267,8 @@ function fieldCls(invalid: boolean) {
   return cn(
     "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
     "placeholder:text-muted-foreground/60",
-    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(94,125,98,0.15)]",
-    invalid && "border-destructive bg-[#FDF6F3] focus:border-destructive",
+    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(92,125,112,0.15)]",
+    invalid && "border-destructive bg-destructive/5 focus:border-destructive",
     !invalid && "border-transparent",
   );
 }
