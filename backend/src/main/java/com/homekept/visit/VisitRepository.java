@@ -64,6 +64,15 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     Optional<Visit> findFirstBySubscriberIdAndStatusOrderByScheduledForDescIdDesc(
             Long subscriberId, VisitStatus status);
 
+    /**
+     * The single soonest visit in a given status for a subscriber (ascending order — the
+     * opposite direction from the "most recent" query above). Used by
+     * {@link VisitQueryService} to resolve "next scheduled visit" for cross-domain display
+     * (e.g. the subscription domain's billing page).
+     */
+    Optional<Visit> findFirstBySubscriberIdAndStatusOrderByScheduledForAscIdAsc(
+            Long subscriberId, VisitStatus status);
+
     // ── Admin queries ─────────────────────────────────────────────────────────
 
     /** Admin: cursor-paginated visits newest-first. */

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -103,6 +104,23 @@ public class CatalogService {
         return planTierRepository.findById(planTierId)
                 .map(t -> t.getCode().name())
                 .orElse(null);
+    }
+
+    /**
+     * Returns a narrow, display-only summary of a plan tier for cross-domain use (e.g. the
+     * customer app's billing page). Callers get exactly the fields they need without
+     * reaching into {@link PlanTierRepository} or the {@link PlanTier} entity directly.
+     *
+     * @param planTierId the plan tier id, or {@code null} (e.g. a subscriber who hasn't
+     *                    completed checkout yet)
+     * @return the summary, or empty if {@code planTierId} is {@code null} or not found
+     */
+    @Transactional(readOnly = true)
+    public Optional<PlanTierSummary> findPlanTierSummary(Long planTierId) {
+        if (planTierId == null) {
+            return Optional.empty();
+        }
+        return planTierRepository.findById(planTierId).map(PlanTierSummary::from);
     }
 
     /**
@@ -220,5 +238,27 @@ public class CatalogService {
                 new PicksMenuResponse.PickGroup(MEDIUM_A_LA_CARTE_CENTS, mediumServices),
                 new PicksMenuResponse.PickGroup(PREMIUM_A_LA_CARTE_CENTS, premiumServices)
         );
+    }
+
+    /**
+     * Narrow, display-only plan tier summary for cross-domain reads. Deliberately excludes
+     * Stripe price ids and archival metadata — only what a display surface needs.
+     */
+    public record PlanTierSummary(
+            String code,
+            String displayName,
+            int monthlyPriceCents,
+            int annualPriceCents,
+            Integer foundingMonthlyPriceCents
+    ) {
+        private static PlanTierSummary from(PlanTier tier) {
+            return new PlanTierSummary(
+                    tier.getCode().name(),
+                    tier.getDisplayName(),
+                    tier.getMonthlyPriceCents(),
+                    tier.getAnnualPriceCents(),
+                    tier.getFoundingMonthlyPriceCents()
+            );
+        }
     }
 }

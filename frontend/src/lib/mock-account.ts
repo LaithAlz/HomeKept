@@ -2,8 +2,10 @@
 // Replace with real data fetching once auth + backend are wired up.
 //
 // Visit and activity data has moved to real fetches (`@/lib/visits`) — see
-// GitHub issue #32. What's left here (profile, plan, address, home health)
-// still has no backing GET endpoint and stays mock until that lands.
+// GitHub issue #32. Billing/plan and profile/address fields have moved to real
+// fetches (`@/lib/account`, `GET /api/app/subscription` + `GET /api/app/account`) —
+// see GitHub issue #100. What's left here (name + plan label for the app shell,
+// and home health) still has no backing GET endpoint and stays mock until that lands.
 
 export interface HomeHealth {
   score: number; // 0-100
@@ -14,7 +16,6 @@ export interface HomeHealth {
 export interface Subscriber {
   firstName: string;
   lastName: string;
-  email: string;
   planName: "Essential" | "Complete" | "Premier";
   address: {
     street: string;
@@ -27,7 +28,6 @@ export interface Subscriber {
 export const subscriber: Subscriber = {
   firstName: "Priya",
   lastName: "Sharma",
-  email: "priya.sharma@example.com",
   planName: "Complete",
   address: {
     street: "14 Maple Ridge Crt",
