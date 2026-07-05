@@ -4,7 +4,7 @@
 // operating region — regardless of the viewer's device timezone, mirroring
 // the backend's rendering rule (UTC stored, America/Toronto rendered).
 
-const TZ = "America/Toronto";
+export const TZ = "America/Toronto";
 
 export interface CalendarParts {
   /** Short month, e.g. "Jul" */
@@ -56,7 +56,11 @@ export function daysUntil(iso: string, now: Date = new Date()): number {
 }
 
 export function greetingFor(date: Date = new Date()): "morning" | "afternoon" | "evening" {
-  const h = date.getHours();
+  const h = Number(
+    new Intl.DateTimeFormat("en-CA", { timeZone: TZ, hour: "numeric", hourCycle: "h23" }).format(
+      date,
+    ),
+  );
   if (h < 12) return "morning";
   if (h < 17) return "afternoon";
   return "evening";
@@ -72,5 +76,5 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return then.toLocaleDateString("en-CA", { month: "short", day: "numeric" });
+  return then.toLocaleDateString("en-CA", { timeZone: TZ, month: "short", day: "numeric" });
 }

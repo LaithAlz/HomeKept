@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Camera,
@@ -188,6 +189,7 @@ interface PhotoAttempt {
 
 function TechShell({ technician }: { technician: Session }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const dayQuery = useTechDaySheet(true);
   useSessionExpiredRedirect(dayQuery.error);
 
@@ -298,6 +300,9 @@ function TechShell({ technician }: { technician: Session }) {
 
   async function handleSignOut() {
     await logout();
+    // Drop every cached query (day sheet, visit/service data, photos) so
+    // nothing lingers in memory for the next technician on this device.
+    queryClient.clear();
     navigate({ to: "/signin", replace: true });
   }
 

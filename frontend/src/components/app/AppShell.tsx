@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Home,
@@ -42,6 +43,7 @@ type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "error";
 export function AppShell() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const queryClient = useQueryClient();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [guard, setGuard] = useState<GuardStatus>("checking");
   const [attempt, setAttempt] = useState(0);
@@ -71,6 +73,9 @@ export function AppShell() {
   async function handleSignOut() {
     setSigningOut(true);
     await logout();
+    // Drop every cached query (subscriber PII, booking contact info, visit
+    // data) so nothing lingers in memory for the next person on this device.
+    queryClient.clear();
     navigate({ to: "/signin", replace: true });
   }
 
