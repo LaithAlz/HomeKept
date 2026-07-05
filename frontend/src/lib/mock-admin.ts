@@ -2,12 +2,7 @@
 // Times are stored in ISO; formatting helpers normalize to America/Toronto.
 
 export type Plan = "Essential" | "Complete" | "Premier";
-export type SubscriberStatus =
-  | "active"
-  | "first-visit"
-  | "payment-issue"
-  | "at-risk"
-  | "paused";
+export type SubscriberStatus = "active" | "first-visit" | "payment-issue" | "at-risk" | "paused";
 
 export interface Subscriber {
   id: string;
@@ -19,32 +14,6 @@ export interface Subscriber {
   status: SubscriberStatus;
   mrr: number;
   nextVisit: { date: string; technician: string } | null;
-}
-
-export type LeadSource =
-  | "Nextdoor"
-  | "Referral"
-  | "Door-knock"
-  | "Facebook group";
-
-export interface PendingWalkthrough {
-  id: string;
-  homeowner: string;
-  city: string;
-  source: LeadSource;
-  date: string; // ISO
-  confirmed: boolean;
-}
-
-export type AttentionKind = "payment-failure" | "churn-risk" | "unassigned-visit";
-
-export interface AttentionItem {
-  id: string;
-  kind: AttentionKind;
-  title: string;
-  detail: string;
-  action: "Email" | "Reach out" | "Assign";
-  since: string; // ISO
 }
 
 const planPrice: Record<Plan, number> = {
@@ -151,76 +120,6 @@ export const subscribers: Subscriber[] = [
   },
 ];
 
-export const pendingWalkthroughs: PendingWalkthrough[] = [
-  {
-    id: "wt_001",
-    homeowner: "Jamal Wright",
-    city: "Mississauga",
-    source: "Nextdoor",
-    date: isoDaysFromNow(1, 10),
-    confirmed: true,
-  },
-  {
-    id: "wt_002",
-    homeowner: "Sandra Caruso",
-    city: "Oakville",
-    source: "Referral",
-    date: isoDaysFromNow(2, 14),
-    confirmed: true,
-  },
-  {
-    id: "wt_003",
-    homeowner: "Hossein Karimi",
-    city: "Milton",
-    source: "Door-knock",
-    date: isoDaysFromNow(3, 11),
-    confirmed: false,
-  },
-  {
-    id: "wt_004",
-    homeowner: "Emma & Jack Reid",
-    city: "Mississauga",
-    source: "Facebook group",
-    date: isoDaysFromNow(4, 16),
-    confirmed: true,
-  },
-  {
-    id: "wt_005",
-    homeowner: "Kwame Boateng",
-    city: "Oakville",
-    source: "Referral",
-    date: isoDaysFromNow(6, 9),
-    confirmed: false,
-  },
-];
-
-export const attention: AttentionItem[] = [
-  {
-    id: "att_001",
-    kind: "payment-failure",
-    title: "Aiko Tanaka — payment failed",
-    detail: "Visa •• 8821 declined on Mar 14. Plan: Complete · $189.00 CAD",
-    action: "Email",
-    since: isoDaysFromNow(-2, 9),
-  },
-  {
-    id: "att_002",
-    kind: "churn-risk",
-    title: "Rohan Mehta — at risk of cancelling",
-    detail: "No engagement in 21 days. 2 visits skipped this quarter.",
-    action: "Reach out",
-    since: isoDaysFromNow(-5, 16),
-  },
-  {
-    id: "att_003",
-    kind: "unassigned-visit",
-    title: "Visit Mar 19 · Aiko Tanaka — unassigned",
-    detail: "Lorne Park · Complete plan · 4 services scheduled.",
-    action: "Assign",
-    since: isoDaysFromNow(-1, 8),
-  },
-];
-
 // ---------------------------------------------------------------------------
 // Formatting helpers — always Toronto time + CAD
 // ---------------------------------------------------------------------------
@@ -274,7 +173,6 @@ export const metrics = {
   activeNetNew: 4,
   walkthroughsBooked: 14,
   walkthroughsWeekDelta: 3,
-  atRiskCount: subscribers.filter(
-    (s) => s.status === "at-risk" || s.status === "payment-issue",
-  ).length,
+  atRiskCount: subscribers.filter((s) => s.status === "at-risk" || s.status === "payment-issue")
+    .length,
 };

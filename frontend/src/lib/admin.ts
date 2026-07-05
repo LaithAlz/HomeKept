@@ -192,6 +192,35 @@ export function formatCentsCAD(cents: number | null | undefined): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Reschedule requests                                                        */
+/* -------------------------------------------------------------------------- */
+
+export type RescheduleRequestStatus = "PENDING" | "CONFIRMED" | "DECLINED";
+
+export interface AdminRescheduleRequestListItem {
+  id: number;
+  visitId: number;
+  subscriberId: number;
+  status: RescheduleRequestStatus;
+  preferredDates: string[];
+  adminNote: string | null;
+  confirmedVisitId: number | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /api/admin/reschedule-requests` — PENDING customer reschedule requests only,
+ * oldest first. The endpoint itself scopes to PENDING (per api-contract.md), so
+ * there's no status param to pass here.
+ */
+export function useAdminRescheduleRequests() {
+  return useQuery({
+    queryKey: ["admin", "reschedule-requests"],
+    queryFn: () => get<AdminRescheduleRequestListItem[]>("/api/admin/reschedule-requests"),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
 /* Visits                                                                     */
 /* -------------------------------------------------------------------------- */
 
