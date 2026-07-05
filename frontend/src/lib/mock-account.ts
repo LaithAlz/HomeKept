@@ -4,14 +4,10 @@
 // Visit and activity data has moved to real fetches (`@/lib/visits`) — see
 // GitHub issue #32. Billing/plan and profile/address fields have moved to real
 // fetches (`@/lib/account`, `GET /api/app/subscription` + `GET /api/app/account`) —
-// see GitHub issue #100. What's left here (name + plan label for the app shell,
-// and home health) still has no backing GET endpoint and stays mock until that lands.
-
-export interface HomeHealth {
-  score: number; // 0-100
-  delta: number; // change from previous quarter
-  note: string; // human-readable interpretation
-}
+// see GitHub issue #100. Home health has also moved to a real fetch
+// (`@/lib/health`, `GET /api/app/health-score`). What's left here (name + plan
+// label for the app shell) still has no backing GET endpoint and stays mock
+// until that lands.
 
 export interface Subscriber {
   firstName: string;
@@ -22,7 +18,6 @@ export interface Subscriber {
     neighbourhood: string;
     city: string;
   };
-  health: HomeHealth;
 }
 
 export const subscriber: Subscriber = {
@@ -33,10 +28,5 @@ export const subscriber: Subscriber = {
     street: "14 Maple Ridge Crt",
     neighbourhood: "Erin Mills",
     city: "Mississauga",
-  },
-  health: {
-    score: 84,
-    delta: 6,
-    note: "Up 6 from last quarter. One item flagged for attention: dryer vent cleaning.",
   },
 };
