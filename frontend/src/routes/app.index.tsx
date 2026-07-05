@@ -298,7 +298,8 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
           {visit.technicianFirstName ? `${window} with ${visit.technicianFirstName}` : window}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          {visit.services.length} services scheduled. You'll get a photo report after.
+          {visit.services.length} {visit.services.length === 1 ? "service" : "services"} scheduled.
+          You'll get a report afterward.
         </p>
 
         <ul className="mt-4 grid gap-2 sm:grid-cols-2">
