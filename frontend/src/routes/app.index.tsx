@@ -5,23 +5,33 @@ import {
   BellRing,
   Wrench,
   ArrowRight,
-  ArrowUpRight,
-  ArrowDownRight,
   MapPin,
   Loader2,
+  AlertTriangle,
+  FileText,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { subscriber } from "@/lib/mock-account";
+import { useAccount, type AppAccount } from "@/lib/account";
+import { useHealthScore, type HealthScoreFlaggedItem } from "@/lib/health";
 import {
   greetingFor,
-  formatRelativeTime,
-  daysUntil,
+  formatFullDate,
+  formatTime,
   getCalendarParts,
   formatVisitWindow,
 } from "@/lib/format";
 import { useNextVisit, useRecentCompletedVisits, type AppVisitListItem } from "@/lib/visits";
+import { useTodos, type TodoResponse, type TodoItemStatus } from "@/lib/todos";
 import { useSessionExpiredRedirect } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import {
+  ScoreRing,
+  HealthDeltaChip,
+  OpenItemsList,
+  attentionFlag,
+  verdictFor,
+  summaryFor,
+} from "@/components/app/health-score";
 
 export const Route = createFileRoute("/app/")({
   head: () => ({
@@ -29,6 +39,18 @@ export const Route = createFileRoute("/app/")({
   }),
   component: DashboardHome,
 });
+
+function formatAddress(account: AppAccount): string | null {
+  const parts: string[] = [];
+  if (account.streetAddress) {
+    parts.push(
+      account.unit ? `${account.streetAddress}, Unit ${account.unit}` : account.streetAddress,
+    );
+  }
+  if (account.city) parts.push(account.city);
+  if (account.postalCode) parts.push(account.postalCode);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
 
 function DashboardHome() {
   const now = new Date();
@@ -40,11 +62,18 @@ function DashboardHome() {
         ? "Good afternoon"
         : "Good evening";
 
-  const nextVisitQuery = useNextVisit();
-  useSessionExpiredRedirect(nextVisitQuery.error);
-  const nextVisit = nextVisitQuery.data?.[0] ?? null;
+  const accountQuery = useAccount();
+  useSessionExpiredRedirect(accountQuery.error);
+  const account = accountQuery.data;
+  const address = account ? formatAddress(account) : null;
+  // Once loading settles, fall back to a neutral greeting rather than an
+  // abrupt name-less sentence if the account couldn't be loaded.
+  const accountLoadFailed = !accountQuery.isLoading && !account;
 
-  const summary = buildSummary(nextVisitQuery.isLoading, nextVisitQuery.isError, nextVisit, now);
+  const healthQuery = useHealthScore();
+  useSessionExpiredRedirect(healthQuery.error);
+  const flagged = healthQuery.data?.flagged ?? [];
+  const topFlag = attentionFlag(flagged);
 
   return (
     <div className="px-6 py-8 md:px-10 md:py-12">
@@ -54,69 +83,150 @@ function DashboardHome() {
           id="greeting"
           className="font-display text-3xl font-extrabold tracking-tight md:text-4xl"
         >
-          {greetingWord}, {subscriber.firstName}.
+          {greetingWord}
+          {account?.firstName ? `, ${account.firstName}` : accountLoadFailed ? ", there" : ""}.
         </h1>
-        <p className="mt-2 text-muted-foreground md:text-lg">{summary}</p>
-        <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <MapPin className="size-3.5" aria-hidden="true" />
-          {subscriber.address.street} · {subscriber.address.neighbourhood},{" "}
-          {subscriber.address.city}
-        </p>
+        {address && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <MapPin className="size-3.5" aria-hidden="true" />
+            {address}
+          </p>
+        )}
       </section>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      {topFlag && <AttentionBand flag={topFlag} />}
+
+      {/* Hero row: home health + next visit */}
+      <div className="mt-8 grid gap-6 lg:grid-cols-5">
         <div className="lg:col-span-2">
-          <NextVisitCard />
+          <HealthHeroCard />
         </div>
-        <div>
-          <HealthCard />
+        <div className="lg:col-span-3">
+          <NextVisitCard />
         </div>
       </div>
 
-      <section aria-labelledby="activity" className="mt-10">
-        <div className="flex items-end justify-between">
-          <div>
-            <h2 id="activity" className="font-display text-2xl font-bold tracking-tight">
-              Recent activity
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The last few things that happened on your home.
-            </p>
-          </div>
-        </div>
-        <ActivityFeed />
-      </section>
+      <OpenItemsSection />
+
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        <YourListPreview />
+        <LatestReportCard />
+      </div>
     </div>
   );
 }
 
-function buildSummary(
-  isLoading: boolean,
-  isError: boolean,
-  nextVisit: AppVisitListItem | null,
-  now: Date,
-): string {
-  if (isLoading) {
-    return "Loading your next visit.";
-  }
-  if (isError) {
-    return `We couldn't load your next visit. Home health is looking good: ${subscriber.health.score}/100.`;
-  }
-  if (!nextVisit) {
-    return `Home health is looking good: ${subscriber.health.score}/100.`;
-  }
-  const days = daysUntil(nextVisit.scheduledFor, now);
-  const window = formatVisitWindow(nextVisit.scheduledFor, nextVisit.durationMinutes);
-  if (days === 0) {
-    return nextVisit.technicianFirstName
-      ? `${nextVisit.technicianFirstName} is on the way today, ${window}.`
-      : `Your visit is today, ${window}.`;
-  }
-  if (days === 1) {
-    return `Your next visit is tomorrow, ${window}.`;
-  }
-  return `Your next visit is in ${days} days. Home health is looking good: ${subscriber.health.score}/100.`;
+// ---------------------------------------------------------------------------
+// Attention band
+// ---------------------------------------------------------------------------
+
+function AttentionBand({ flag }: { flag: HealthScoreFlaggedItem }) {
+  return (
+    <div
+      role="status"
+      className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-warning/40 bg-warning/10 px-5 py-4"
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden="true" />
+        <p className="text-sm text-foreground">{flag.body}</p>
+      </div>
+      <Link
+        to="/app/health"
+        className="inline-flex shrink-0 items-center gap-1 rounded text-sm font-semibold text-foreground hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        See details <ArrowRight className="size-4" aria-hidden="true" />
+      </Link>
+    </div>
+  );
 }
+
+// ---------------------------------------------------------------------------
+// Home health (hero)
+// ---------------------------------------------------------------------------
+
+function HealthHeroCard() {
+  const query = useHealthScore();
+  useSessionExpiredRedirect(query.error);
+
+  return (
+    <article
+      aria-labelledby="health-score-heading"
+      className="flex h-full flex-col overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-sm md:p-8"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-[0.18em] text-primary-foreground/70">
+          Home health
+        </span>
+        <Link
+          to="/app/health"
+          className="inline-flex items-center gap-1 rounded text-xs font-semibold text-primary-foreground/80 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Details <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      </div>
+
+      <h2 id="health-score-heading" className="sr-only">
+        Home health score
+      </h2>
+
+      <div className="flex flex-1 flex-col items-center justify-center">
+        {query.isLoading ? (
+          <div
+            className="flex items-center gap-3 py-10 text-sm text-primary-foreground/70"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Loading your home health score.
+          </div>
+        ) : query.isError ? (
+          <p className="py-10 text-center text-sm text-primary-foreground/70">
+            We couldn't load your home health score. Try refreshing the page.
+          </p>
+        ) : query.data ? (
+          <HealthHeroContent
+            score={query.data.score}
+            delta={query.data.delta}
+            computedAt={query.data.computedAt}
+          />
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function HealthHeroContent({
+  score,
+  delta,
+  computedAt,
+}: {
+  score: number;
+  delta: number;
+  computedAt: string;
+}) {
+  const verdict = verdictFor(score);
+  const summary = summaryFor(score);
+
+  return (
+    <div className="mt-4 flex flex-col items-center text-center">
+      <ScoreRing score={score} tone="dark" />
+      <p className="mt-4 font-display text-xl font-bold">{verdict}</p>
+      <p className="mt-2 max-w-[28ch] text-sm text-primary-foreground/80">{summary}</p>
+      {delta !== 0 && (
+        <div className="mt-4">
+          <HealthDeltaChip delta={delta} />
+        </div>
+      )}
+      <p className="mt-4 text-xs text-primary-foreground/60">
+        Last checked {formatFullDate(computedAt)} at {formatTime(computedAt)}
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Next visit
+// ---------------------------------------------------------------------------
 
 function NextVisitCard() {
   const query = useNextVisit();
@@ -126,7 +236,7 @@ function NextVisitCard() {
   return (
     <article
       aria-label="Next visit"
-      className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm"
+      className="flex h-full flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-sm"
     >
       <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-6 py-3">
         <BellRing className="size-4 text-primary" aria-hidden="true" />
@@ -218,183 +328,185 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
   );
 }
 
-function HealthCard() {
-  const { score, delta, note } = subscriber.health;
-  const trendUp = delta >= 0;
+// ---------------------------------------------------------------------------
+// Open items (real flagged items — no fabricated per-system grid)
+// ---------------------------------------------------------------------------
+
+function OpenItemsSection() {
+  const query = useHealthScore();
+  useSessionExpiredRedirect(query.error);
+  const flagged = query.data?.flagged ?? [];
+
+  return (
+    <section aria-labelledby="open-items-heading" className="mt-10">
+      <h2 id="open-items-heading" className="font-display text-2xl font-bold tracking-tight">
+        Open items
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Things your technician has flagged for your home.
+      </p>
+
+      <div className="mt-6">
+        <OpenItemsList flagged={flagged} isLoading={query.isLoading} isError={query.isError} />
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Your list preview
+// ---------------------------------------------------------------------------
+
+const TODO_STATUS_LABEL: Record<TodoItemStatus, string> = {
+  OPEN: "Open",
+  SCHEDULED: "Scheduled",
+  DONE: "Done",
+  DECLINED: "Couldn't be done",
+};
+
+function TodoStatusChip({ status }: { status: TodoItemStatus }) {
+  return (
+    <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+      {TODO_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
+function YourListPreview() {
+  const query = useTodos();
+  useSessionExpiredRedirect(query.error);
+  const items: TodoResponse[] = (query.data ?? []).slice(0, 3);
 
   return (
     <article
-      aria-labelledby="health-score"
-      className="flex h-full flex-col rounded-3xl border border-border bg-card p-6 shadow-sm"
+      aria-labelledby="list-preview-heading"
+      className="rounded-3xl border border-border bg-card p-6 shadow-sm"
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-[0.18em] text-accent">
-          Home health
-        </span>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="list-preview-heading" className="font-display text-lg font-bold tracking-tight">
+          Your list
+        </h2>
         <Link
-          to="/app/health"
-          className="inline-flex items-center gap-1 text-xs font-semibold text-foreground/80 hover:text-accent"
+          to="/app/list"
+          className="inline-flex items-center gap-1 rounded text-xs font-semibold text-foreground/80 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Details <ArrowRight className="size-3.5" />
+          See all <ArrowRight className="size-3.5" aria-hidden="true" />
         </Link>
       </div>
 
-      <h2 id="health-score" className="sr-only">
-        Home health score
-      </h2>
-
-      <div className="mt-4 flex items-center justify-center">
-        <ScoreRing score={score} />
-      </div>
-
-      <div className="mt-4 flex items-center justify-center gap-2 text-sm">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",
-            trendUp ? "bg-accent/15 text-accent" : "bg-destructive/15 text-destructive",
-          )}
+      {query.isLoading ? (
+        <div
+          className="mt-4 flex items-center gap-3 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
         >
-          {trendUp ? (
-            <ArrowUpRight className="size-3.5" />
-          ) : (
-            <ArrowDownRight className="size-3.5" />
-          )}
-          {trendUp ? "+" : ""}
-          {delta} vs last quarter
-        </span>
-      </div>
-
-      <p className="mt-4 text-center text-sm text-muted-foreground">{note}</p>
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          Loading your list.
+        </div>
+      ) : query.isError ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          We couldn't load your list. Try refreshing the page.
+        </p>
+      ) : items.length === 0 ? (
+        <div className="mt-4">
+          <p className="text-sm text-muted-foreground">
+            Nothing on your list yet. Add a small task and we'll fold it into your next visit.
+          </p>
+          <Link to="/app/list" className="mt-3 inline-flex">
+            <Button size="sm" variant="outline">
+              <Plus className="size-4" aria-hidden="true" />
+              Add something
+            </Button>
+          </Link>
+        </div>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-start justify-between gap-3 rounded-xl bg-surface px-3 py-2.5 text-sm"
+            >
+              <span className="min-w-0 flex-1 truncate text-foreground/90">{item.body}</span>
+              <TodoStatusChip status={item.status} />
+            </li>
+          ))}
+        </ul>
+      )}
     </article>
   );
 }
 
-function ScoreRing({ score }: { score: number }) {
-  const size = 168;
-  const stroke = 14;
-  const radius = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(100, score));
-  const offset = circumference * (1 - clamped / 100);
+// ---------------------------------------------------------------------------
+// Latest report
+// ---------------------------------------------------------------------------
 
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        role="img"
-        aria-label={`Home health score ${clamped} out of 100`}
-      >
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="hsl(var(--border) / 1)"
-          className="text-border"
-          strokeWidth={stroke}
-          opacity={0.4}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          className="text-accent"
-          strokeWidth={stroke}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-display text-5xl font-extrabold leading-none tracking-tight text-foreground">
-          {clamped}
-        </span>
-        <span className="mt-1 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-          out of 100
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function ActivityFeed() {
-  const query = useRecentCompletedVisits(10);
+function LatestReportCard() {
+  const query = useRecentCompletedVisits(1);
   useSessionExpiredRedirect(query.error);
-
-  if (query.isLoading) {
-    return (
-      <div
-        className="mt-6 flex items-center gap-3 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground"
-        role="status"
-        aria-live="polite"
-      >
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        Loading recent activity.
-      </div>
-    );
-  }
-
-  if (query.isError) {
-    return (
-      <p className="mt-6 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
-        We couldn't load your recent activity. Try refreshing the page.
-      </p>
-    );
-  }
-
-  const visits = query.data ?? [];
-
-  if (visits.length === 0) {
-    return (
-      <p className="mt-6 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
-        No completed visits yet. Your visit history will show up here after your first visit.
-      </p>
-    );
-  }
+  const visit = query.data?.[0] ?? null;
 
   return (
-    <ul className="mt-6 divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-      {visits.map((visit) => {
-        const detail =
-          visit.services.length > 0
-            ? visit.services.map((s) => s.serviceName).join(", ")
-            : visit.name;
-        return (
-          <li key={visit.id}>
-            <Link
-              to="/app/visits/$id"
-              params={{ id: String(visit.id) }}
-              className="group flex items-start gap-4 p-5 transition-colors hover:bg-surface/60"
-            >
-              <span
-                aria-hidden="true"
-                className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent"
-              >
-                <Wrench className="size-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="text-sm font-semibold text-foreground">Visit completed</h3>
-                  <time dateTime={visit.scheduledFor} className="text-xs text-muted-foreground">
-                    {formatRelativeTime(visit.scheduledFor)} ·{" "}
-                    {visit.technicianFirstName ?? "HomeKept"}
-                  </time>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
-              </div>
-              <ArrowRight
-                className="mt-1 size-4 shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-accent"
-                aria-hidden="true"
-              />
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+    <article
+      aria-labelledby="latest-report-heading"
+      className="rounded-3xl border border-border bg-card p-6 shadow-sm"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="latest-report-heading" className="font-display text-lg font-bold tracking-tight">
+          Latest report
+        </h2>
+        <Link
+          to="/app/reports"
+          className="inline-flex items-center gap-1 rounded text-xs font-semibold text-foreground/80 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          All reports <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      </div>
+
+      {query.isLoading ? (
+        <div
+          className="mt-4 flex items-center gap-3 text-sm text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          Loading your latest report.
+        </div>
+      ) : query.isError ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          We couldn't load your latest report. Try refreshing the page.
+        </p>
+      ) : !visit ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No completed visits yet. Your visit history will show up here after your first visit.
+        </p>
+      ) : (
+        <Link
+          to="/app/visits/$id"
+          params={{ id: String(visit.id) }}
+          className="mt-4 flex items-start gap-4 rounded-2xl bg-surface p-4 transition-colors hover:bg-surface/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span
+            aria-hidden="true"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent"
+          >
+            <FileText className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">
+              {formatFullDate(visit.scheduledFor)}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {visit.services.length > 0
+                ? visit.services.map((s) => s.serviceName).join(", ")
+                : visit.name}
+            </p>
+          </div>
+          <ArrowRight
+            className="mt-1 size-4 shrink-0 text-muted-foreground/60"
+            aria-hidden="true"
+          />
+        </Link>
+      )}
+    </article>
   );
 }
