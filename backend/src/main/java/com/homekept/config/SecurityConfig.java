@@ -91,6 +91,11 @@ public class SecurityConfig {
                         // Public allowlist (arch doc §5.1 + api-contract.md)
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
+                        // Forgot/reset password (api-contract.md §Auth) — must be reachable without
+                        // a session. forgot is rate-limited 5/IP/hour in AuthController; reset's
+                        // token is HMAC-signed + single-use (PasswordResetTokenService).
+                        .requestMatchers(HttpMethod.POST, "/api/auth/forgot").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/reset").permitAll()
                         // Logout is public so a user with an expired access token can still
                         // revoke their refresh tokens. The handler resolves the user from
                         // the refresh cookie directly; it does not require a valid access token.

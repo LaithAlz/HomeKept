@@ -62,7 +62,8 @@ class EmailTemplatesTest {
                 EmailTemplates.paymentFailed("A", "https://x/app/billing"),
                 EmailTemplates.subscriptionCancelled("A", "https://x/plans"),
                 EmailTemplates.bookingConfirmation("A", "July 6, 2026", "afternoon", "Wednesday and Thursday",
-                        "14 Maple Ridge Crt, Mississauga"));
+                        "14 Maple Ridge Crt, Mississauga"),
+                EmailTemplates.passwordReset("A", "https://x/reset-password?token=t"));
 
         for (RenderedEmail e : all) {
             assertThat(e.subject()).isNotBlank();
@@ -125,5 +126,40 @@ class EmailTemplatesTest {
 
         assertThat(e.htmlBody())
                 .contains("This is a transactional message about your HomeKept membership.");
+    }
+
+    @Test
+    void passwordReset_hasSubjectLinkExpiryNoticeAndFallbackGreeting() {
+        RenderedEmail e = EmailTemplates.passwordReset(null, "https://app.test/reset-password?token=abc123");
+
+        assertThat(e.subject()).isEqualTo("Reset your HomeKept password");
+        assertThat(e.htmlBody())
+                .contains("https://app.test/reset-password?token=abc123")
+                .contains("Hi there,")               // null first name → neutral greeting
+                .contains("Reset my password")
+                .contains("expires in 30 minutes");
+    }
+
+    @Test
+    void passwordReset_greetsByFirstNameAndHasNoEmDashOrExclamationMark() {
+        RenderedEmail e = EmailTemplates.passwordReset("Priya", "https://app.test/reset-password?token=abc123");
+
+        assertThat(e.htmlBody()).contains("Hi Priya,");
+        // Calm, no-hype copy rule: no em dashes anywhere, no exclamation marks in the copy.
+        // (htmlBody always contains "!" via the "<!DOCTYPE html>" preamble, so the exclamation
+        // check runs against the subject and the message paragraph, not the whole document.)
+        assertThat(e.htmlBody()).doesNotContain("—");
+        assertThat(e.subject()).doesNotContain("—").doesNotContain("!");
+        // Strip HTML tags (including the "<!DOCTYPE html>" preamble) and assert the visible copy has no "!".
+        assertThat(e.htmlBody().replaceAll("<[^>]*>", " ")).doesNotContain("!");
+    }
+
+    @Test
+    void passwordReset_footerReferencesTheRequestNotMembership() {
+        RenderedEmail e = EmailTemplates.passwordReset("Priya", "https://app.test/reset-password?token=abc123");
+
+        assertThat(e.htmlBody())
+                .contains("This is a transactional message about your password reset request.")
+                .doesNotContain("This is a transactional message about your HomeKept membership.");
     }
 }

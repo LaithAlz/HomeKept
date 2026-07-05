@@ -1,11 +1,16 @@
 package com.homekept.identity;
 
+import com.homekept.common.ClientIpResolver;
+import com.homekept.identity.dto.ForgotPasswordRequest;
 import com.homekept.identity.dto.LoginRequest;
 import com.homekept.identity.dto.MeResponse;
+import com.homekept.identity.dto.ResetPasswordRequest;
+import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Optional;
 
 /**
- * Auth endpoints: login, refresh, logout, me.
+ * Auth endpoints: login, refresh, logout, me, forgot, reset.
  * DTOs cross in/out; entities never leave this layer.
  *
  * <p>Cookie handling is delegated to {@link CookieHelper}. The {@code Secure} flag is set
@@ -35,10 +40,13 @@ public class AuthController {
 
     private final AuthService authService;
     private final CookieHelper cookieHelper;
+    private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
 
-    public AuthController(AuthService authService, CookieHelper cookieHelper) {
+    public AuthController(AuthService authService, CookieHelper cookieHelper,
+                          ForgotPasswordRateLimiter forgotPasswordRateLimiter) {
         this.authService = authService;
         this.cookieHelper = cookieHelper;
+        this.forgotPasswordRateLimiter = forgotPasswordRateLimiter;
     }
 
     /**
@@ -116,5 +124,36 @@ public class AuthController {
     public ResponseEntity<MeResponse> me(Authentication authentication) {
         Long userId = (Long) authentication.getPrincipal();
         return ResponseEntity.ok(authService.me(userId));
+    }
+
+    /**
+     * POST /api/auth/forgot
+     * Always returns 202, whether or not the email belongs to an account — no
+     * enumeration (api-contract.md). Rate-limited: 5 attempts per IP per hour.
+     */
+    @PostMapping("/forgot")
+    public ResponseEntity<Void> forgot(@Valid @RequestBody ForgotPasswordRequest request,
+                                       HttpServletRequest httpRequest) {
+        String ip = ClientIpResolver.resolve(httpRequest);
+        if (!forgotPasswordRateLimiter.tryConsume(ip)) {
+            throw new RateLimitExceededException();
+        }
+        authService.forgotPassword(request.email());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+    }
+
+    /**
+     * POST /api/auth/reset
+     * Consumes the reset token, sets the new password, revokes all the user's refresh
+     * tokens, and sets fresh auth cookies so the caller is signed in immediately.
+     */
+    @PostMapping("/reset")
+    public ResponseEntity<Void> reset(@Valid @RequestBody ResetPasswordRequest request,
+                                      HttpServletRequest httpRequest,
+                                      HttpServletResponse httpResponse) {
+        AuthService.TokenPair tokens = authService.resetPassword(request.token(), request.password());
+        cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(),
+                httpRequest.isSecure());
+        return ResponseEntity.ok().build();
     }
 }

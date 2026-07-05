@@ -212,6 +212,15 @@ function SignInPage() {
               </FieldWrap>
             </div>
 
+            <div className="mt-2.5 flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-[13px] font-semibold text-muted-foreground hover:text-primary"
+              >
+                Forgot your password?
+              </Link>
+            </div>
+
             {formError && (
               <p role="alert" className="mt-4 text-sm font-semibold text-destructive">
                 {formError}

@@ -14,9 +14,14 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.Instant;
 
 /**
- * Password reset token record. Table exists from V1 migration to avoid a
- * later migration. Endpoints and service logic are deferred to the
- * notification slice (when SendGrid is available). See api-contract.md §Auth.
+ * Password reset token record for the forgot/reset password flow (api-contract.md §Auth).
+ * Table created by the V1 migration.
+ *
+ * <h2>Token design</h2>
+ * <p>Mirrors {@code ActivationToken}: the raw token in the reset link is an HMAC-SHA256
+ * signed opaque value containing {@code userId | nonce | expiry_epoch_seconds}, signed
+ * with the JWT signing key. Only the SHA-256 hash of the raw token is stored here.
+ * Single-use ({@code consumed_at}); 30-minute expiry enforced in {@code expires_at}.
  */
 @Entity
 @Table(name = "password_reset_tokens")
@@ -58,5 +63,7 @@ public class PasswordResetToken {
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getConsumedAt() { return consumedAt; }
     public void setConsumedAt(Instant consumedAt) { this.consumedAt = consumedAt; }
+    public boolean isConsumed() { return consumedAt != null; }
+    public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
     public Instant getCreatedAt() { return createdAt; }
 }

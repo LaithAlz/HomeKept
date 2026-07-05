@@ -8,6 +8,7 @@ import com.homekept.booking.BookingNotifier;
 import com.homekept.booking.LeadSource;
 import com.homekept.booking.TimeOfDay;
 import com.homekept.booking.WalkthroughBooking;
+import com.homekept.identity.PasswordResetNotifier;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
 import com.homekept.identity.UserRepository;
@@ -61,6 +62,7 @@ class NotificationEmailIntegrationTest {
     @Autowired SubscriptionCancelledNotifier subscriptionCancelledNotifier;
     @Autowired ActivationNotifier activationNotifier;
     @Autowired BookingNotifier bookingNotifier;
+    @Autowired PasswordResetNotifier passwordResetNotifier;
 
     @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
@@ -158,6 +160,16 @@ class NotificationEmailIntegrationTest {
         assertThat(email.sent.get(0).toEmail()).isEqualTo("invitee@test.local");
         assertThat(email.sent.get(0).subject()).isEqualTo("Activate your HomeKept membership");
         assertThat(email.sent.get(0).htmlBody()).contains("/activate?token=tok-123");
+    }
+
+    @Test
+    void passwordReset_sendsToGivenEmailWithTokenLink() {
+        passwordResetNotifier.sendResetLink("resetme@test.local", "Nora", "tok-456", 42L);
+
+        assertThat(email.sent).hasSize(1);
+        assertThat(email.sent.get(0).toEmail()).isEqualTo("resetme@test.local");
+        assertThat(email.sent.get(0).subject()).isEqualTo("Reset your HomeKept password");
+        assertThat(email.sent.get(0).htmlBody()).contains("/reset-password?token=tok-456");
     }
 
     @Test
