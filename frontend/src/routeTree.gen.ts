@@ -31,6 +31,7 @@ import { Route as LearnSlugRouteImport } from './routes/learn.$slug'
 import { Route as AppVisitsRouteImport } from './routes/app.visits'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
 import { Route as AppReportsRouteImport } from './routes/app.reports'
+import { Route as AppListRouteImport } from './routes/app.list'
 import { Route as AppHealthRouteImport } from './routes/app.health'
 import { Route as AppBillingRouteImport } from './routes/app.billing'
 import { Route as AdminWalkthroughsRouteImport } from './routes/admin.walkthroughs'
@@ -155,6 +156,11 @@ const AppReportsRoute = AppReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AppRoute,
 } as any)
+const AppListRoute = AppListRouteImport.update({
+  id: '/list',
+  path: '/list',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHealthRoute = AppHealthRouteImport.update({
   id: '/health',
   path: '/health',
@@ -250,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
+  '/app/list': typeof AppListRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
@@ -285,6 +292,7 @@ export interface FileRoutesByTo {
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
+  '/app/list': typeof AppListRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
@@ -323,6 +331,7 @@ export interface FileRoutesById {
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
+  '/app/list': typeof AppListRoute
   '/app/reports': typeof AppReportsRoute
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
@@ -362,6 +371,7 @@ export interface FileRouteTypes {
     | '/admin/walkthroughs'
     | '/app/billing'
     | '/app/health'
+    | '/app/list'
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
@@ -397,6 +407,7 @@ export interface FileRouteTypes {
     | '/admin/walkthroughs'
     | '/app/billing'
     | '/app/health'
+    | '/app/list'
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
@@ -434,6 +445,7 @@ export interface FileRouteTypes {
     | '/admin/walkthroughs'
     | '/app/billing'
     | '/app/health'
+    | '/app/list'
     | '/app/reports'
     | '/app/settings'
     | '/app/visits'
@@ -619,6 +631,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppReportsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/app/list': {
+      id: '/app/list'
+      path: '/list'
+      fullPath: '/app/list'
+      preLoaderRoute: typeof AppListRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/app/health': {
       id: '/app/health'
       path: '/health'
@@ -758,6 +777,7 @@ const AppVisitsRouteWithChildren = AppVisitsRoute._addFileChildren(
 interface AppRouteChildren {
   AppBillingRoute: typeof AppBillingRoute
   AppHealthRoute: typeof AppHealthRoute
+  AppListRoute: typeof AppListRoute
   AppReportsRoute: typeof AppReportsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppVisitsRoute: typeof AppVisitsRouteWithChildren
@@ -767,6 +787,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppBillingRoute: AppBillingRoute,
   AppHealthRoute: AppHealthRoute,
+  AppListRoute: AppListRoute,
   AppReportsRoute: AppReportsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppVisitsRoute: AppVisitsRouteWithChildren,

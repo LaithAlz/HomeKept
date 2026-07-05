@@ -142,7 +142,9 @@ acknowledged and ignored.
 | `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
 | `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [{ id, body, severity, createdAt }] }` — v1 rubric: `score = clamp(100 − open-flag penalty (URGENT 20 / ATTENTION 10 / INFO 3) − checklist deduction (up to 15 × incomplete rate of the last completed visit), 0..100)`, computed on read; `delta` vs the most recent `health_score_snapshot` (written per completed visit); `flagged` = OPEN flags |
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
-| `GET /api/app/todos` · `POST /api/app/todos` · `DELETE /api/app/todos/{id}` | "your list" — `{ body }`; OPEN items fold into the next scheduled visit |
+| `GET /api/app/todos` | "your list" — the authenticated customer's todo items, newest first: `[{ id, subscriberId, body, status, visitId, declineNote, createdAt, updatedAt }]` |
+| `POST /api/app/todos` | `{ body }` → `201`, creates an `OPEN` item with `visitId: null` |
+| `DELETE /api/app/todos/{id}` | Removes an item from the list → `204`. Ownership enforced (404, not 403) |
 | `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
 | `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [Instant, …] }` (1–5 timeslots) → `201 { id, visitId, status, preferredDates, createdAt }`. Stored as a PENDING `reschedule_request` (+ `reschedule_request_slot` rows) for admin confirmation. Visit must be owned (else 404) and SCHEDULED; a duplicate PENDING request for the same visit → 409 |
 | `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe Checkout (`mode=payment`) with `subscriberId`/`serviceId` metadata; on the `checkout.session.completed` webhook (distinguished by mode + metadata from subscription checkouts) an EXTRA visit / `VisitService(source=EXTRA)` is created — never burns the included-picks allowance |
@@ -171,6 +173,14 @@ Picks accounting: `picksRemaining` counts `VisitService(source=PICK)` rows withi
 subscription anniversary year; `source=EXTRA` (paid) rows never count. Health Score v1 is
 computed on read from checklist outcomes + OPEN flags; a `health_score_snapshot` row is
 written per completed visit so `delta` compares against the previous snapshot.
+
+Your-list folding: a customer-created todo starts `OPEN` with `visitId: null`. `PATCH
+/api/tech/todos/{id}` already lets a technician resolve (`DONE`/`DECLINED`) any `OPEN` todo
+belonging to a subscriber for whom they have an active (`SCHEDULED`/`IN_PROGRESS`) visit,
+independent of `visitId` — so a customer's item is actionable on the subscriber's next visit
+without a separate fold step. Automatically flipping a todo to `SCHEDULED` + setting `visitId`
+when a visit is confirmed, and surfacing OPEN todos in the `GET /api/tech/visits/today`
+checklist response, are not yet built.
 
 ---
 

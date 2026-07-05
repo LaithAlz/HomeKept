@@ -3,6 +3,7 @@ package com.homekept.visit;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Spring Data repository for {@link TodoItem}.
@@ -11,6 +12,13 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, Long> {
 
     /** Returns all todo items for a subscriber, newest first. */
     List<TodoItem> findBySubscriberIdOrderByCreatedAtDesc(Long subscriberId);
+
+    /**
+     * Returns a todo item only if it belongs to the given subscriber.
+     * Used by the customer app endpoints to enforce ownership
+     * (404, not 403 — per the ownership-failure rule).
+     */
+    Optional<TodoItem> findByIdAndSubscriberId(Long id, Long subscriberId);
 
     /**
      * Returns todo items for a subscriber with a given status.
