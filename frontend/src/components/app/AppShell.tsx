@@ -4,6 +4,7 @@ import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-route
 import {
   Home,
   CalendarCheck,
+  ClipboardList,
   HeartPulse,
   FileText,
   CreditCard,
@@ -22,6 +23,7 @@ import { getSession, logout } from "@/lib/auth";
 const navItems = [
   { to: "/app", label: "Home", icon: Home, exact: true },
   { to: "/app/visits", label: "Visits", icon: CalendarCheck, exact: false },
+  { to: "/app/list", label: "Your list", icon: ClipboardList, exact: false },
   { to: "/app/health", label: "Home health", icon: HeartPulse, exact: false },
   { to: "/app/reports", label: "Reports", icon: FileText, exact: false },
   { to: "/app/billing", label: "Billing", icon: CreditCard, exact: false },

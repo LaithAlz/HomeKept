@@ -101,3 +101,7 @@ export function patch<T>(path: string, body?: unknown, init?: RequestInit): Prom
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
+
+export function del<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, { ...init, method: "DELETE" });
+}
