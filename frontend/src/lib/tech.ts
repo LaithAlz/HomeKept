@@ -49,6 +49,8 @@ export interface TechVisitListItem {
   postalCode: string;
   accessNotes: string;
   services: VisitServiceItem[];
+  todos: TodoResponse[];
+  flags: FlagResponse[];
 }
 
 const DAY_SHEET_KEY = ["tech-day-sheet"] as const;
@@ -169,13 +171,8 @@ interface PatchTodoVariables {
 
 /**
  * PATCH /api/tech/todos/{id} — mark a customer "your list" item done or
- * declined in the field.
- *
- * NOT wired into the day-sheet UI: `GET /api/tech/visits/today`
- * (`TechVisitListItem`) does not return todo items, and there is no list
- * endpoint that enumerates a visit's todo ids for the technician — so the
- * client has nothing to PATCH against yet. Implemented per the DTO contract
- * so the read side can wire straight in once it exists.
+ * declined in the field. Invalidates the day sheet on success so the
+ * updated status (and any decline note) is reflected immediately.
  */
 export function usePatchTodo(): UseMutationResult<TodoResponse, unknown, PatchTodoVariables> {
   const queryClient = useQueryClient();

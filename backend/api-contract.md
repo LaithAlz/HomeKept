@@ -157,7 +157,7 @@ Plan change + payment method = Stripe customer portal (`POST /api/billing/portal
 
 | Endpoint | Returns / does |
 |---|---|
-| `GET /api/tech/visits/today` | day sheet: assigned visits w/ address, access notes, checklist (template + picks + todos + flagged) |
+| `GET /api/tech/visits/today` | day sheet: assigned visits w/ address, access notes, `services[]` checklist (template/pick/extra/flagged/todo-sourced `VisitService` rows), `todos[]` — `TodoItem`s folded into this visit (`{ id, subscriberId, body, status, visitId, declineNote, createdAt, updatedAt }`, any status, so already-worked items still show), and `flags[]` — this subscriber's OPEN `Flag`s shown for context (`{ id, subscriberId, originVisitId, body, severity, status, photoStorageKey, createdAt }`); `todos[].id` is the id `PATCH /api/tech/todos/{id}` targets |
 | `POST /api/tech/visits/{id}/start` | → IN_PROGRESS |
 | `PATCH /api/tech/visits/{id}/services/{visitServiceId}` | `{ completed, technicianNotes }` — checklist tick |
 | `POST /api/tech/visits/{id}/photos/upload-url` | `{ contentType }` → `{ uploadUrl, storageKey }` (R2 signed PUT, 15-min) |

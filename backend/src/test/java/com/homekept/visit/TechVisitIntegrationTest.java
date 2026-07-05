@@ -53,6 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Covers:
  * <ul>
  *   <li>Day sheet returns today's visit with decrypted access notes.</li>
+ *   <li>Day sheet's {@code todos[]} and {@code flags[]} carry real ids, and the todo id
+ *       can be PATCHed via {@code /api/tech/todos/{id}}.</li>
  *   <li>A second technician does NOT see the first tech's visits.</li>
  *   <li>Admin and app visit DTOs do NOT include decrypted access notes.</li>
  *   <li>start → IN_PROGRESS; wrong tech → 404; illegal state → 409.</li>
@@ -76,6 +78,7 @@ class TechVisitIntegrationTest {
     private static final String INCOMPLETE_URL     = "/api/tech/visits/{id}/incomplete";
     private static final String FLAGS_URL          = "/api/tech/visits/{id}/flags";
     private static final String APP_VISIT_URL      = "/api/app/visits/{id}";
+    private static final String TODO_URL           = "/api/tech/todos/{id}";
 
     @Autowired MockMvc mockMvc;
     @Autowired UserRepository userRepository;
@@ -84,6 +87,7 @@ class TechVisitIntegrationTest {
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired FlagRepository flagRepository;
+    @Autowired TodoItemRepository todoItemRepository;
     @Autowired TechnicianProfileRepository techProfileRepository;
     @Autowired AccessNotesCipher accessNotesCipher;
     @Autowired PasswordEncoder passwordEncoder;
@@ -239,6 +243,63 @@ class TechVisitIntegrationTest {
                         .cookie(new Cookie("hk_access", techToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].services.length()").value(2));
+    }
+
+    @Test
+    void daySheet_includesTodosAndFlagsWithRealIds() throws Exception {
+        // A todo folded into today's visit (status=SCHEDULED, visitId set — the
+        // "folded into a visit" state per TodoItem's javadoc).
+        TodoItem visitTodo = todoItemRepository.save(
+                new TodoItem(subscriber.getId(), "Replace furnace filter"));
+        visitTodo.setVisitId(todayVisit.getId());
+        visitTodo.setStatus(TodoItemStatus.SCHEDULED);
+        visitTodo = todoItemRepository.save(visitTodo);
+
+        // An OPEN flag on the subscriber, shown on the day sheet for context.
+        Flag openFlag = flagRepository.save(new Flag(
+                subscriber.getId(), null, "Missing shingles on the north slope", FlagSeverity.ATTENTION));
+
+        mockMvc.perform(get(TODAY_URL)
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].todos.length()").value(1))
+                .andExpect(jsonPath("$[0].todos[0].id").value(visitTodo.getId().intValue()))
+                .andExpect(jsonPath("$[0].todos[0].body").value("Replace furnace filter"))
+                .andExpect(jsonPath("$[0].todos[0].status").value("SCHEDULED"))
+                .andExpect(jsonPath("$[0].flags.length()").value(1))
+                .andExpect(jsonPath("$[0].flags[0].id").value(openFlag.getId().intValue()))
+                .andExpect(jsonPath("$[0].flags[0].body").value("Missing shingles on the north slope"))
+                .andExpect(jsonPath("$[0].flags[0].severity").value("ATTENTION"))
+                .andExpect(jsonPath("$[0].flags[0].createdAt").exists());
+    }
+
+    @Test
+    void daySheet_todoId_targetsPatchTodoEndpoint() throws Exception {
+        // A todo folded into today's visit — the tech app must be able to PATCH it
+        // using ONLY the id surfaced on the day sheet.
+        TodoItem visitTodo = todoItemRepository.save(
+                new TodoItem(subscriber.getId(), "Test smoke detectors"));
+        visitTodo.setVisitId(todayVisit.getId());
+        visitTodo.setStatus(TodoItemStatus.SCHEDULED);
+        todoItemRepository.save(visitTodo);
+
+        MvcResult daySheetResult = mockMvc.perform(get(TODAY_URL)
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Long todoIdFromDaySheet = ((Number) com.jayway.jsonpath.JsonPath.read(
+                daySheetResult.getResponse().getContentAsString(), "$[0].todos[0].id")).longValue();
+
+        mockMvc.perform(patch(TODO_URL, todoIdFromDaySheet)
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"DONE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DONE"));
+
+        TodoItem updated = todoItemRepository.findById(todoIdFromDaySheet).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(TodoItemStatus.DONE);
     }
 
     @Test

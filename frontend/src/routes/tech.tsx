@@ -32,13 +32,16 @@ import {
   useCreateFlag,
   useIncompleteVisit,
   usePatchService,
+  usePatchTodo,
   useStartVisit,
   useTechDaySheet,
   useUploadPhoto,
   type FlagResponse,
   type FlagSeverity,
   type TechIncompleteVisitResponse,
+  type TechPatchTodoRequest,
   type TechVisitListItem,
+  type TodoResponse,
   type VisitServiceItem,
   type VisitStatus,
   type VisitType,
@@ -242,6 +245,7 @@ function TechShell({ technician }: { technician: Session }) {
 
   const startMutation = useStartVisit();
   const patchServiceMutation = usePatchService();
+  const patchTodoMutation = usePatchTodo();
   const uploadPhotoMutation = useUploadPhoto();
   const completeMutation = useCompleteVisit();
   const incompleteMutation = useIncompleteVisit();
@@ -263,6 +267,18 @@ function TechShell({ technician }: { technician: Session }) {
         visitServiceId: item.id,
         request: { completed: !item.completed, technicianNotes: item.technicianNotes },
       },
+      { onError: (err) => setVisitError(visit.id, messageFor(err)) },
+    );
+  }
+
+  function handlePatchTodo(
+    visit: TechVisitListItem,
+    todo: TodoResponse,
+    request: TechPatchTodoRequest,
+  ) {
+    clearVisitError(visit.id);
+    patchTodoMutation.mutate(
+      { todoId: todo.id, request },
       { onError: (err) => setVisitError(visit.id, messageFor(err)) },
     );
   }
@@ -340,6 +356,10 @@ function TechShell({ technician }: { technician: Session }) {
       }).format(new Date()),
     [],
   );
+
+  const togglingTodoId = patchTodoMutation.isPending
+    ? (patchTodoMutation.variables?.todoId ?? null)
+    : null;
 
   const confirmVisit = confirmId ? visits.find((v) => v.id === confirmId) : undefined;
   const incompleteVisit = incompleteId ? visits.find((v) => v.id === incompleteId) : undefined;
@@ -423,6 +443,8 @@ function TechShell({ technician }: { technician: Session }) {
                     photoAttempts={photosByVisit[v.id] ?? []}
                     onFlag={() => setFlagForId(v.id)}
                     flags={flagsByVisit[v.id] ?? []}
+                    onPatchTodo={(todo, request) => handlePatchTodo(v, todo, request)}
+                    togglingTodoId={togglingTodoId}
                     onComplete={() => setConfirmId(v.id)}
                     errorMessage={errorsByVisit[v.id] ?? null}
                     onDismissError={() => clearVisitError(v.id)}
@@ -452,6 +474,8 @@ function TechShell({ technician }: { technician: Session }) {
                     photoAttempts={photosByVisit[v.id] ?? []}
                     onFlag={() => setFlagForId(v.id)}
                     flags={flagsByVisit[v.id] ?? []}
+                    onPatchTodo={(todo, request) => handlePatchTodo(v, todo, request)}
+                    togglingTodoId={togglingTodoId}
                     onComplete={() => setConfirmId(v.id)}
                     errorMessage={errorsByVisit[v.id] ?? null}
                     onDismissError={() => clearVisitError(v.id)}
@@ -477,6 +501,8 @@ function TechShell({ technician }: { technician: Session }) {
                     photoAttempts={photosByVisit[v.id] ?? []}
                     onFlag={() => setFlagForId(v.id)}
                     flags={flagsByVisit[v.id] ?? []}
+                    onPatchTodo={(todo, request) => handlePatchTodo(v, todo, request)}
+                    togglingTodoId={togglingTodoId}
                     onComplete={() => setConfirmId(v.id)}
                     errorMessage={errorsByVisit[v.id] ?? null}
                     onDismissError={() => clearVisitError(v.id)}
@@ -707,6 +733,8 @@ function VisitCard({
   photoAttempts,
   onFlag,
   flags,
+  onPatchTodo,
+  togglingTodoId,
   onComplete,
   errorMessage,
   onDismissError,
@@ -723,6 +751,8 @@ function VisitCard({
   photoAttempts: PhotoAttempt[];
   onFlag: () => void;
   flags: FlagResponse[];
+  onPatchTodo: (todo: TodoResponse, request: TechPatchTodoRequest) => void;
+  togglingTodoId: number | null;
   onComplete: () => void;
   errorMessage: string | null;
   onDismissError: () => void;
@@ -730,6 +760,11 @@ function VisitCard({
   const fileRef = useRef<HTMLInputElement>(null);
   const completedCount = visit.services.filter((s) => s.completed).length;
   const hasAccessNotes = visit.accessNotes.trim().length > 0;
+  // Context flags: OPEN flags for this subscriber, minus any raised earlier
+  // this session (those already show in the "Flags" section below and would
+  // otherwise render twice once the day sheet refetches).
+  const contextFlags = visit.flags.filter((f) => !flags.some((raised) => raised.id === f.id));
+  const canActOnTodos = visit.status === "IN_PROGRESS";
 
   return (
     <article
@@ -805,6 +840,23 @@ function VisitCard({
             <p className="mb-4 text-xs text-muted-foreground">No access notes on file.</p>
           )}
 
+          {contextFlags.length > 0 && (
+            <div className="mb-4 space-y-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+                Open items for this home ({contextFlags.length})
+              </p>
+              {contextFlags.map((f) => (
+                <div
+                  key={f.id}
+                  className="rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90"
+                >
+                  <SeverityTag severity={f.severity} />
+                  <p className="mt-1">{f.body}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
           <ul className="space-y-1">
             {visit.services.map((s) => {
               const isToggling = togglingServiceId === s.id;
@@ -843,6 +895,15 @@ function VisitCard({
               );
             })}
           </ul>
+
+          <div className="mt-4">
+            <TodoList
+              todos={visit.todos}
+              canAct={canActOnTodos}
+              onPatch={onPatchTodo}
+              togglingTodoId={togglingTodoId}
+            />
+          </div>
 
           {photoAttempts.length > 0 && (
             <div className="mt-4">
@@ -992,6 +1053,146 @@ function VisitCard({
         </div>
       )}
     </article>
+  );
+}
+
+// ============================================================================
+// Your list (customer-submitted todos folded into this visit)
+// ============================================================================
+
+function TodoList({
+  todos,
+  canAct,
+  onPatch,
+  togglingTodoId,
+}: {
+  todos: TodoResponse[];
+  canAct: boolean;
+  onPatch: (todo: TodoResponse, request: TechPatchTodoRequest) => void;
+  togglingTodoId: number | null;
+}) {
+  const [decliningId, setDecliningId] = useState<number | null>(null);
+  const [declineNote, setDeclineNote] = useState("");
+
+  if (todos.length === 0) {
+    return <p className="text-xs text-muted-foreground">No list items for this visit.</p>;
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        Your list ({todos.length})
+      </p>
+      <ul className="space-y-1">
+        {todos.map((t) => {
+          const isToggling = togglingTodoId === t.id;
+          const isDone = t.status === "DONE";
+          const isDeclined = t.status === "DECLINED";
+          const isSettled = isDone || isDeclined;
+          const isDeclining = decliningId === t.id;
+
+          return (
+            <li key={t.id}>
+              <div className="flex items-center gap-3 rounded-2xl px-2 py-3">
+                {isSettled ? (
+                  <span aria-hidden="true" className="shrink-0">
+                    {isDone ? (
+                      <CheckCircle2 className="size-6 text-accent" />
+                    ) : (
+                      <Ban className="size-6 text-muted-foreground" />
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onPatch(t, { status: "DONE" })}
+                    disabled={!canAct || isToggling}
+                    aria-label={`Mark "${t.body}" done`}
+                    className="shrink-0 disabled:opacity-60"
+                  >
+                    {isToggling ? (
+                      <Loader2
+                        className="size-6 animate-spin text-muted-foreground"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Circle className="size-6 text-muted-foreground" aria-hidden="true" />
+                    )}
+                  </button>
+                )}
+
+                <div className="min-w-0 flex-1">
+                  <p className={cn("text-base", isSettled && "text-muted-foreground line-through")}>
+                    {t.body}
+                  </p>
+                  {isSettled && <span className="sr-only">{isDone ? "Done" : "Declined"}</span>}
+                  {isDeclined && t.declineNote && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Declined: {t.declineNote}
+                    </p>
+                  )}
+                </div>
+
+                {canAct && !isSettled && !isDeclining && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDecliningId(t.id);
+                      setDeclineNote("");
+                    }}
+                    className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    Decline
+                  </button>
+                )}
+              </div>
+
+              {isDeclining && (
+                <div className="mb-2 ml-9 space-y-2 rounded-2xl bg-surface p-3">
+                  <label
+                    htmlFor={`decline-note-${t.id}`}
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Why couldn't this be done?
+                  </label>
+                  <textarea
+                    id={`decline-note-${t.id}`}
+                    autoFocus
+                    value={declineNote}
+                    onChange={(e) => setDeclineNote(e.target.value)}
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-border bg-background p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 rounded-xl"
+                      onClick={() => setDecliningId(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="flex-1 rounded-xl"
+                      disabled={!declineNote.trim() || isToggling}
+                      onClick={() => {
+                        onPatch(t, { status: "DECLINED", note: declineNote.trim() });
+                        setDecliningId(null);
+                      }}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
