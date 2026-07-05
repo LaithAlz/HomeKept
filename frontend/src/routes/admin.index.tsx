@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  ArrowUpRight,
-  ArrowDownRight,
   Download,
   Plus,
   Search,
@@ -15,6 +13,7 @@ import {
   CalendarX,
   CheckCircle2,
   Circle,
+  Loader2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,21 +39,17 @@ import {
   formatDateShort,
   formatDateTime,
   formatTodayLong,
-  metrics,
   pendingWalkthroughs,
   subscribers,
   type Plan,
-
   type Subscriber,
   type SubscriberStatus,
 } from "@/lib/mock-admin";
+import { useAdminDashboard, formatCentsCAD } from "@/lib/admin";
 
 export const Route = createFileRoute("/admin/")({
   head: () => ({
-    meta: [
-      { title: "Dashboard — HomeKept Admin" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Dashboard — HomeKept Admin" }, { name: "robots", content: "noindex" }],
   }),
   component: AdminDashboard,
 });
@@ -64,13 +59,17 @@ type SortDir = "asc" | "desc";
 
 function AdminDashboard() {
   const [newBookingOpen, setNewBookingOpen] = useState(false);
+  const {
+    data: dashboard,
+    isLoading: dashboardLoading,
+    isError: dashboardError,
+    refetch: refetchDashboard,
+  } = useAdminDashboard();
 
   // Filter + sort state
   const [query, setQuery] = useState("");
   const [planFilter, setPlanFilter] = useState<"all" | Plan>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | SubscriberStatus>(
-    "all",
-  );
+  const [statusFilter, setStatusFilter] = useState<"all" | SubscriberStatus>("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -125,10 +124,7 @@ function AdminDashboard() {
           <div>
             <p className="text-xs text-muted-foreground">
               {formatTodayLong()} ·{" "}
-              <span className="font-semibold text-foreground">
-                All systems normal
-              </span>{" "}
-              · 3 visits today
+              <span className="font-semibold text-foreground">All systems normal</span>
             </p>
             <h1 className="mt-0.5 font-display text-2xl font-extrabold tracking-tight">
               Dashboard
@@ -149,46 +145,49 @@ function AdminDashboard() {
 
       <div className="px-6 py-6 space-y-6">
         {/* Metric strip */}
+        {dashboardLoading && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Loading dashboard metrics.
+          </div>
+        )}
+
+        {dashboardError && !dashboardLoading && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            <span>We couldn't load dashboard metrics.</span>
+            <Button size="sm" variant="outline" onClick={() => void refetchDashboard()}>
+              Try again
+            </Button>
+          </div>
+        )}
+
         <section
           aria-label="Key metrics"
-          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
         >
-          <MetricCard
-            label="MRR"
-            value={formatCAD(metrics.mrr)}
-            sub={
-              <Delta value={metrics.mrrDeltaPct} suffix="% vs last month" up />
-            }
-          />
+          <MetricCard label="MRR" value={dashboard ? formatCentsCAD(dashboard.mrrCents) : "—"} />
           <MetricCard
             label="Active subscribers"
-            value={metrics.activeCount.toString()}
-            sub={
-              <span className="text-accent">
-                +{metrics.activeNetNew} net new this month
-              </span>
-            }
+            value={dashboard ? String(dashboard.activeSubscribers) : "—"}
           />
           <MetricCard
-            label="Walk-throughs booked"
-            value={metrics.walkthroughsBooked.toString()}
-            sub={
-              <Delta
-                value={metrics.walkthroughsWeekDelta}
-                suffix=" vs last week"
-                up
-              />
-            }
+            label="Pending walk-throughs"
+            value={dashboard ? String(dashboard.pendingWalkthroughs) : "—"}
           />
           <MetricCard
-            label="At-risk subscribers"
-            value={metrics.atRiskCount.toString()}
-            sub={
-              <span className="inline-flex items-center gap-1 text-destructive">
-                <AlertTriangle className="size-3.5" /> Flagged for outreach
-              </span>
-            }
-            tone="warn"
+            label="Upcoming visits"
+            value={dashboard ? String(dashboard.upcomingVisits) : "—"}
+          />
+          <MetricCard
+            label="Founding rate slots remaining"
+            value={dashboard ? String(dashboard.foundingRateSlotsRemaining) : "—"}
           />
         </section>
 
@@ -199,10 +198,7 @@ function AdminDashboard() {
         >
           <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2
-                id="subs-h"
-                className="font-display text-lg font-bold tracking-tight"
-              >
+              <h2 id="subs-h" className="font-display text-lg font-bold tracking-tight">
                 Recent subscribers
               </h2>
               <p className="text-xs text-muted-foreground">
@@ -222,9 +218,7 @@ function AdminDashboard() {
               </div>
               <Select
                 value={statusFilter}
-                onValueChange={(v) =>
-                  setStatusFilter(v as "all" | SubscriberStatus)
-                }
+                onValueChange={(v) => setStatusFilter(v as "all" | SubscriberStatus)}
               >
                 <SelectTrigger className="h-9 w-full sm:w-40" aria-label="Status filter">
                   <SelectValue />
@@ -238,10 +232,7 @@ function AdminDashboard() {
                   <SelectItem value="paused">Paused</SelectItem>
                 </SelectContent>
               </Select>
-              <Select
-                value={planFilter}
-                onValueChange={(v) => setPlanFilter(v as "all" | Plan)}
-              >
+              <Select value={planFilter} onValueChange={(v) => setPlanFilter(v as "all" | Plan)}>
                 <SelectTrigger className="h-9 w-full sm:w-36" aria-label="Plan filter">
                   <SelectValue />
                 </SelectTrigger>
@@ -303,10 +294,7 @@ function AdminDashboard() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="p-10 text-center text-sm text-muted-foreground"
-                    >
+                    <td colSpan={5} className="p-10 text-center text-sm text-muted-foreground">
                       No subscribers match these filters.
                     </td>
                   </tr>
@@ -323,10 +311,7 @@ function AdminDashboard() {
         </section>
       </div>
 
-      <NewBookingSheet
-        open={newBookingOpen}
-        onOpenChange={setNewBookingOpen}
-      />
+      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} />
     </>
   );
 }
@@ -343,7 +328,7 @@ function MetricCard({
 }: {
   label: string;
   value: string;
-  sub: React.ReactNode;
+  sub?: React.ReactNode;
   tone?: "warn";
 }) {
   return (
@@ -356,36 +341,9 @@ function MetricCard({
       <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-2 font-display text-3xl font-extrabold tracking-tight">
-        {value}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">{sub}</p>
+      <p className="mt-2 font-display text-3xl font-extrabold tracking-tight">{value}</p>
+      {sub && <p className="mt-2 text-xs text-muted-foreground">{sub}</p>}
     </div>
-  );
-}
-
-function Delta({
-  value,
-  suffix,
-  up,
-}: {
-  value: number;
-  suffix: string;
-  up: boolean;
-}) {
-  const Icon = up ? ArrowUpRight : ArrowDownRight;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 font-semibold",
-        up ? "text-accent" : "text-destructive",
-      )}
-    >
-      <Icon className="size-3.5" />
-      {value > 0 ? "+" : ""}
-      {value}
-      {suffix}
-    </span>
   );
 }
 
@@ -415,9 +373,7 @@ function Th({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        aria-sort={
-          isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"
-        }
+        aria-sort={isActive ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
         className={cn(
           "inline-flex items-center gap-1 font-bold uppercase tracking-wider hover:text-foreground",
           isActive ? "text-foreground" : "text-muted-foreground",
@@ -448,23 +404,15 @@ function SubscriberRow({ subscriber: s }: { subscriber: Subscriber }) {
       <td className="p-3 text-sm">
         {s.nextVisit ? (
           <>
-            <div className="font-medium text-foreground">
-              {formatDateShort(s.nextVisit.date)}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {s.nextVisit.technician}
-            </div>
+            <div className="font-medium text-foreground">{formatDateShort(s.nextVisit.date)}</div>
+            <div className="text-xs text-muted-foreground">{s.nextVisit.technician}</div>
           </>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
       </td>
       <td className="p-3 text-right font-semibold tabular-nums">
-        {s.mrr === 0 ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          formatCAD(s.mrr)
-        )}
+        {s.mrr === 0 ? <span className="text-muted-foreground">—</span> : formatCAD(s.mrr)}
       </td>
     </tr>
   );
@@ -490,10 +438,7 @@ function PlanPill({ plan }: { plan: Plan }) {
 }
 
 function StatusPill({ status }: { status: SubscriberStatus }) {
-  const map: Record<
-    SubscriberStatus,
-    { label: string; cls: string; dot: string }
-  > = {
+  const map: Record<SubscriberStatus, { label: string; cls: string; dot: string }> = {
     active: {
       label: "Active",
       cls: "bg-accent/15 text-accent",
@@ -546,15 +491,10 @@ function PendingWalkthroughsPanel() {
     >
       <header className="flex items-center justify-between border-b border-border p-4">
         <div>
-          <h2
-            id="walk-h"
-            className="font-display text-lg font-bold tracking-tight"
-          >
+          <h2 id="walk-h" className="font-display text-lg font-bold tracking-tight">
             Pending walk-throughs
           </h2>
-          <p className="text-xs text-muted-foreground">
-            {pendingWalkthroughs.length} upcoming
-          </p>
+          <p className="text-xs text-muted-foreground">{pendingWalkthroughs.length} upcoming</p>
         </div>
         <Button variant="ghost" size="sm">
           See all
@@ -571,9 +511,7 @@ function PendingWalkthroughsPanel() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="truncate font-semibold text-foreground">
-                  {w.homeowner}
-                </p>
+                <p className="truncate font-semibold text-foreground">{w.homeowner}</p>
                 <span className="shrink-0 text-xs text-muted-foreground">
                   {formatDateTime(w.date)}
                 </span>
@@ -593,11 +531,7 @@ function PendingWalkthroughsPanel() {
                   : "bg-surface text-muted-foreground border border-border",
               )}
             >
-              {w.confirmed ? (
-                <CheckCircle2 className="size-3" />
-              ) : (
-                <Circle className="size-3" />
-              )}
+              {w.confirmed ? <CheckCircle2 className="size-3" /> : <Circle className="size-3" />}
               {w.confirmed ? "Confirmed" : "Unconfirmed"}
             </span>
           </li>
@@ -619,17 +553,11 @@ const attentionIcon = {
 
 function NeedsAttentionPanel() {
   return (
-    <article
-      aria-labelledby="att-h"
-      className="rounded-2xl border border-border bg-card shadow-sm"
-    >
+    <article aria-labelledby="att-h" className="rounded-2xl border border-border bg-card shadow-sm">
       <header className="flex items-center justify-between border-b border-border p-4">
         <div className="flex items-center gap-2">
           <AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
-          <h2
-            id="att-h"
-            className="font-display text-lg font-bold tracking-tight"
-          >
+          <h2 id="att-h" className="font-display text-lg font-bold tracking-tight">
             Needs attention
           </h2>
         </div>
@@ -654,9 +582,7 @@ function NeedsAttentionPanel() {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground">{a.title}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {a.detail}
-                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{a.detail}</p>
               </div>
               <Button size="sm" variant="outline" className="shrink-0">
                 {a.action}
@@ -668,7 +594,6 @@ function NeedsAttentionPanel() {
     </article>
   );
 }
-
 
 // ---------------------------------------------------------------------------
 // New booking sheet
@@ -772,11 +697,7 @@ function NewBookingSheet({
           </Field>
 
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit">Create booking</Button>
@@ -787,13 +708,7 @@ function NewBookingSheet({
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-muted-foreground">

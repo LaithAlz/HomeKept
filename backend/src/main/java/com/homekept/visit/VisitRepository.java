@@ -81,6 +81,19 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     /** Admin: first page newest-first. */
     List<Visit> findAllByOrderByIdDesc(Pageable pageable);
 
+    /** Admin: status-filtered cursor-paginated visits newest-first. */
+    List<Visit> findByStatusAndIdLessThanOrderByIdDesc(VisitStatus status, Long cursor, Pageable pageable);
+
+    /** Admin: status-filtered first page newest-first. */
+    List<Visit> findByStatusOrderByIdDesc(VisitStatus status, Pageable pageable);
+
+    /**
+     * Count of visits in the given status with {@code scheduledFor} at or after the given
+     * instant. Used by the admin dashboard aggregate ("upcoming visits" = SCHEDULED and
+     * not yet in the past).
+     */
+    long countByStatusAndScheduledForGreaterThanEqual(VisitStatus status, java.time.Instant scheduledFor);
+
     // ── Scheduling idempotency guard ──────────────────────────────────────────
 
     /**

@@ -7,12 +7,17 @@
  *     (backend/src/main/java/com/homekept/booking/dto/*.java)
  *   - AdminSubscriberListItem / AdminSubscriberDetail / AdminSubscriberPropertySummary
  *     (backend/src/main/java/com/homekept/subscription/dto/*.java)
+ *   - AdminVisitListItem (backend/src/main/java/com/homekept/visit/dto/AdminVisitListItem.java)
+ *   - AdminTechnicianListItem
+ *     (backend/src/main/java/com/homekept/technician/dto/AdminTechnicianListItem.java)
+ *   - AdminDashboardResponse
+ *     (backend/src/main/java/com/homekept/dashboard/dto/AdminDashboardResponse.java)
  *
  * The subscriber DTOs are annotated `@JsonInclude(NON_NULL)` on the backend, so a
  * null field is omitted from the JSON body entirely rather than sent as `null` —
- * those fields are typed as optional (`?:`) here, not nullable. The booking DTOs
- * have no such annotation, so nullable fields there are sent as explicit `null`
- * and typed with `| null`.
+ * those fields are typed as optional (`?:`) here, not nullable. The booking, visit,
+ * and technician DTOs have no such annotation, so nullable fields there are sent as
+ * explicit `null` and typed with `| null`.
  *
  * Every hook is a thin TanStack Query wrapper over `get`/`post`/`patch` from
  * `@/lib/api`. Callers are responsible for only mounting these hooks once the
@@ -177,11 +182,118 @@ export function useAdminSubscriber(id: number | null) {
  * this variant takes cents, since every money field from the backend is
  * integer cents per CLAUDE.md).
  */
-export function formatCentsCAD(cents: number | undefined): string {
-  if (cents === undefined) return "—";
+export function formatCentsCAD(cents: number | null | undefined): string {
+  if (cents === undefined || cents === null) return "—";
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",
     maximumFractionDigits: 0,
   }).format(cents / 100);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Visits                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export type VisitStatus =
+  | "SCHEDULED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "INCOMPLETE"
+  | "CANCELLED"
+  | "RESCHEDULED";
+
+export type VisitType = "ROUTINE" | "EXTRA" | "WARRANTY" | "WALKTHROUGH";
+
+export interface AdminVisitListItem {
+  id: number;
+  subscriberId: number;
+  propertyId: number;
+  technicianId: number | null;
+  scheduledFor: string;
+  durationMinutes: number;
+  actualDurationMinutes: number | null;
+  materialsCostCents: number | null;
+  status: VisitStatus;
+  type: VisitType;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /api/admin/visits?status=&cursor=&limit=` — cursor-paginated, newest first,
+ * optional status filter. The admin visits page fetches a single page (limit 100,
+ * no status param) and filters client-side, matching the pattern already used for
+ * `useAdminBookings`/`useAdminSubscribers` — the pipeline is small enough at MVP
+ * that this avoids a network round-trip per filter change.
+ */
+export function useAdminVisits(options?: {
+  status?: VisitStatus;
+  cursor?: number;
+  limit?: number;
+}) {
+  const { status, cursor, limit } = options ?? {};
+  return useQuery({
+    queryKey: ["admin", "visits", status ?? "all", cursor ?? null, limit ?? null],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (status) params.set("status", status);
+      if (cursor) params.set("cursor", String(cursor));
+      if (limit) params.set("limit", String(limit));
+      const qs = params.toString();
+      return get<AdminVisitListItem[]>(`/api/admin/visits${qs ? `?${qs}` : ""}`);
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Technicians                                                                */
+/* -------------------------------------------------------------------------- */
+
+export interface AdminTechnicianListItem {
+  id: number;
+  userId: number;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  role: string | null;
+  userStatus: string | null;
+  employeeStatus: string | null;
+  hireDate: string | null;
+  fullyLoadedHourlyCostCents: number | null;
+  createdAt: string;
+}
+
+/**
+ * `GET /api/admin/technicians` — full roster, no pagination (small dataset at MVP).
+ */
+export function useAdminTechnicians() {
+  return useQuery({
+    queryKey: ["admin", "technicians"],
+    queryFn: () => get<AdminTechnicianListItem[]>("/api/admin/technicians"),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Dashboard                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface AdminDashboardResponse {
+  activeSubscribers: number;
+  mrrCents: number;
+  pendingWalkthroughs: number;
+  upcomingVisits: number;
+  foundingRateSlotsRemaining: number;
+}
+
+/**
+ * `GET /api/admin/dashboard` — aggregate metrics for the console home. Also the
+ * source for the sidebar badge counts (Subscribers/Walk-throughs/Visits) in
+ * `AdminShell`, so those badges never disagree with the dashboard page.
+ */
+export function useAdminDashboard() {
+  return useQuery({
+    queryKey: ["admin", "dashboard"],
+    queryFn: () => get<AdminDashboardResponse>("/api/admin/dashboard"),
+  });
 }

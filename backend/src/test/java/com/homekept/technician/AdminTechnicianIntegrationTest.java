@@ -22,18 +22,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for {@link AdminTechnicianController}
- * ({@code POST /api/admin/technicians}).
+ * ({@code GET /api/admin/technicians}, {@code POST /api/admin/technicians}).
  *
  * <p>Runs against a real Postgres via Testcontainers.
  *
  * <p>Covers:
  * <ul>
+ *   <li>GET list as ADMIN → 200 array; includes an onboarded technician with identity
+ *       fields (firstName, lastName, email, role, userStatus) resolved.</li>
+ *   <li>GET list as CUSTOMER → 403; anonymous → 401.</li>
  *   <li>POST as ADMIN → 201 with profile row in the DB.</li>
  *   <li>POST duplicate userId → 409.</li>
  *   <li>POST as CUSTOMER → 403.</li>
@@ -104,6 +108,57 @@ class AdminTechnicianIntegrationTest {
             userRepository.deleteById(userId);
         }
         createdUserIds.clear();
+    }
+
+    // ── GET /api/admin/technicians — list ─────────────────────────────────────
+
+    @Test
+    void listTechnicians_asAdmin_returns200WithArray() throws Exception {
+        mockMvc.perform(get(TECHNICIANS_URL)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void listTechnicians_includesOnboardedTechnicianWithIdentityFields() throws Exception {
+        Long profileId = onboardTechUser();
+
+        MvcResult result = mockMvc.perform(get(TECHNICIANS_URL)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(body, "$[*].id");
+        assertThat(ids).contains(profileId.intValue());
+
+        List<String> firstNames = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + profileId + ")].firstName");
+        List<String> emails = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + profileId + ")].email");
+        List<String> roles = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + profileId + ")].role");
+        List<String> userStatuses = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + profileId + ")].userStatus");
+
+        assertThat(firstNames).containsExactly("Target");
+        assertThat(emails).containsExactly(techUser.getEmail());
+        assertThat(roles).containsExactly("TECHNICIAN");
+        assertThat(userStatuses).containsExactly("ACTIVE");
+    }
+
+    @Test
+    void listTechnicians_asCustomer_returns403() throws Exception {
+        mockMvc.perform(get(TECHNICIANS_URL)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listTechnicians_anonymous_returns401() throws Exception {
+        mockMvc.perform(get(TECHNICIANS_URL))
+                .andExpect(status().isUnauthorized());
     }
 
     // ── POST /api/admin/technicians — happy path ──────────────────────────────
@@ -203,6 +258,29 @@ class AdminTechnicianIntegrationTest {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
+    /** Onboards {@code techUser} via the admin POST endpoint and returns the profile id. */
+    private Long onboardTechUser() throws Exception {
+        String body = """
+                {
+                  "userId": %d,
+                  "fullyLoadedHourlyCostCents": 4300,
+                  "employeeStatus": "ACTIVE"
+                }
+                """.formatted(techUser.getId());
+
+        MvcResult result = mockMvc.perform(post(TECHNICIANS_URL)
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        Long profileId = ((Number) com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$.id")).longValue();
+        createdTechProfileIds.add(profileId);
+        return profileId;
+    }
 
     private String loginAsUser(String email, String password) throws Exception {
         MvcResult result = mockMvc.perform(post(LOGIN_URL)

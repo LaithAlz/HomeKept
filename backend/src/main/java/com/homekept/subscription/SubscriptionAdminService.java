@@ -77,6 +77,43 @@ public class SubscriptionAdminService {
         return toDetail(subscriber);
     }
 
+    /**
+     * Computes the subscription-domain slice of the admin dashboard aggregate
+     * ({@code GET /api/admin/dashboard}):
+     * <ul>
+     *   <li>{@code activeSubscribers} — count of subscribers with status ACTIVE.</li>
+     *   <li>{@code mrrCents} — sum of {@link #computeMrrCents} across ACTIVE subscribers
+     *       only (PAUSED/PAYMENT_ISSUE/CANCELLED/PENDING_ACTIVATION are excluded — they
+     *       are not currently-paying recurring revenue).</li>
+     *   <li>{@code foundingRateSlotsRemaining} — {@link FoundingRateAvailabilityImpl#FOUNDING_CAP}
+     *       minus the count of founding-rate subscribers (never negative).</li>
+     * </ul>
+     *
+     * @return the subscription metrics slice
+     */
+    @Transactional(readOnly = true)
+    public SubscriptionMetrics getDashboardMetrics() {
+        List<Subscriber> activeSubscribers = subscriberRepository.findByStatus(SubscriberStatus.ACTIVE);
+
+        int mrrCents = activeSubscribers.stream()
+                .mapToInt(s -> {
+                    Integer cents = computeMrrCents(s);
+                    return cents != null ? cents : 0;
+                })
+                .sum();
+
+        long foundingRateSlotsRemaining = Math.max(0,
+                FoundingRateAvailabilityImpl.FOUNDING_CAP - subscriberRepository.countByFoundingRateTrue());
+
+        return new SubscriptionMetrics(activeSubscribers.size(), mrrCents, foundingRateSlotsRemaining);
+    }
+
+    /**
+     * Subscription-domain slice of the admin dashboard aggregate. See
+     * {@link #getDashboardMetrics()} for how each field is computed.
+     */
+    public record SubscriptionMetrics(long activeSubscribers, int mrrCents, long foundingRateSlotsRemaining) {}
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private AdminSubscriberListItem toListItem(Subscriber s) {
