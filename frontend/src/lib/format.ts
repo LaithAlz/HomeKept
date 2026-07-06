@@ -79,6 +79,46 @@ export function formatCentsCad(cents: number): string {
   }).format(cents / 100);
 }
 
+/**
+ * "Jul 5" style short date, always rendered in America/Toronto. Relocated
+ * from the deleted `@/lib/mock-admin` (used by the admin console).
+ */
+export function formatDateShort(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    month: "short",
+    day: "numeric",
+  }).format(new Date(iso));
+}
+
+/**
+ * "Jul 5, 1:00 PM" style date + time, always rendered in America/Toronto.
+ * Relocated from the deleted `@/lib/mock-admin` (used by the admin console).
+ */
+export function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+/**
+ * "Saturday, July 5, 2026" style long date, defaults to today. Relocated
+ * from the deleted `@/lib/mock-admin` (used by the admin dashboard header).
+ */
+export function formatTodayLong(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   const diffMs = now.getTime() - then.getTime();

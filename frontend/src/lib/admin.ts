@@ -177,10 +177,10 @@ export function useAdminSubscriber(id: number | null) {
 }
 
 /**
- * Formats integer cents as whole-dollar CAD (matches the existing
- * `formatCAD` convention in `@/lib/mock-admin`, which takes whole dollars —
- * this variant takes cents, since every money field from the backend is
- * integer cents per CLAUDE.md).
+ * Formats integer cents as whole-dollar CAD. Every money field from the
+ * backend is integer cents per CLAUDE.md, so this always divides by 100
+ * before formatting (mirrors `formatCentsCad` in `@/lib/format`, which takes
+ * the same cents-in shape for the customer-facing app).
  */
 export function formatCentsCAD(cents: number | null | undefined): string {
   if (cents === undefined || cents === null) return "—";
