@@ -18,7 +18,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { formatDateShort, formatDateTime, formatTodayLong, type Plan } from "@/lib/mock-admin";
+import { formatDateShort, formatDateTime, formatTodayLong } from "@/lib/format";
+import { PLANS, formatCad, type PlanId } from "@/lib/plans";
 import {
   useAdminDashboard,
   useAdminSubscribers,
@@ -491,7 +492,7 @@ function NewBookingSheet({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const [plan, setPlan] = useState<Plan>("Complete");
+  const [plan, setPlan] = useState<PlanId>("complete");
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
@@ -551,14 +552,16 @@ function NewBookingSheet({
             </Field>
           </div>
           <Field label="Plan">
-            <Select value={plan} onValueChange={(v) => setPlan(v as Plan)}>
+            <Select value={plan} onValueChange={(v) => setPlan(v as PlanId)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Essential">Essential — $129/mo</SelectItem>
-                <SelectItem value="Complete">Complete — $189/mo</SelectItem>
-                <SelectItem value="Premier">Premier — $289/mo</SelectItem>
+                {PLANS.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}: {formatCad(p.monthlyPriceCad)}/mo
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </Field>

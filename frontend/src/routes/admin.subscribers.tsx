@@ -17,7 +17,7 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { formatDateShort } from "@/lib/mock-admin";
+import { formatDateShort } from "@/lib/format";
 import { useAdminSubscriber, useAdminSubscribers, formatCentsCAD } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 

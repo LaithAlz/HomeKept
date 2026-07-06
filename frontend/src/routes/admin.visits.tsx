@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatDateTime } from "@/lib/mock-admin";
+import { formatDateTime } from "@/lib/format";
 import { useAdminVisits, formatCentsCAD, type AdminVisitListItem } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
