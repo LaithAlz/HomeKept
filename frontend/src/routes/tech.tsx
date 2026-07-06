@@ -16,7 +16,7 @@ import {
   Sparkles,
   X,
   PlayCircle,
-  KeyRound,
+  Lock,
   AlertTriangle,
   Ban,
   RefreshCw,
@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
 import { getSession, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
-import { formatFullDate, formatTime } from "@/lib/format";
+import { formatFullDate, formatTime, getCalendarParts } from "@/lib/format";
 import {
   useCompleteVisit,
   useCreateFlag,
@@ -50,7 +50,7 @@ import {
 export const Route = createFileRoute("/tech")({
   head: () => ({
     meta: [
-      { title: "Today — HomeKept Tech" },
+      { title: "Today: HomeKept Tech" },
       { name: "robots", content: "noindex" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { name: "theme-color", content: "#123f34" },
@@ -66,8 +66,8 @@ export const Route = createFileRoute("/tech")({
 function TechApp() {
   return (
     <div className="min-h-dvh bg-background">
-      {/* Phone frame on wider screens, full-bleed on phones */}
-      <div className="mx-auto w-full max-w-[420px] md:my-8 md:overflow-hidden md:rounded-[2.5rem] md:border md:border-border md:shadow-2xl">
+      {/* Phone-width column on wider screens, full-bleed on phones */}
+      <div className="mx-auto w-full max-w-[460px] md:my-8 md:overflow-hidden md:rounded-[2.5rem] md:border md:border-border md:shadow-2xl">
         <TechGuard />
       </div>
     </div>
@@ -179,6 +179,16 @@ function messageFor(err: unknown): string {
   return "Something went wrong. Try again.";
 }
 
+/** Scrolls a stop's card into view (route strip → stop card navigation). */
+function scrollToStop(id: number) {
+  if (typeof document === "undefined") return;
+  const el = document.getElementById(`stop-${id}`);
+  if (!el) return;
+  const reduced =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+}
+
 // ============================================================================
 // Day sheet (authorized content only)
 // ============================================================================
@@ -198,17 +208,35 @@ function TechShell({ technician }: { technician: Session }) {
 
   const visits = useMemo(() => dayQuery.data ?? [], [dayQuery.data]);
 
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const hasAutoExpanded = useRef(false);
-  useEffect(() => {
-    if (hasAutoExpanded.current || !dayQuery.data) return;
-    hasAutoExpanded.current = true;
-    const current =
-      dayQuery.data.find((v) => v.status === "IN_PROGRESS") ??
-      dayQuery.data.find((v) => v.status === "SCHEDULED");
-    setExpandedId(current?.id ?? null);
-  }, [dayQuery.data]);
+  // Chronological order for the route strip and stop numbering. The backend
+  // already returns the day sheet in schedule order; sorting here is a
+  // presentation-only safeguard, not a change to what's fetched.
+  const sorted = useMemo(
+    () =>
+      [...visits].sort(
+        (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime(),
+      ),
+    [visits],
+  );
 
+  // The "current" stop: the one in progress, or else the next scheduled one.
+  // Mirrors the auto-expand rule the old layout used.
+  const currentVisit = useMemo(
+    () =>
+      sorted.find((v) => v.status === "IN_PROGRESS") ??
+      sorted.find((v) => v.status === "SCHEDULED") ??
+      null,
+    [sorted],
+  );
+  const stopNumber = currentVisit ? sorted.findIndex((v) => v.id === currentVisit.id) + 1 : null;
+  const otherActive = sorted.filter(
+    (v) => v.id !== currentVisit?.id && (v.status === "SCHEDULED" || v.status === "IN_PROGRESS"),
+  );
+  const otherClosed = sorted.filter(
+    (v) => v.id !== currentVisit?.id && v.status !== "SCHEDULED" && v.status !== "IN_PROGRESS",
+  );
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [incompleteId, setIncompleteId] = useState<number | null>(null);
@@ -322,12 +350,12 @@ function TechShell({ technician }: { technician: Session }) {
     navigate({ to: "/signin", replace: true });
   }
 
-  const inProgress = visits.filter((v) => v.status === "IN_PROGRESS");
-  const upcoming = visits.filter((v) => v.status === "SCHEDULED");
-  const closed = visits.filter((v) => v.status !== "IN_PROGRESS" && v.status !== "SCHEDULED");
-
   const totalCount = visits.length;
-  const closedCount = closed.length;
+  const doneCount = visits.filter(
+    (v) => v.status !== "IN_PROGRESS" && v.status !== "SCHEDULED",
+  ).length;
+  const pct = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
+
   const totalHours = useMemo(
     () => Math.round((visits.reduce((s, v) => s + v.durationMinutes, 0) / 60) * 10) / 10,
     [visits],
@@ -335,27 +363,19 @@ function TechShell({ technician }: { technician: Session }) {
   const routeSummary = useMemo(() => {
     const seen = new Set<string>();
     const ordered: string[] = [];
-    for (const v of visits) {
+    for (const v of sorted) {
       if (!seen.has(v.city)) {
         seen.add(v.city);
         ordered.push(v.city);
       }
     }
     return ordered.join(" → ");
-  }, [visits]);
+  }, [sorted]);
 
   // Rendered in America/Toronto — the timezone the day sheet is computed in
   // on the backend — rather than the device's local timezone.
-  const today = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Toronto",
-        weekday: "long",
-        month: "short",
-        day: "numeric",
-      }).format(new Date()),
-    [],
-  );
+  const { weekday, month, day } = getCalendarParts(new Date().toISOString());
+  const todayLabel = `${weekday}, ${month} ${day}`;
 
   const togglingTodoId = patchTodoMutation.isPending
     ? (patchTodoMutation.variables?.todoId ?? null)
@@ -366,30 +386,61 @@ function TechShell({ technician }: { technician: Session }) {
   const flagVisit = flagForId ? visits.find((v) => v.id === flagForId) : undefined;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground [padding-top:env(safe-area-inset-top)]">
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-5 py-4 backdrop-blur">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      {/* Header: identity + day progress, always visible */}
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 px-5 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] backdrop-blur">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {today}
+              Today
             </p>
-            <h1 className="mt-0.5 font-display text-2xl font-extrabold tracking-tight">
-              Hey, {technician.firstName}.
+            <h1 className="mt-0.5 truncate font-display text-2xl font-extrabold tracking-tight">
+              {todayLabel}
             </h1>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">
+              {technician.firstName} {technician.lastName.charAt(0)}.
+            </p>
           </div>
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
             aria-label="Open menu"
-            className="inline-flex size-11 items-center justify-center rounded-full border border-border bg-card text-foreground active:scale-95"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground active:scale-95"
           >
-            <Menu className="size-5" />
+            <Menu className="size-5" aria-hidden="true" />
           </button>
         </div>
+
+        {totalCount > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+              <span className="tabular-nums">
+                {currentVisit
+                  ? `Stop ${stopNumber} of ${totalCount}`
+                  : `${totalCount} ${totalCount === 1 ? "visit" : "visits"} today`}
+              </span>
+              <span className="tabular-nums">
+                {doneCount}/{totalCount} done
+              </span>
+            </div>
+            <div
+              className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+              aria-label="Day progress"
+            >
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-500"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
       </header>
 
-      <main className="flex-1 space-y-4 px-4 pb-32 pt-4">
+      <main className="flex-1 space-y-5 px-4 pb-6 pt-4">
         {followUpNotice && (
           <div
             role="status"
@@ -415,50 +466,41 @@ function TechShell({ technician }: { technician: Session }) {
 
         {!dayQuery.isLoading && !dayQuery.isError && totalCount > 0 && (
           <>
-            <TodaySummary
-              totalCount={totalCount}
-              doneCount={closedCount}
+            <RouteStrip
+              visits={sorted}
+              currentId={currentVisit?.id ?? null}
+              routeSummary={routeSummary}
               totalHours={totalHours}
-              route={routeSummary}
             />
 
-            {inProgress.length > 0 && (
-              <Group label="In progress" tone="primary">
-                {inProgress.map((v) => (
-                  <VisitCard
-                    key={v.id}
-                    visit={v}
-                    expanded={expandedId === v.id}
-                    onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
-                    onStart={() => handleStart(v)}
-                    starting={startMutation.isPending && startMutation.variables === v.id}
-                    onToggleItem={(item) => handleToggleItem(v, item)}
-                    togglingServiceId={
-                      patchServiceMutation.isPending &&
-                      patchServiceMutation.variables?.visitId === v.id
-                        ? patchServiceMutation.variables.visitServiceId
-                        : null
-                    }
-                    onPhotoSelected={(file) => handlePhotoSelected(v, file)}
-                    photoAttempts={photosByVisit[v.id] ?? []}
-                    onFlag={() => setFlagForId(v.id)}
-                    flags={flagsByVisit[v.id] ?? []}
-                    onPatchTodo={(todo, request) => handlePatchTodo(v, todo, request)}
-                    togglingTodoId={togglingTodoId}
-                    onComplete={() => setConfirmId(v.id)}
-                    errorMessage={errorsByVisit[v.id] ?? null}
-                    onDismissError={() => clearVisitError(v.id)}
-                  />
-                ))}
-              </Group>
+            {currentVisit && (
+              <CurrentStopCard
+                visit={currentVisit}
+                onToggleItem={(item) => handleToggleItem(currentVisit, item)}
+                togglingServiceId={
+                  patchServiceMutation.isPending &&
+                  patchServiceMutation.variables?.visitId === currentVisit.id
+                    ? patchServiceMutation.variables.visitServiceId
+                    : null
+                }
+                onPhotoSelected={(file) => handlePhotoSelected(currentVisit, file)}
+                photoAttempts={photosByVisit[currentVisit.id] ?? []}
+                onFlag={() => setFlagForId(currentVisit.id)}
+                flags={flagsByVisit[currentVisit.id] ?? []}
+                onPatchTodo={(todo, request) => handlePatchTodo(currentVisit, todo, request)}
+                togglingTodoId={togglingTodoId}
+                errorMessage={errorsByVisit[currentVisit.id] ?? null}
+                onDismissError={() => clearVisitError(currentVisit.id)}
+              />
             )}
 
-            {upcoming.length > 0 && (
+            {otherActive.length > 0 && (
               <Group label="Up next" tone="muted">
-                {upcoming.map((v) => (
-                  <VisitCard
+                {otherActive.map((v) => (
+                  <StopCard
                     key={v.id}
                     visit={v}
+                    index={sorted.findIndex((x) => x.id === v.id) + 1}
                     expanded={expandedId === v.id}
                     onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
                     onStart={() => handleStart(v)}
@@ -484,12 +526,13 @@ function TechShell({ technician }: { technician: Session }) {
               </Group>
             )}
 
-            {closed.length > 0 && (
+            {otherClosed.length > 0 && (
               <Group label="Done" tone="dim">
-                {closed.map((v) => (
-                  <VisitCard
+                {otherClosed.map((v) => (
+                  <StopCard
                     key={v.id}
                     visit={v}
+                    index={sorted.findIndex((x) => x.id === v.id) + 1}
                     dim
                     expanded={expandedId === v.id}
                     onToggleExpand={() => setExpandedId((id) => (id === v.id ? null : v.id))}
@@ -511,8 +554,8 @@ function TechShell({ technician }: { technician: Session }) {
               </Group>
             )}
 
-            {closedCount === totalCount && (
-              <div className="mt-6 rounded-3xl border border-border bg-card p-6 text-center">
+            {doneCount === totalCount && (
+              <div className="rounded-3xl border border-border bg-card p-6 text-center">
                 <Sparkles className="mx-auto size-6 text-accent" aria-hidden="true" />
                 <p className="mt-2 font-display text-lg font-bold">Day complete.</p>
                 <p className="text-sm text-muted-foreground">Reports queued. Drive safe.</p>
@@ -522,8 +565,17 @@ function TechShell({ technician }: { technician: Session }) {
         )}
       </main>
 
-      {/* Bottom safe-area spacer */}
-      <div aria-hidden="true" className="pointer-events-none h-[env(safe-area-inset-bottom)]" />
+      {/* Sticky, always-visible primary action for the current stop. */}
+      {currentVisit ? (
+        <BottomActionBar
+          visit={currentVisit}
+          onStart={() => handleStart(currentVisit)}
+          starting={startMutation.isPending && startMutation.variables === currentVisit.id}
+          onComplete={() => setConfirmId(currentVisit.id)}
+        />
+      ) : (
+        <div aria-hidden="true" className="pointer-events-none h-[env(safe-area-inset-bottom)]" />
+      )}
 
       {/* Modals */}
       {confirmVisit && (
@@ -618,115 +670,112 @@ function NoVisitsToday() {
 }
 
 // ============================================================================
-// Today summary
+// Route strip
 // ============================================================================
 
-function TodaySummary({
-  totalCount,
-  doneCount,
+const STATUS_LABEL: Record<VisitStatus, string> = {
+  SCHEDULED: "Up next",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Done",
+  INCOMPLETE: "Incomplete",
+  CANCELLED: "Cancelled",
+  RESCHEDULED: "Rescheduled",
+};
+
+function RouteStrip({
+  visits,
+  currentId,
+  routeSummary,
   totalHours,
-  route,
 }: {
-  totalCount: number;
-  doneCount: number;
+  visits: TechVisitListItem[];
+  currentId: number | null;
+  routeSummary: string;
   totalHours: number;
-  route: string;
 }) {
-  const pct = totalCount === 0 ? 0 : Math.round((doneCount / totalCount) * 100);
   return (
-    <section
-      aria-labelledby="today-label"
-      className="rounded-3xl bg-primary p-5 text-primary-foreground shadow-lg"
-    >
-      <div className="flex items-center justify-between">
-        <p
-          id="today-label"
-          className="text-[11px] font-bold uppercase tracking-[0.2em] text-primary-foreground/70"
-        >
-          Today
-        </p>
-        <span className="rounded-full bg-primary-foreground/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
-          {doneCount}/{totalCount} done
+    <section aria-label="Today's route">
+      <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{routeSummary}</span>
         </span>
+        <span className="shrink-0 tabular-nums">{totalHours}h est.</span>
       </div>
-
-      <div className="mt-3 flex items-end gap-4">
-        <div>
-          <div className="font-display text-5xl font-extrabold leading-none tracking-tight">
-            {totalCount}
+      <div role="list" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+        {visits.map((v, i) => (
+          <div role="listitem" key={v.id}>
+            <RouteChip
+              visit={v}
+              index={i + 1}
+              isCurrent={v.id === currentId}
+              onSelect={() => scrollToStop(v.id)}
+            />
           </div>
-          <div className="mt-1 text-xs text-primary-foreground/70">
-            visit{totalCount === 1 ? "" : "s"}
-          </div>
-        </div>
-        <div className="ml-2 h-10 w-px bg-primary-foreground/20" />
-        <div>
-          <div className="font-display text-2xl font-bold leading-none">{totalHours}h</div>
-          <div className="mt-1 text-xs text-primary-foreground/70">est.</div>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-2 text-sm text-primary-foreground/85">
-        <MapPin className="size-4" aria-hidden="true" />
-        <span className="truncate">{route}</span>
-      </div>
-
-      <div className="mt-4">
-        <div
-          className="h-1.5 w-full overflow-hidden rounded-full bg-primary-foreground/15"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={pct}
-          aria-label="Day progress"
-        >
-          <div
-            className="h-full rounded-full bg-accent transition-all duration-500"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
+        ))}
       </div>
     </section>
   );
 }
 
-// ============================================================================
-// Group + visit card
-// ============================================================================
-
-function Group({
-  label,
-  tone,
-  children,
+function RouteChip({
+  visit,
+  index,
+  isCurrent,
+  onSelect,
 }: {
-  label: string;
-  tone: "primary" | "muted" | "dim";
-  children: React.ReactNode;
+  visit: TechVisitListItem;
+  index: number;
+  isCurrent: boolean;
+  onSelect: () => void;
 }) {
+  const isSettled =
+    visit.status === "COMPLETED" ||
+    visit.status === "CANCELLED" ||
+    visit.status === "INCOMPLETE" ||
+    visit.status === "RESCHEDULED";
+  const statusWord = STATUS_LABEL[visit.status];
+
   return (
-    <section className="mt-2">
-      <h2
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-label={`Stop ${index}: ${visit.streetAddress}, ${formatTime(visit.scheduledFor)}, ${statusWord}`}
+      className={cn(
+        "flex min-w-[164px] shrink-0 items-center gap-2.5 rounded-2xl border px-3 py-2.5 text-left transition-colors",
+        isCurrent && "border-accent bg-accent/10",
+        !isCurrent && isSettled && "border-border bg-surface opacity-70",
+        !isCurrent && !isSettled && "border-border bg-card",
+      )}
+    >
+      <span
+        aria-hidden="true"
         className={cn(
-          "px-1 text-[11px] font-bold uppercase tracking-[0.18em]",
-          tone === "primary" && "text-accent",
-          tone === "muted" && "text-foreground/70",
-          tone === "dim" && "text-muted-foreground",
+          "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold tabular-nums",
+          isCurrent && "bg-accent text-accent-foreground",
+          !isCurrent && "bg-surface text-foreground",
         )}
       >
-        {label}
-      </h2>
-      <div className="mt-2 space-y-3">{children}</div>
-    </section>
+        {index}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold text-foreground">
+          {visit.streetAddress}
+        </span>
+        <span className="block truncate text-[11px] text-muted-foreground">
+          {formatTime(visit.scheduledFor)} · {statusWord}
+        </span>
+      </span>
+    </button>
   );
 }
 
-function VisitCard({
+// ============================================================================
+// Current stop (featured card)
+// ============================================================================
+
+function CurrentStopCard({
   visit,
-  expanded,
-  dim,
-  onToggleExpand,
-  onStart,
-  starting,
   onToggleItem,
   togglingServiceId,
   onPhotoSelected,
@@ -735,16 +784,10 @@ function VisitCard({
   flags,
   onPatchTodo,
   togglingTodoId,
-  onComplete,
   errorMessage,
   onDismissError,
 }: {
   visit: TechVisitListItem;
-  expanded: boolean;
-  dim?: boolean;
-  onToggleExpand: () => void;
-  onStart: () => void;
-  starting: boolean;
   onToggleItem: (item: VisitServiceItem) => void;
   togglingServiceId: number | null;
   onPhotoSelected: (file: File) => void;
@@ -753,13 +796,10 @@ function VisitCard({
   flags: FlagResponse[];
   onPatchTodo: (todo: TodoResponse, request: TechPatchTodoRequest) => void;
   togglingTodoId: number | null;
-  onComplete: () => void;
   errorMessage: string | null;
   onDismissError: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const completedCount = visit.services.filter((s) => s.completed).length;
-  const hasAccessNotes = visit.accessNotes.trim().length > 0;
   // Context flags: OPEN flags for this subscriber, minus any raised earlier
   // this session (those already show in the "Flags" section below and would
   // otherwise render twice once the day sheet refetches).
@@ -767,292 +807,249 @@ function VisitCard({
   const canActOnTodos = visit.status === "IN_PROGRESS";
 
   return (
-    <article
-      className={cn(
-        "overflow-hidden rounded-3xl border bg-card shadow-sm transition-opacity",
-        visit.status === "IN_PROGRESS" && "border-accent ring-1 ring-accent/40",
-        visit.status !== "IN_PROGRESS" && "border-border",
-        dim && "opacity-70",
-      )}
+    <section
+      id={`stop-${visit.id}`}
+      aria-labelledby={`stop-${visit.id}-heading`}
+      className="scroll-mt-28 overflow-hidden rounded-3xl border-2 border-accent/60 bg-card shadow-lg"
     >
-      <button
-        type="button"
-        onClick={onToggleExpand}
-        aria-expanded={expanded}
-        aria-controls={`visit-body-${visit.id}`}
-        className="w-full px-4 py-4 text-left active:bg-surface/60"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-bold">
-            <Clock className="size-4 text-muted-foreground" aria-hidden="true" />
-            {formatTime(visit.scheduledFor)}
-          </div>
-          <StatusPill status={visit.status} />
-        </div>
-
-        <div className="mt-2 flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="truncate font-display text-lg font-bold tracking-tight">
-              {visit.streetAddress}
-              {visit.unit ? `, Unit ${visit.unit}` : ""}
-            </h3>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {visit.city} · {visit.postalCode}
-            </p>
-          </div>
-          <span
-            aria-hidden="true"
-            className="mt-1 inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground"
+      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-accent">
+            Current stop
+          </p>
+          <h2
+            id={`stop-${visit.id}-heading`}
+            className="mt-0.5 truncate font-display text-xl font-bold tracking-tight"
           >
-            {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-          </span>
+            {visit.streetAddress}
+            {visit.unit ? `, Unit ${visit.unit}` : ""}
+          </h2>
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">
+            {visit.city} · {visit.postalCode}
+          </p>
         </div>
+        <StatusPill status={visit.status} />
+      </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{visit.durationMinutes} min</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {completedCount}/{visit.services.length} items
-          </span>
-          <span aria-hidden="true">·</span>
-          <VisitTypeChip type={visit.type} name={visit.name} />
-        </div>
-      </button>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-5 py-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1 tabular-nums">
+          <Clock className="size-3.5" aria-hidden="true" />
+          {formatTime(visit.scheduledFor)} · {visit.durationMinutes} min
+        </span>
+        <span aria-hidden="true">·</span>
+        <VisitTypeChip type={visit.type} name={visit.name} />
+      </div>
 
-      {expanded && (
-        <div id={`visit-body-${visit.id}`} className="border-t border-border px-4 pb-4 pt-3">
-          {hasAccessNotes ? (
-            <div className="mb-4 flex items-start gap-2 rounded-2xl bg-surface px-3 py-3">
-              <KeyRound
-                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                  Access notes
-                </p>
-                <p className="mt-1 whitespace-pre-line text-sm text-foreground/90">
-                  {visit.accessNotes}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <p className="mb-4 text-xs text-muted-foreground">No access notes on file.</p>
-          )}
+      <div className="space-y-4 px-5 py-4">
+        <AccessCard notes={visit.accessNotes} />
 
-          {contextFlags.length > 0 && (
-            <div className="mb-4 space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Open items for this home ({contextFlags.length})
-              </p>
-              {contextFlags.map((f) => (
-                <div
-                  key={f.id}
-                  className="rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90"
-                >
-                  <SeverityTag severity={f.severity} />
-                  <p className="mt-1">{f.body}</p>
-                </div>
-              ))}
-            </div>
-          )}
+        {contextFlags.length > 0 && (
+          <FlagGroup
+            title={`Open items for this home (${contextFlags.length})`}
+            flags={contextFlags}
+          />
+        )}
 
-          <ul className="space-y-1">
-            {visit.services.map((s) => {
-              const isToggling = togglingServiceId === s.id;
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    onClick={() => onToggleItem(s)}
-                    disabled={isToggling}
-                    aria-pressed={s.completed}
-                    className="flex w-full items-center gap-3 rounded-2xl px-2 py-3 text-left text-base active:bg-surface/70 disabled:opacity-60"
-                  >
-                    {isToggling ? (
-                      <Loader2
-                        className="size-6 shrink-0 animate-spin text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    ) : s.completed ? (
-                      <CheckCircle2 className="size-6 shrink-0 text-accent" aria-hidden="true" />
-                    ) : (
-                      <Circle
-                        className="size-6 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1",
-                        s.completed && "text-muted-foreground line-through",
-                      )}
-                    >
-                      {s.serviceName}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+        <ChecklistSection
+          services={visit.services}
+          onToggleItem={onToggleItem}
+          togglingServiceId={togglingServiceId}
+        />
 
-          <div className="mt-4">
-            <TodoList
-              todos={visit.todos}
-              canAct={canActOnTodos}
-              onPatch={onPatchTodo}
-              togglingTodoId={togglingTodoId}
+        <TodoList
+          todos={visit.todos}
+          canAct={canActOnTodos}
+          onPatch={onPatchTodo}
+          togglingTodoId={togglingTodoId}
+        />
+
+        {photoAttempts.length > 0 && <PhotoGrid attempts={photoAttempts} />}
+
+        {flags.length > 0 && <FlagGroup title={`Flags (${flags.length})`} flags={flags} />}
+
+        {errorMessage && <ErrorBanner message={errorMessage} onDismiss={onDismissError} />}
+
+        {/* Quick actions — only legal once the visit is under way. The
+            primary "Complete this visit" action lives in the sticky bottom
+            bar (see `BottomActionBar`), not here. */}
+        {visit.status === "IN_PROGRESS" && (
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPhotoSelected(f);
+                e.target.value = "";
+              }}
             />
-          </div>
-
-          {photoAttempts.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Photos ({photoAttempts.length})
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                {photoAttempts.map((p) => (
-                  <div
-                    key={p.key}
-                    className="relative aspect-square w-full overflow-hidden rounded-xl"
-                  >
-                    <img src={p.previewUrl} alt="" className="size-full object-cover" />
-                    {p.status === "uploading" && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-foreground/40">
-                        <Loader2
-                          className="size-4 animate-spin text-background"
-                          aria-hidden="true"
-                        />
-                      </div>
-                    )}
-                    {p.status === "error" && (
-                      <div
-                        className="absolute inset-0 flex items-center justify-center bg-destructive/70"
-                        title={p.error ?? "Upload failed."}
-                      >
-                        <ImageOff
-                          className="size-4 text-destructive-foreground"
-                          aria-hidden="true"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {photoAttempts.some((p) => p.status === "error") && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Some photos couldn't be saved. Photo storage isn't turned on yet.
-                </p>
-              )}
-            </div>
-          )}
-
-          {flags.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-                Flags ({flags.length})
-              </p>
-              {flags.map((f) => (
-                <div
-                  key={f.id}
-                  className="rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90"
-                >
-                  <SeverityTag severity={f.severity} />
-                  <p className="mt-1">{f.body}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {errorMessage && (
-            <div
-              role="alert"
-              className="mt-4 flex items-start justify-between gap-2 rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
-            >
-              <span>{errorMessage}</span>
-              <button
-                type="button"
-                onClick={onDismissError}
-                aria-label="Dismiss"
-                className="shrink-0"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </button>
-            </div>
-          )}
-
-          {/* Action bar — only offer a transition control legal for this
-              visit's current status: Start only from SCHEDULED, and
-              Photo/Flag/Complete only once IN_PROGRESS. */}
-          {visit.status === "SCHEDULED" && (
             <Button
               type="button"
               size="lg"
-              variant="accent"
-              onClick={onStart}
-              disabled={starting}
-              className="mt-5 h-14 w-full rounded-2xl"
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              className="h-14 rounded-2xl"
             >
-              {starting ? (
-                <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-              ) : (
-                <>
-                  <PlayCircle className="size-5" aria-hidden="true" />
-                  Start visit
-                </>
-              )}
+              <Camera className="size-5" aria-hidden="true" />
+              Add photo
             </Button>
-          )}
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={onFlag}
+              className="h-14 rounded-2xl"
+            >
+              <FlagIcon className="size-5" aria-hidden="true" />
+              Raise a flag
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
 
-          {visit.status === "IN_PROGRESS" && (
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="sr-only"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onPhotoSelected(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                onClick={() => fileRef.current?.click()}
-                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
-              >
-                <Camera className="size-5" />
-                Photo
-              </Button>
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                onClick={onFlag}
-                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
-              >
-                <FlagIcon className="size-5" />
-                Flag
-              </Button>
-              <Button
-                type="button"
-                size="lg"
-                variant="accent"
-                onClick={onComplete}
-                className="h-14 flex-col gap-0.5 rounded-2xl text-xs"
-              >
-                <CheckCheck className="size-5" />
-                Complete
-              </Button>
-            </div>
+/** The sticky, always-visible primary action for the current stop. */
+function BottomActionBar({
+  visit,
+  onStart,
+  starting,
+  onComplete,
+}: {
+  visit: TechVisitListItem;
+  onStart: () => void;
+  starting: boolean;
+  onComplete: () => void;
+}) {
+  if (visit.status !== "SCHEDULED" && visit.status !== "IN_PROGRESS") return null;
+
+  return (
+    <div className="sticky bottom-0 z-20 shrink-0 border-t border-border bg-background/95 px-4 py-3 backdrop-blur [padding-bottom:calc(0.75rem+env(safe-area-inset-bottom))]">
+      {visit.status === "SCHEDULED" ? (
+        <Button
+          type="button"
+          size="lg"
+          variant="accent"
+          onClick={onStart}
+          disabled={starting}
+          className="h-14 w-full rounded-2xl text-base"
+        >
+          {starting ? (
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+          ) : (
+            <>
+              <PlayCircle className="size-5" aria-hidden="true" />
+              Start visit
+            </>
           )}
-        </div>
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          size="lg"
+          variant="accent"
+          onClick={onComplete}
+          className="h-14 w-full rounded-2xl text-base"
+        >
+          <CheckCheck className="size-5" aria-hidden="true" />
+          Complete this visit
+        </Button>
       )}
-    </article>
+    </div>
+  );
+}
+
+// ============================================================================
+// Access card — impossible-to-miss lockbox / entry notes
+// ============================================================================
+
+function AccessCard({ notes }: { notes: string }) {
+  const hasNotes = notes.trim().length > 0;
+  if (!hasNotes) {
+    return <p className="text-xs text-muted-foreground">No access notes on file.</p>;
+  }
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border-2 border-warning/50 bg-warning/15 px-4 py-3.5">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-warning/25 text-warning-foreground"
+      >
+        <Lock className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-warning-foreground/70">
+          Access notes
+        </p>
+        <p className="mt-1 whitespace-pre-line text-sm font-medium text-warning-foreground">
+          {notes}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Checklist (services)
+// ============================================================================
+
+function ChecklistSection({
+  services,
+  onToggleItem,
+  togglingServiceId,
+}: {
+  services: VisitServiceItem[];
+  onToggleItem: (item: VisitServiceItem) => void;
+  togglingServiceId: number | null;
+}) {
+  const completedCount = services.filter((s) => s.completed).length;
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        Checklist ({completedCount}/{services.length})
+      </p>
+      <ul className="space-y-1">
+        {services.map((s) => {
+          const isToggling = togglingServiceId === s.id;
+          return (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => onToggleItem(s)}
+                disabled={isToggling}
+                aria-pressed={s.completed}
+                aria-label={
+                  s.completed ? `Mark "${s.serviceName}" not done` : `Mark "${s.serviceName}" done`
+                }
+                className="flex min-h-11 w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-base transition-colors hover:bg-surface active:bg-surface disabled:opacity-60"
+              >
+                {isToggling ? (
+                  <Loader2
+                    className="size-6 shrink-0 animate-spin text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                ) : s.completed ? (
+                  <CheckCircle2 className="size-6 shrink-0 text-accent" aria-hidden="true" />
+                ) : (
+                  <Circle className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+                )}
+                <span
+                  className={cn(
+                    "min-w-0 flex-1",
+                    s.completed && "text-muted-foreground line-through",
+                  )}
+                >
+                  {s.serviceName}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -1080,7 +1077,7 @@ function TodoList({
 
   return (
     <div>
-      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
         Your list ({todos.length})
       </p>
       <ul className="space-y-1">
@@ -1093,7 +1090,7 @@ function TodoList({
 
           return (
             <li key={t.id}>
-              <div className="flex items-center gap-3 rounded-2xl px-2 py-3">
+              <div className="flex min-h-11 items-center gap-3 rounded-2xl px-2 py-3">
                 {isSettled ? (
                   <span aria-hidden="true" className="shrink-0">
                     {isDone ? (
@@ -1140,6 +1137,7 @@ function TodoList({
                       setDecliningId(t.id);
                       setDeclineNote("");
                     }}
+                    aria-label={`Decline "${t.body}"`}
                     className="shrink-0 text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                   >
                     Decline
@@ -1197,52 +1195,320 @@ function TodoList({
 }
 
 // ============================================================================
+// Shared: flags, photos, error banner
+// ============================================================================
+
+function FlagGroup({ title, flags }: { title: string; flags: FlagResponse[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        {title}
+      </p>
+      {flags.map((f) => (
+        <div key={f.id} className="rounded-2xl bg-surface px-3 py-2 text-sm text-foreground/90">
+          <SeverityTag severity={f.severity} />
+          <p className="mt-1">{f.body}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PhotoGrid({ attempts }: { attempts: PhotoAttempt[] }) {
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+        Photos ({attempts.length})
+      </p>
+      <div className="grid grid-cols-4 gap-2">
+        {attempts.map((p) => (
+          <div key={p.key} className="relative aspect-square w-full overflow-hidden rounded-xl">
+            <img src={p.previewUrl} alt="" className="size-full object-cover" />
+            {p.status === "uploading" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-foreground/40">
+                <Loader2 className="size-4 animate-spin text-background" aria-hidden="true" />
+              </div>
+            )}
+            {p.status === "error" && (
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-destructive/70"
+                title={p.error ?? "Upload failed."}
+              >
+                <ImageOff className="size-4 text-destructive-foreground" aria-hidden="true" />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {attempts.some((p) => p.status === "error") && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Some photos couldn't be saved. Photo storage isn't turned on yet.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start justify-between gap-2 rounded-2xl bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
+      <span>{message}</span>
+      <button type="button" onClick={onDismiss} aria-label="Dismiss" className="shrink-0">
+        <X className="size-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+// ============================================================================
+// Group + compact stop card (other stops: up next / done)
+// ============================================================================
+
+function Group({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: "muted" | "dim";
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <h2
+        className={cn(
+          "px-1 text-[11px] font-bold uppercase tracking-[0.18em]",
+          tone === "muted" && "text-foreground/70",
+          tone === "dim" && "text-muted-foreground",
+        )}
+      >
+        {label}
+      </h2>
+      <div className="mt-2 space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function StopCard({
+  visit,
+  index,
+  dim,
+  expanded,
+  onToggleExpand,
+  onStart,
+  starting,
+  onToggleItem,
+  togglingServiceId,
+  onPhotoSelected,
+  photoAttempts,
+  onFlag,
+  flags,
+  onPatchTodo,
+  togglingTodoId,
+  onComplete,
+  errorMessage,
+  onDismissError,
+}: {
+  visit: TechVisitListItem;
+  index: number;
+  dim?: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onStart: () => void;
+  starting: boolean;
+  onToggleItem: (item: VisitServiceItem) => void;
+  togglingServiceId: number | null;
+  onPhotoSelected: (file: File) => void;
+  photoAttempts: PhotoAttempt[];
+  onFlag: () => void;
+  flags: FlagResponse[];
+  onPatchTodo: (todo: TodoResponse, request: TechPatchTodoRequest) => void;
+  togglingTodoId: number | null;
+  onComplete: () => void;
+  errorMessage: string | null;
+  onDismissError: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const contextFlags = visit.flags.filter((f) => !flags.some((raised) => raised.id === f.id));
+  const canActOnTodos = visit.status === "IN_PROGRESS";
+
+  return (
+    <article
+      id={`stop-${visit.id}`}
+      className={cn(
+        "scroll-mt-28 overflow-hidden rounded-2xl border border-border bg-card",
+        dim && "opacity-70",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        aria-expanded={expanded}
+        aria-controls={`stop-body-${visit.id}`}
+        className="flex min-h-11 w-full items-center gap-3 px-4 py-3 text-left hover:bg-surface/60"
+      >
+        <span
+          aria-hidden="true"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-surface text-xs font-bold tabular-nums text-foreground"
+        >
+          {index}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">
+            {visit.streetAddress}
+            {visit.unit ? `, Unit ${visit.unit}` : ""}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {formatTime(visit.scheduledFor)} · {visit.city}
+          </p>
+        </div>
+        <StatusPill status={visit.status} />
+        <span aria-hidden="true" className="shrink-0 text-muted-foreground">
+          {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+        </span>
+      </button>
+
+      {expanded && (
+        <div
+          id={`stop-body-${visit.id}`}
+          className="space-y-4 border-t border-border px-4 pb-4 pt-3"
+        >
+          <AccessCard notes={visit.accessNotes} />
+
+          {contextFlags.length > 0 && (
+            <FlagGroup
+              title={`Open items for this home (${contextFlags.length})`}
+              flags={contextFlags}
+            />
+          )}
+
+          <ChecklistSection
+            services={visit.services}
+            onToggleItem={onToggleItem}
+            togglingServiceId={togglingServiceId}
+          />
+
+          <TodoList
+            todos={visit.todos}
+            canAct={canActOnTodos}
+            onPatch={onPatchTodo}
+            togglingTodoId={togglingTodoId}
+          />
+
+          {photoAttempts.length > 0 && <PhotoGrid attempts={photoAttempts} />}
+
+          {flags.length > 0 && <FlagGroup title={`Flags (${flags.length})`} flags={flags} />}
+
+          {errorMessage && <ErrorBanner message={errorMessage} onDismiss={onDismissError} />}
+
+          {/* Action bar — only offer a transition control legal for this
+              visit's current status: Start only from SCHEDULED, and
+              Photo/Flag/Complete only once IN_PROGRESS. */}
+          {visit.status === "SCHEDULED" && (
+            <Button
+              type="button"
+              size="lg"
+              variant="accent"
+              onClick={onStart}
+              disabled={starting}
+              className="h-12 w-full rounded-2xl"
+            >
+              {starting ? (
+                <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+              ) : (
+                <>
+                  <PlayCircle className="size-5" aria-hidden="true" />
+                  Start visit
+                </>
+              )}
+            </Button>
+          )}
+
+          {visit.status === "IN_PROGRESS" && (
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onPhotoSelected(f);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                className="h-12 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <Camera className="size-5" />
+                Photo
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                onClick={onFlag}
+                className="h-12 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <FlagIcon className="size-5" />
+                Flag
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                variant="accent"
+                onClick={onComplete}
+                className="h-12 flex-col gap-0.5 rounded-2xl text-xs"
+              >
+                <CheckCheck className="size-5" />
+                Complete
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
+// ============================================================================
 // Pills / chips
 // ============================================================================
 
 function StatusPill({ status }: { status: VisitStatus }) {
-  const map: Record<VisitStatus, { label: string; cls: string; icon: React.ReactNode }> = {
-    SCHEDULED: {
-      label: "Up next",
-      cls: "bg-surface text-foreground border border-border",
-      icon: <Clock className="size-3" aria-hidden="true" />,
-    },
-    IN_PROGRESS: {
-      label: "In progress",
-      cls: "bg-accent text-accent-foreground",
-      icon: <Loader2 className="size-3 animate-spin" aria-hidden="true" />,
-    },
-    COMPLETED: {
-      label: "Done",
-      cls: "bg-primary/10 text-primary",
-      icon: <CheckCheck className="size-3" aria-hidden="true" />,
-    },
-    INCOMPLETE: {
-      label: "Incomplete",
-      cls: "border border-warning/40 bg-warning/15 text-foreground",
-      icon: <AlertTriangle className="size-3" aria-hidden="true" />,
-    },
-    CANCELLED: {
-      label: "Cancelled",
-      cls: "bg-surface text-muted-foreground border border-border",
-      icon: <Ban className="size-3" aria-hidden="true" />,
-    },
-    RESCHEDULED: {
-      label: "Rescheduled",
-      cls: "bg-surface text-muted-foreground border border-border",
-      icon: <RefreshCw className="size-3" aria-hidden="true" />,
-    },
+  const iconFor: Record<VisitStatus, React.ReactNode> = {
+    SCHEDULED: <Clock className="size-3" aria-hidden="true" />,
+    IN_PROGRESS: <Loader2 className="size-3 animate-spin" aria-hidden="true" />,
+    COMPLETED: <CheckCheck className="size-3" aria-hidden="true" />,
+    INCOMPLETE: <AlertTriangle className="size-3" aria-hidden="true" />,
+    CANCELLED: <Ban className="size-3" aria-hidden="true" />,
+    RESCHEDULED: <RefreshCw className="size-3" aria-hidden="true" />,
   };
-  const s = map[status];
+  const clsFor: Record<VisitStatus, string> = {
+    SCHEDULED: "bg-surface text-foreground border border-border",
+    IN_PROGRESS: "bg-accent text-accent-foreground",
+    COMPLETED: "bg-primary/10 text-primary",
+    INCOMPLETE: "border border-warning/40 bg-warning/15 text-foreground",
+    CANCELLED: "bg-surface text-muted-foreground border border-border",
+    RESCHEDULED: "bg-surface text-muted-foreground border border-border",
+  };
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider",
-        s.cls,
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider",
+        clsFor[status],
       )}
     >
-      {s.icon}
-      {s.label}
+      {iconFor[status]}
+      {STATUS_LABEL[status]}
     </span>
   );
 }
@@ -1730,7 +1996,7 @@ function Overlay({ children, onClose }: { children: React.ReactNode; onClose: ()
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[420px] rounded-t-3xl border-t border-border bg-card p-5 shadow-2xl [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
+        className="w-full max-w-[460px] rounded-t-3xl border-t border-border bg-card p-5 shadow-2xl [padding-bottom:calc(1.25rem+env(safe-area-inset-bottom))]"
       >
         {children}
       </div>
