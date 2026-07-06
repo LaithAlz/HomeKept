@@ -10,15 +10,22 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { ApiError } from "@/lib/api";
 import { useSessionExpiredRedirect } from "@/lib/auth";
-import { formatFullDate, formatTime, formatVisitWindow, getCalendarParts } from "@/lib/format";
-import { useVisit, type AppVisitDetail, type VisitStatus } from "@/lib/visits";
+import {
+  formatCentsCad,
+  formatFullDate,
+  formatTime,
+  formatVisitWindow,
+  getCalendarParts,
+} from "@/lib/format";
+import { useVisit, type AppVisitDetail } from "@/lib/visits";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/app/visits/$id")({
   head: () => ({
-    meta: [{ title: "Visit details — HomeKept" }, { name: "robots", content: "noindex" }],
+    meta: [{ title: "Visit details: HomeKept" }, { name: "robots", content: "noindex" }],
   }),
   component: VisitDetailPage,
 });
@@ -98,13 +105,13 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
       {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
-          <DateBlock scheduledFor={visit.scheduledFor} />
+          <VisitDateBlock scheduledFor={visit.scheduledFor} />
           <div>
             <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
               {weekday}, {fullDate}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 tabular-nums">
                 <Clock className="size-4" aria-hidden="true" />
                 {window}
               </span>
@@ -116,7 +123,7 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
               )}
             </div>
             <div className="mt-2">
-              <StatusBadge status={visit.status} />
+              <VisitStatusBadge status={visit.status} />
             </div>
           </div>
         </div>
@@ -135,7 +142,7 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
         <section aria-labelledby="services-heading">
           <h2
             id="services-heading"
-            className="text-xs font-bold uppercase tracking-wide text-muted-foreground"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
           >
             Scheduled services
           </h2>
@@ -183,7 +190,7 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
 
           <div className="mt-6 border-t border-border pt-5">
             <p className="text-xs text-muted-foreground">
-              Need to move this visit? Use the reschedule link above or contact us — we ask for 24
+              Need to move this visit? Use the reschedule link above or contact us. We ask for 24
               hours' notice when possible.
             </p>
           </div>
@@ -201,19 +208,21 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
   const { weekday } = getCalendarParts(visit.scheduledFor);
   const fullDate = formatFullDate(visit.scheduledFor);
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
+  const hasMaterials = visit.materialsCostCents !== null && visit.materialsCostCents > 0;
+  const hasSidebar = Boolean(visit.completionNotes) || hasMaterials;
 
   return (
     <>
       {/* Header */}
       <header>
         <div className="flex items-start gap-4">
-          <DateBlock scheduledFor={visit.scheduledFor} muted />
+          <VisitDateBlock scheduledFor={visit.scheduledFor} muted />
           <div>
             <h1 className="font-display text-2xl font-extrabold tracking-tight md:text-3xl">
               {weekday}, {fullDate}
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1.5 tabular-nums">
                 <Clock className="size-4" aria-hidden="true" />
                 {window}
               </span>
@@ -225,9 +234,9 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
               )}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusBadge status={visit.status} />
+              <VisitStatusBadge status={visit.status} />
               {visit.completedAt && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs tabular-nums text-muted-foreground">
                   Completed at{" "}
                   <time dateTime={visit.completedAt}>{formatTime(visit.completedAt)}</time>
                 </span>
@@ -239,13 +248,13 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
         <p className="mt-4 max-w-2xl text-muted-foreground">{visit.name}</p>
       </header>
 
-      <div className={cn("mt-8 grid gap-6", visit.completionNotes && "lg:grid-cols-[1fr_360px]")}>
+      <div className={cn("mt-8 grid gap-6", hasSidebar && "lg:grid-cols-[1fr_360px]")}>
         {/* Services */}
         <div className="space-y-6">
           <section aria-labelledby="services-heading">
             <h2
               id="services-heading"
-              className="text-xs font-bold uppercase tracking-wide text-muted-foreground"
+              className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
             >
               Services completed
             </h2>
@@ -255,20 +264,17 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
                   key={s.id}
                   className={cn(
                     "rounded-2xl border bg-card px-4 py-3 text-sm",
-                    s.completed ? "border-border" : "border-amber-300 bg-amber-50/50",
+                    s.completed ? "border-border" : "border-warning/30 bg-warning/10",
                   )}
                 >
                   <div className="flex items-center gap-3">
                     {s.completed ? (
                       <CheckCircle2
-                        className="size-4 shrink-0 text-emerald-600"
+                        className="size-4 shrink-0 text-success"
                         aria-label="Completed"
                       />
                     ) : (
-                      <Circle
-                        className="size-4 shrink-0 text-muted-foreground"
-                        aria-label="Not completed"
-                      />
+                      <Circle className="size-4 shrink-0 text-warning" aria-label="Not completed" />
                     )}
                     <span className={cn("font-medium", !s.completed && "text-muted-foreground")}>
                       {s.serviceName}
@@ -283,18 +289,40 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
           </section>
         </div>
 
-        {/* Sidebar: notes */}
-        {visit.completionNotes && (
+        {/* Sidebar: notes + materials */}
+        {hasSidebar && (
           <div className="space-y-4">
-            <section
-              aria-labelledby="notes-heading"
-              className="rounded-3xl border border-border bg-card p-6"
-            >
-              <h2 id="notes-heading" className="font-display text-base font-bold text-foreground">
-                Technician notes
-              </h2>
-              <p className="mt-3 text-sm text-muted-foreground">{visit.completionNotes}</p>
-            </section>
+            {visit.completionNotes && (
+              <section
+                aria-labelledby="notes-heading"
+                className="rounded-3xl border border-border bg-card p-6"
+              >
+                <h2 id="notes-heading" className="font-display text-base font-bold text-foreground">
+                  Technician notes
+                </h2>
+                <p className="mt-3 text-sm text-muted-foreground">{visit.completionNotes}</p>
+              </section>
+            )}
+
+            {hasMaterials && (
+              <section
+                aria-labelledby="materials-heading"
+                className="rounded-3xl border border-border bg-card p-6"
+              >
+                <h2
+                  id="materials-heading"
+                  className="font-display text-base font-bold text-foreground"
+                >
+                  Materials
+                </h2>
+                <p className="mt-3 font-display text-2xl font-extrabold tabular-nums text-foreground">
+                  {formatCentsCad(visit.materialsCostCents ?? 0)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Specialty parts used during this visit, billed separately from your plan.
+                </p>
+              </section>
+            )}
           </div>
         )}
       </div>
@@ -357,75 +385,5 @@ function VisitNotFound() {
         </div>
       </div>
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared helpers
-// ---------------------------------------------------------------------------
-
-function DateBlock({ scheduledFor, muted }: { scheduledFor: string; muted?: boolean }) {
-  const { month, day, weekday } = getCalendarParts(scheduledFor);
-
-  return (
-    <div
-      className={cn(
-        "flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-2xl border text-center",
-        muted
-          ? "border-border bg-background text-muted-foreground"
-          : "border-primary/30 bg-primary/10 text-primary",
-      )}
-      aria-label={`${weekday}, ${month} ${day}`}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-wide">{month}</div>
-      <div className="font-display text-2xl font-extrabold leading-none">{day}</div>
-    </div>
-  );
-}
-
-const STATUS_STYLES: Record<
-  VisitStatus,
-  { className: string; icon: typeof CheckCircle2; label: string }
-> = {
-  SCHEDULED: { className: "bg-primary/10 text-primary", icon: CalendarCheck, label: "Scheduled" },
-  IN_PROGRESS: {
-    className: "bg-primary/10 text-primary",
-    icon: CalendarCheck,
-    label: "In progress",
-  },
-  COMPLETED: {
-    className: "bg-emerald-100 text-emerald-800",
-    icon: CheckCircle2,
-    label: "Completed",
-  },
-  INCOMPLETE: {
-    className: "bg-amber-100 text-amber-800",
-    icon: Circle,
-    label: "Incomplete",
-  },
-  CANCELLED: {
-    className: "bg-muted text-muted-foreground",
-    icon: Circle,
-    label: "Cancelled",
-  },
-  RESCHEDULED: {
-    className: "bg-muted text-muted-foreground",
-    icon: RefreshCcw,
-    label: "Rescheduled",
-  },
-};
-
-function StatusBadge({ status }: { status: VisitStatus }) {
-  const { className, icon: Icon, label } = STATUS_STYLES[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-        className,
-      )}
-    >
-      <Icon className="size-3.5" aria-hidden="true" />
-      {label}
-    </span>
   );
 }
