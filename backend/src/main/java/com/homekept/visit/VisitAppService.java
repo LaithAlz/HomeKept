@@ -64,15 +64,17 @@ public class VisitAppService {
      * Returns a cursor-paginated list of visits for the authenticated subscriber.
      * Ordered by scheduledFor descending (newest/soonest first).
      *
-     * @param userId authenticated user id (from JWT principal)
-     * @param status optional status filter
-     * @param cursor optional id cursor (exclusive upper bound)
-     * @param limit  optional page size (default 20, capped at 100)
+     * @param userId     authenticated user id (from JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link com.homekept.subscription.SubscriberQueryService#resolveOwnedSubscriber}
+     * @param status     optional status filter
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size (default 20, capped at 100)
      * @return paginated visit list
      */
     @Transactional(readOnly = true)
-    public List<AppVisitListItem> listVisits(Long userId, String status, Long cursor, Integer limit) {
-        Long subscriberId = resolveSubscriberId(userId);
+    public List<AppVisitListItem> listVisits(Long userId, Long propertyId, String status, Long cursor, Integer limit) {
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
         int pageSize = resolveLimit(limit);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
@@ -102,14 +104,15 @@ public class VisitAppService {
      * Returns the full detail of a visit, including its checklist.
      * Returns 404 if the visit does not belong to the authenticated subscriber.
      *
-     * @param userId    authenticated user id
-     * @param visitId   the visit id
+     * @param userId     authenticated user id
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param visitId    the visit id
      * @return full visit detail
      * @throws VisitNotFoundException if not found or not owned by this subscriber
      */
     @Transactional(readOnly = true)
-    public AppVisitDetail getVisit(Long userId, Long visitId) {
-        Long subscriberId = resolveSubscriberId(userId);
+    public AppVisitDetail getVisit(Long userId, Long propertyId, Long visitId) {
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
         Visit visit = visitRepository.findByIdAndSubscriberId(visitId, subscriberId)
                 .orElseThrow(() -> {
                     log.debug("visit_not_found_or_not_owned visitId={} subscriberId={}", visitId, subscriberId);
@@ -204,13 +207,13 @@ public class VisitAppService {
     }
 
     /**
-     * Resolves the subscriber id from the authenticated user id.
-     * Returns 404 if no subscriber row exists for this user.
+     * Resolves the subscriber id from the authenticated user id, scoped by an optional
+     * {@code propertyId} (multi-property portfolio). Ownership failures (including an
+     * unrecognised or someone-else's {@code propertyId}) surface as
+     * {@link com.homekept.subscription.SubscriberNotFoundException} (→ 404).
      */
-    private Long resolveSubscriberId(Long userId) {
-        return subscriberQueryService.findByUserId(userId)
-                .map(s -> s.getId())
-                .orElseThrow(() -> new VisitNotFoundException(-1L));
+    private Long resolveSubscriberId(Long userId, Long propertyId) {
+        return subscriberQueryService.resolveOwnedSubscriber(userId, propertyId).getId();
     }
 
     /**

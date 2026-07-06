@@ -46,63 +46,70 @@ public class AppVisitController {
     }
 
     /**
-     * GET /api/app/visits?status=&cursor=&limit=
+     * GET /api/app/visits?propertyId=&status=&cursor=&limit=
      *
      * <p>Returns the authenticated subscriber's visits, cursor-paginated and ordered by
      * scheduledFor descending (newest/soonest first per the API contract).
      *
-     * @param status optional status filter (name of {@link VisitStatus})
-     * @param cursor optional id cursor (exclusive upper bound)
-     * @param limit  optional page size (default 20, max 100)
-     * @param auth   JWT principal — Long user id
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link com.homekept.subscription.SubscriberQueryService#resolveOwnedSubscriber}
+     * @param status     optional status filter (name of {@link VisitStatus})
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size (default 20, max 100)
+     * @param auth       JWT principal — Long user id
      */
     @GetMapping
     public ResponseEntity<List<AppVisitListItem>> listVisits(
+            @RequestParam(required = false) Long propertyId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer limit,
             Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(visitAppService.listVisits(userId, status, cursor, limit));
+        return ResponseEntity.ok(visitAppService.listVisits(userId, propertyId, status, cursor, limit));
     }
 
     /**
-     * GET /api/app/visits/{id}
+     * GET /api/app/visits/{id}?propertyId=
      *
      * <p>Returns the full visit detail including checklist. Returns 404 if the visit
      * does not belong to the authenticated subscriber (ownership → 404, not 403).
      *
-     * @param id   the visit id
-     * @param auth JWT principal — Long user id
+     * @param id         the visit id
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param auth       JWT principal — Long user id
      */
     @GetMapping("/{id}")
     public ResponseEntity<AppVisitDetail> getVisit(
             @PathVariable Long id,
+            @RequestParam(required = false) Long propertyId,
             Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(visitAppService.getVisit(userId, id));
+        return ResponseEntity.ok(visitAppService.getVisit(userId, propertyId, id));
     }
 
     /**
-     * POST /api/app/visits/{id}/reschedule-request
+     * POST /api/app/visits/{id}/reschedule-request?propertyId=
      *
      * <p>Records a PENDING reschedule request with the customer's proposed time slots,
      * for admin confirmation. Returns 404 if the visit is not the authenticated
      * subscriber's; 409 if the visit is not SCHEDULED or a pending request already exists.
      *
-     * @param id      the visit id
-     * @param request the proposed times
-     * @param auth    JWT principal — Long user id
+     * @param id         the visit id
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param request    the proposed times
+     * @param auth       JWT principal — Long user id
      * @return 201 with the created request
      */
     @PostMapping("/{id}/reschedule-request")
     public ResponseEntity<RescheduleRequestResponse> requestReschedule(
             @PathVariable Long id,
+            @RequestParam(required = false) Long propertyId,
             @Valid @RequestBody CreateRescheduleRequest request,
             Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         RescheduleRequestResponse response =
-                rescheduleService.createRequest(userId, id, request.preferredDates());
+                rescheduleService.createRequest(userId, propertyId, id, request.preferredDates());
         return ResponseEntity
                 .created(java.net.URI.create("/api/app/visits/" + id + "/reschedule-request"))
                 .body(response);

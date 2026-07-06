@@ -135,24 +135,51 @@ acknowledged and ignored.
 
 ## Owner app (role: CUSTOMER — or ADMIN via ownership check)
 
+### Multi-property portfolio (Phase 1)
+
+The data model always supported one user owning several subscribers (one per property,
+each independently billed); Phase 1 exposes it. A landlord/property-manager is just a
+CUSTOMER user who owns more than one subscriber — no separate "organization" concept yet.
+
+`GET /api/app/properties` lists every property a user owns. Every other endpoint below
+that reads or acts on a subscriber now also accepts an optional `?propertyId=` query
+parameter to choose *which* of the user's properties it applies to. Resolution rule
+(`SubscriberQueryService#resolveOwnedSubscriber`):
+
+- `propertyId` given: scopes to the caller's subscriber for that property. If the caller
+  owns no subscriber there — including when the property belongs to a different user
+  entirely — → `404` (ownership failures never distinguish "doesn't exist" from "not
+  yours").
+- `propertyId` omitted, caller owns exactly one subscriber: uses it. This is the
+  pre-portfolio behaviour — a single-property customer's app never needs to send
+  `propertyId`, fully backward compatible.
+- `propertyId` omitted, caller owns several: defaults to the earliest-created (lowest id)
+  subscriber as the "primary" property, so an existing single-property client that hasn't
+  been updated to send `propertyId` still gets `200` instead of a `400`.
+- Caller owns no subscriber at all → `404`.
+
 | Endpoint | Returns / does |
 |---|---|
-| `GET /api/app/subscription` | `{ status, planCode, planDisplayName, billingCycle, priceCents, foundingRate, foundingRateExpiresAt, currentPeriodStart, currentPeriodEnd, nextVisitDate }` — `planCode`/`planDisplayName`/`priceCents` are `null` pre-checkout (`PENDING_ACTIVATION`, no plan tier assigned yet); `priceCents` is the price actually charged for the billing cycle (founding rate takes precedence when active — it is monthly-only, per docs/pricing-and-visits.md); `nextVisitDate` is the subscriber's next SCHEDULED visit, `null` if none. No subscriber row for the authenticated user → `404`. (`picksRemaining`/`premiumPicksRemaining` — picks tracking — are a follow-up issue, not yet built.) |
-| `GET /api/app/account` | `{ firstName, lastName, email, streetAddress, unit, city, postalCode }` — settings-page profile; bundles the service property's address with name/email (which also appear on `GET /api/auth/me`) for a single round trip. Never includes decrypted access notes. No subscriber row for the authenticated user → `404` |
-| `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }] }` |
-| `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
-| `GET /api/app/health-score` | `{ score, delta, computedAt, flagged: [{ id, body, severity, createdAt }] }` — v1 rubric: `score = clamp(100 − open-flag penalty (URGENT 20 / ATTENTION 10 / INFO 3) − checklist deduction (up to 15 × incomplete rate of the last completed visit), 0..100)`, computed on read; `delta` vs the most recent `health_score_snapshot` (written per completed visit); `flagged` = OPEN flags |
+| `GET /api/app/properties` | one row per property the authenticated user owns, ordered oldest-first: `[{ propertyId, subscriberId, streetAddress, city, status, planCode, planDisplayName, healthScore, nextVisitDate, openItemsCount }]` — composed from the same sources as the endpoints below (no new data); `planCode`/`planDisplayName` `null` pre-checkout; `nextVisitDate` `null` if no SCHEDULED visit. A user with no subscriber gets `[]`, not `404` (this is a list of the caller's own properties, not an ownership check on one) |
+| `GET /api/app/subscription?propertyId=` | `{ status, planCode, planDisplayName, billingCycle, priceCents, foundingRate, foundingRateExpiresAt, currentPeriodStart, currentPeriodEnd, nextVisitDate }` — `planCode`/`planDisplayName`/`priceCents` are `null` pre-checkout (`PENDING_ACTIVATION`, no plan tier assigned yet); `priceCents` is the price actually charged for the billing cycle (founding rate takes precedence when active — it is monthly-only, per docs/pricing-and-visits.md); `nextVisitDate` is the subscriber's next SCHEDULED visit, `null` if none. No matching subscriber for the authenticated user → `404`. (`picksRemaining`/`premiumPicksRemaining` — picks tracking — are a follow-up issue, not yet built.) |
+| `GET /api/app/account?propertyId=` | `{ firstName, lastName, email, streetAddress, unit, city, postalCode }` — settings-page profile; bundles the service property's address with name/email (which also appear on `GET /api/auth/me`) for a single round trip. Never includes decrypted access notes. No matching subscriber for the authenticated user → `404` |
+| `GET /api/app/visits?propertyId=&status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }] }` |
+| `GET /api/app/visits/{id}?propertyId=` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]` |
+| `GET /api/app/health-score?propertyId=` | `{ score, delta, computedAt, flagged: [{ id, body, severity, createdAt }] }` — v1 rubric: `score = clamp(100 − open-flag penalty (URGENT 20 / ATTENTION 10 / INFO 3) − checklist deduction (up to 15 × incomplete rate of the last completed visit), 0..100)`, computed on read; `delta` vs the most recent `health_score_snapshot` (written per completed visit); `flagged` = OPEN flags |
 | `GET /api/app/activity?cursor=&limit=` | dashboard feed (visit events, billing events, reminders) |
-| `GET /api/app/todos` | "your list" — the authenticated customer's todo items, newest first: `[{ id, subscriberId, body, status, visitId, declineNote, createdAt, updatedAt }]` |
-| `POST /api/app/todos` | `{ body }` → `201`, creates an `OPEN` item with `visitId: null` |
-| `DELETE /api/app/todos/{id}` | Removes an item from the list → `204`. Ownership enforced (404, not 403) |
+| `GET /api/app/todos?propertyId=` | "your list" — the authenticated customer's todo items, newest first: `[{ id, subscriberId, body, status, visitId, declineNote, createdAt, updatedAt }]` |
+| `POST /api/app/todos?propertyId=` | `{ body }` → `201`, creates an `OPEN` item with `visitId: null` |
+| `DELETE /api/app/todos/{id}?propertyId=` | Removes an item from the list → `204`. Ownership enforced (404, not 403) |
 | `POST /api/app/picks` | `{ serviceId }` — spend an included pick (validates allowance + max-premium); folds into nearest visit |
-| `POST /api/app/visits/{id}/reschedule-request` | `{ preferredDates: [Instant, …] }` (1–5 timeslots) → `201 { id, visitId, status, preferredDates, createdAt }`. Stored as a PENDING `reschedule_request` (+ `reschedule_request_slot` rows) for admin confirmation. Visit must be owned (else 404) and SCHEDULED; a duplicate PENDING request for the same visit → 409 |
+| `POST /api/app/visits/{id}/reschedule-request?propertyId=` | `{ preferredDates: [Instant, …] }` (1–5 timeslots) → `201 { id, visitId, status, preferredDates, createdAt }`. Stored as a PENDING `reschedule_request` (+ `reschedule_request_slot` rows) for admin confirmation. Visit must be owned (else 404) and SCHEDULED; a duplicate PENDING request for the same visit → 409 |
 | `POST /api/checkout/extra` | `{ serviceId }` — one-off Stripe Checkout (`mode=payment`) with `subscriberId`/`serviceId` metadata; on the `checkout.session.completed` webhook (distinguished by mode + metadata from subscription checkouts) an EXTRA visit / `VisitService(source=EXTRA)` is created — never burns the included-picks allowance |
-| `POST /api/app/subscription/pause` · `POST /api/app/subscription/resume` | → `200 { status, currentPeriodEnd }` — self-serve via Stripe; the `customer.subscription.paused`/`resumed` webhook applies the status change, so `status` is the current (pre-webhook) value. Pause requires ACTIVE, resume requires PAUSED, else `409 ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409 NO_BILLING_ACCOUNT` |
-| `POST /api/app/subscription/cancel` | `{ reason }` (required, churn data) → `200 { status, currentPeriodEnd }` — cancel-at-period-end via Stripe; the reason is stored as a `MANUAL` `subscription_event` (payload `{ "reason": ... }`) and `customer.subscription.deleted` applies CANCELLED when the period ends. Already-cancelled → `409`; blank reason → `400` |
+| `POST /api/app/subscription/pause?propertyId=` · `POST /api/app/subscription/resume?propertyId=` | → `200 { status, currentPeriodEnd }` — self-serve via Stripe; the `customer.subscription.paused`/`resumed` webhook applies the status change, so `status` is the current (pre-webhook) value. Pause requires ACTIVE, resume requires PAUSED, else `409 ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409 NO_BILLING_ACCOUNT` |
+| `POST /api/app/subscription/cancel?propertyId=` | `{ reason }` (required, churn data) → `200 { status, currentPeriodEnd }` — cancel-at-period-end via Stripe; the reason is stored as a `MANUAL` `subscription_event` (payload `{ "reason": ... }`) and `customer.subscription.deleted` applies CANCELLED when the period ends. Already-cancelled → `409`; blank reason → `400` |
 
 Plan change + payment method = Stripe customer portal (`POST /api/billing/portal-session`).
+Per-property billing (each property = its own Stripe subscription) — see
+docs/portfolio-multi-property-proposal.md; adding a new property to an existing account
+("Add a property") is not built yet (Phase 2).
 
 ---
 

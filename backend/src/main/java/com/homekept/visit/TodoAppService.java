@@ -60,11 +60,13 @@ public class TodoAppService {
     /**
      * Returns the authenticated customer's todo items ("your list"), newest first.
      *
-     * @param userId authenticated user id (from JWT principal)
+     * @param userId     authenticated user id (from JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link com.homekept.subscription.SubscriberQueryService#resolveOwnedSubscriber}
      */
     @Transactional(readOnly = true)
-    public List<TodoResponse> listTodos(Long userId) {
-        Long subscriberId = resolveSubscriberId(userId);
+    public List<TodoResponse> listTodos(Long userId, Long propertyId) {
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
         return todoItemRepository.findBySubscriberIdOrderByCreatedAtDesc(subscriberId)
                 .stream()
                 .map(this::toResponse)
@@ -74,13 +76,14 @@ public class TodoAppService {
     /**
      * Adds a new OPEN item to the authenticated customer's list.
      *
-     * @param userId  authenticated user id (from JWT principal)
-     * @param request the item's free-text body
+     * @param userId     authenticated user id (from JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param request    the item's free-text body
      * @return the created item
      */
     @Transactional
-    public TodoResponse createTodo(Long userId, AppCreateTodoRequest request) {
-        Long subscriberId = resolveSubscriberId(userId);
+    public TodoResponse createTodo(Long userId, Long propertyId, AppCreateTodoRequest request) {
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
         TodoItem saved = todoItemRepository.save(new TodoItem(subscriberId, request.body()));
 
         // "todo_added" analytics event (arch doc Part 6) — the body is free text and is
@@ -95,12 +98,13 @@ public class TodoAppService {
      * Returns 404 if the item does not exist or does not belong to this customer
      * (ownership-failure rule — 404, not 403).
      *
-     * @param userId authenticated user id (from JWT principal)
-     * @param todoId the todo item id
+     * @param userId     authenticated user id (from JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param todoId     the todo item id
      */
     @Transactional
-    public void deleteTodo(Long userId, Long todoId) {
-        Long subscriberId = resolveSubscriberId(userId);
+    public void deleteTodo(Long userId, Long propertyId, Long todoId) {
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
         TodoItem todo = todoItemRepository.findByIdAndSubscriberId(todoId, subscriberId)
                 .orElseThrow(() -> {
                     log.debug("todo_not_found_or_not_owned todoId={} subscriberId={}", todoId, subscriberId);
@@ -113,14 +117,12 @@ public class TodoAppService {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Resolves the subscriber id from the authenticated user id.
-     * Returns 404 if no subscriber row exists for this user.
+     * Resolves the subscriber id from the authenticated user id, scoped by an optional
+     * {@code propertyId} (multi-property portfolio). Ownership failures surface as
+     * {@link com.homekept.subscription.SubscriberNotFoundException} (→ 404).
      */
-    private Long resolveSubscriberId(Long userId) {
-        return subscriberQueryService.findByUserId(userId)
-                .map(s -> s.getId())
-                // No subscriber → treat as not-found (ownership rule → 404, never 403).
-                .orElseThrow(() -> new VisitNotFoundException(-1L));
+    private Long resolveSubscriberId(Long userId, Long propertyId) {
+        return subscriberQueryService.resolveOwnedSubscriber(userId, propertyId).getId();
     }
 
     private TodoResponse toResponse(TodoItem t) {

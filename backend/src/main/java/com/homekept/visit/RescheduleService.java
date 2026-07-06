@@ -63,6 +63,7 @@ public class RescheduleService {
      * Creates a PENDING reschedule request for one of the authenticated customer's visits.
      *
      * @param userId         the authenticated user's id (JWT principal)
+     * @param propertyId     optional property to scope to (multi-property portfolio)
      * @param visitId        the visit to reschedule
      * @param preferredSlots 1..N proposed start times
      * @return the created request
@@ -71,9 +72,9 @@ public class RescheduleService {
      *                                            request already exists for it (409)
      */
     @Transactional
-    public RescheduleRequestResponse createRequest(Long userId, Long visitId,
+    public RescheduleRequestResponse createRequest(Long userId, Long propertyId, Long visitId,
                                                    List<Instant> preferredSlots) {
-        Long subscriberId = resolveSubscriberId(userId);
+        Long subscriberId = resolveSubscriberId(userId, propertyId);
 
         Visit visit = visitRepository.findByIdAndSubscriberId(visitId, subscriberId)
                 .orElseThrow(() -> {
@@ -180,11 +181,8 @@ public class RescheduleService {
         return request;
     }
 
-    private Long resolveSubscriberId(Long userId) {
-        return subscriberQueryService.findByUserId(userId)
-                .map(s -> s.getId())
-                // No subscriber → treat as not-found (ownership rule → 404, never 403).
-                .orElseThrow(() -> new VisitNotFoundException(-1L));
+    private Long resolveSubscriberId(Long userId, Long propertyId) {
+        return subscriberQueryService.resolveOwnedSubscriber(userId, propertyId).getId();
     }
 
     private List<Instant> loadSlots(Long requestId) {

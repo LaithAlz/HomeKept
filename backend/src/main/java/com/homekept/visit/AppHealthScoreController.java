@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -24,13 +25,17 @@ public class AppHealthScoreController {
     }
 
     /**
-     * GET /api/app/health-score → {@code { score, delta, computedAt, flagged: [...] }}.
+     * GET /api/app/health-score?propertyId= → {@code { score, delta, computedAt, flagged: [...] }}.
      *
-     * @param auth JWT principal — Long user id
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link com.homekept.subscription.SubscriberQueryService#resolveOwnedSubscriber}
+     * @param auth       JWT principal — Long user id
      */
     @GetMapping("/api/app/health-score")
-    public ResponseEntity<HealthScoreResponse> getHealthScore(Authentication auth) {
+    public ResponseEntity<HealthScoreResponse> getHealthScore(
+            @RequestParam(required = false) Long propertyId,
+            Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(healthScoreService.getHealthScore(userId));
+        return ResponseEntity.ok(healthScoreService.getHealthScore(userId, propertyId));
     }
 }

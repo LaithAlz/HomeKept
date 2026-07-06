@@ -30,9 +30,10 @@ import java.time.Instant;
  * </ul>
  *
  * <h2>Pre-subscription users</h2>
- * <p>A user with no {@link Subscriber} row gets {@link SubscriberNotFoundException} (→ 404),
- * matching how {@code AppVisitController} and {@code AppHealthScoreController} treat the
- * same case (ownership-failure rule: not-found and not-yours both return 404). In practice
+ * <p>A user with no matching {@link Subscriber} row gets {@link SubscriberNotFoundException}
+ * (→ 404, via {@link SubscriberQueryService#resolveOwnedSubscriber}), matching how
+ * {@code AppVisitController} and {@code AppHealthScoreController} treat the same case
+ * (ownership-failure rule: not-found and not-yours both return 404). In practice
  * every CUSTOMER-role user has a subscriber row from the moment their account is created
  * (activation creates {@code User}, {@code Property}, and {@code Subscriber} together), so
  * this is a defensive guard rather than an expected steady-state response.
@@ -40,18 +41,18 @@ import java.time.Instant;
 @Service
 public class SubscriptionAppService {
 
-    private final SubscriberRepository subscriberRepository;
+    private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final UserQueryService userQueryService;
     private final PropertyService propertyService;
     private final VisitQueryService visitQueryService;
 
-    public SubscriptionAppService(SubscriberRepository subscriberRepository,
+    public SubscriptionAppService(SubscriberQueryService subscriberQueryService,
                                   CatalogService catalogService,
                                   UserQueryService userQueryService,
                                   PropertyService propertyService,
                                   VisitQueryService visitQueryService) {
-        this.subscriberRepository = subscriberRepository;
+        this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.userQueryService = userQueryService;
         this.propertyService = propertyService;
@@ -61,12 +62,14 @@ public class SubscriptionAppService {
     /**
      * Returns the authenticated customer's plan/billing summary.
      *
-     * @param userId the authenticated user's id (JWT principal)
-     * @throws SubscriberNotFoundException if the user has no subscriber row (→ 404)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link SubscriberQueryService#resolveOwnedSubscriber}
+     * @throws SubscriberNotFoundException if the user has no matching subscriber (→ 404)
      */
     @Transactional(readOnly = true)
-    public AppSubscriptionResponse getSubscription(Long userId) {
-        Subscriber subscriber = requireSubscriber(userId);
+    public AppSubscriptionResponse getSubscription(Long userId, Long propertyId) {
+        Subscriber subscriber = requireSubscriber(userId, propertyId);
 
         String planCode = null;
         String planDisplayName = null;
@@ -100,12 +103,13 @@ public class SubscriptionAppService {
     /**
      * Returns the authenticated customer's account profile (name, email, service address).
      *
-     * @param userId the authenticated user's id (JWT principal)
-     * @throws SubscriberNotFoundException if the user has no subscriber row (→ 404)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @throws SubscriberNotFoundException if the user has no matching subscriber (→ 404)
      */
     @Transactional(readOnly = true)
-    public AppAccountResponse getAccount(Long userId) {
-        Subscriber subscriber = requireSubscriber(userId);
+    public AppAccountResponse getAccount(Long userId, Long propertyId) {
+        Subscriber subscriber = requireSubscriber(userId, propertyId);
 
         var profile = userQueryService.findProfileById(userId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -126,10 +130,8 @@ public class SubscriptionAppService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Subscriber requireSubscriber(Long userId) {
-        return subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
+    private Subscriber requireSubscriber(Long userId, Long propertyId) {
+        return subscriberQueryService.resolveOwnedSubscriber(userId, propertyId);
     }
 
     /**
