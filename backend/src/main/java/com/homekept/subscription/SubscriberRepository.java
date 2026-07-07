@@ -45,8 +45,32 @@ public interface SubscriberRepository extends JpaRepository<Subscriber, Long> {
      */
     List<Subscriber> findByStatus(SubscriberStatus status);
 
-    /** Find by user id — each user has at most one active subscriber at a time. */
+    /**
+     * Find by user id — each user has at most one active subscriber at a time.
+     *
+     * @deprecated kept for callers that still assume a single subscriber per user.
+     * New code that needs to support the multi-property portfolio (a user owning several
+     * subscribers) should use {@link #findAllByUserIdOrderByIdAsc} or
+     * {@link #findByUserIdAndPropertyId} via {@link SubscriberQueryService}.
+     */
     Optional<Subscriber> findByUserId(Long userId);
+
+    /**
+     * All subscribers owned by a user, oldest first (lowest id first).
+     *
+     * <p>Multi-property portfolio (Phase 1 — docs/portfolio-multi-property-proposal.md):
+     * one user can own several subscribers, one per property. A single-property user gets
+     * a one-element list, so this is a strict superset of {@link #findByUserId}.
+     */
+    List<Subscriber> findAllByUserIdOrderByIdAsc(Long userId);
+
+    /**
+     * A user's subscriber for a specific property, if they own one there.
+     * Used to scope a per-property endpoint to a caller-chosen {@code propertyId} while
+     * still enforcing ownership (a property id belonging to a different user matches
+     * nothing here, so the caller gets the same not-found result as a bogus id).
+     */
+    Optional<Subscriber> findByUserIdAndPropertyId(Long userId, Long propertyId);
 
     /**
      * Find by Stripe subscription id.

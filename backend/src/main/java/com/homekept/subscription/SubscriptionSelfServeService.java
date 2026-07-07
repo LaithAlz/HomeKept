@@ -39,18 +39,18 @@ public class SubscriptionSelfServeService {
     /** Stripe event_type recorded for the churn reason. */
     private static final String CANCELLATION_REQUESTED = "CANCELLATION_REQUESTED";
 
-    private final SubscriberRepository subscriberRepository;
+    private final SubscriberQueryService subscriberQueryService;
     private final SubscriptionEventRepository subscriptionEventRepository;
     private final SubscriberStateMachine stateMachine;
     private final StripeService stripeService;
     private final ObjectMapper objectMapper;
 
-    public SubscriptionSelfServeService(SubscriberRepository subscriberRepository,
+    public SubscriptionSelfServeService(SubscriberQueryService subscriberQueryService,
                                         SubscriptionEventRepository subscriptionEventRepository,
                                         SubscriberStateMachine stateMachine,
                                         StripeService stripeService,
                                         ObjectMapper objectMapper) {
-        this.subscriberRepository = subscriberRepository;
+        this.subscriberQueryService = subscriberQueryService;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.stateMachine = stateMachine;
         this.stripeService = stripeService;
@@ -61,12 +61,14 @@ public class SubscriptionSelfServeService {
      * Requests a pause on the authenticated subscriber's billing.
      * Eligible only from ACTIVE. The PAUSED transition is applied by the webhook.
      *
-     * @param userId the authenticated user's id (JWT principal)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link SubscriberQueryService#resolveOwnedSubscriber}
      * @return the current status and period end
      */
     @Transactional(readOnly = true)
-    public SubscriptionActionResponse pause(Long userId) {
-        Subscriber subscriber = requireBilledSubscriber(userId);
+    public SubscriptionActionResponse pause(Long userId, Long propertyId) {
+        Subscriber subscriber = requireBilledSubscriber(userId, propertyId);
 
         if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.PAUSED)) {
             throw new IllegalSubscriptionStateException(subscriber.getStatus(), SubscriberStatus.PAUSED);
@@ -84,12 +86,13 @@ public class SubscriptionSelfServeService {
      * Requests a resume on the authenticated subscriber's billing.
      * Eligible only from PAUSED. The ACTIVE transition is applied by the webhook.
      *
-     * @param userId the authenticated user's id (JWT principal)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio)
      * @return the current status and period end
      */
     @Transactional(readOnly = true)
-    public SubscriptionActionResponse resume(Long userId) {
-        Subscriber subscriber = requireBilledSubscriber(userId);
+    public SubscriptionActionResponse resume(Long userId, Long propertyId) {
+        Subscriber subscriber = requireBilledSubscriber(userId, propertyId);
 
         // Resume is specifically un-pausing: only a PAUSED subscriber qualifies. (The state
         // machine also allows PAYMENT_ISSUE → ACTIVE, but that recovery path is webhook-only,
@@ -111,13 +114,14 @@ public class SubscriptionSelfServeService {
      * Eligible from any non-terminal billed status. CANCELLED is applied by the
      * {@code customer.subscription.deleted} webhook when the period ends.
      *
-     * @param userId the authenticated user's id (JWT principal)
-     * @param reason the customer's free-text cancellation reason (required, churn data)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio)
+     * @param reason     the customer's free-text cancellation reason (required, churn data)
      * @return the current status and period end (when access runs through)
      */
     @Transactional
-    public SubscriptionActionResponse cancel(Long userId, String reason) {
-        Subscriber subscriber = requireBilledSubscriber(userId);
+    public SubscriptionActionResponse cancel(Long userId, Long propertyId, String reason) {
+        Subscriber subscriber = requireBilledSubscriber(userId, propertyId);
 
         if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.CANCELLED)) {
             throw new IllegalSubscriptionStateException(subscriber.getStatus(), SubscriberStatus.CANCELLED);
@@ -145,15 +149,14 @@ public class SubscriptionSelfServeService {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Resolves the subscriber for the user and verifies a Stripe subscription exists.
+     * Resolves the subscriber for the user (scoped by an optional {@code propertyId}) and
+     * verifies a Stripe subscription exists.
      *
-     * @throws SubscriberNotFoundException if the user has no subscriber row (404)
+     * @throws SubscriberNotFoundException if the user has no matching subscriber (404)
      * @throws NoBillingAccountException   if no Stripe subscription id is set yet (409)
      */
-    private Subscriber requireBilledSubscriber(Long userId) {
-        Subscriber subscriber = subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
+    private Subscriber requireBilledSubscriber(Long userId, Long propertyId) {
+        Subscriber subscriber = subscriberQueryService.resolveOwnedSubscriber(userId, propertyId);
 
         if (subscriber.getStripeSubscriptionId() == null
                 || subscriber.getStripeSubscriptionId().isBlank()) {

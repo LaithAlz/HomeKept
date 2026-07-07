@@ -31,4 +31,11 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, Long> {
      * Used for the technician day-sheet (todos to be worked on during the visit).
      */
     List<TodoItem> findByVisitId(Long visitId);
+
+    /**
+     * Counts todo items for a subscriber in a given status.
+     * Used by {@link VisitQueryService#countOpenTodos} for the portfolio summary
+     * ({@code GET /api/app/properties}) "open items" count.
+     */
+    long countBySubscriberIdAndStatus(Long subscriberId, TodoItemStatus status);
 }

@@ -3,7 +3,6 @@ package com.homekept.visit;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.HealthScoreFlaggedItem;
 import com.homekept.visit.dto.HealthScoreResponse;
-import com.homekept.visit.exception.VisitNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,14 +56,15 @@ public class HealthScoreService {
      * Returns the live score for the authenticated customer, plus the delta since the last
      * snapshot and the current OPEN flags.
      *
-     * @param userId the authenticated user's id (JWT principal)
-     * @throws VisitNotFoundException if the user has no subscriber (→ 404, ownership rule)
+     * @param userId     the authenticated user's id (JWT principal)
+     * @param propertyId optional property to scope to (multi-property portfolio); see
+     *                   {@link com.homekept.subscription.SubscriberQueryService#resolveOwnedSubscriber}
+     * @throws com.homekept.subscription.SubscriberNotFoundException
+     *         if the user has no matching subscriber (→ 404, ownership rule)
      */
     @Transactional(readOnly = true)
-    public HealthScoreResponse getHealthScore(Long userId) {
-        Long subscriberId = subscriberQueryService.findByUserId(userId)
-                .map(s -> s.getId())
-                .orElseThrow(() -> new VisitNotFoundException(-1L));
+    public HealthScoreResponse getHealthScore(Long userId, Long propertyId) {
+        Long subscriberId = subscriberQueryService.resolveOwnedSubscriber(userId, propertyId).getId();
 
         int score = computeScore(subscriberId);
         int delta = snapshotRepository.findFirstBySubscriberIdOrderByComputedAtDesc(subscriberId)
@@ -86,6 +86,22 @@ public class HealthScoreService {
     @Transactional
     public HealthScoreSnapshot snapshotOnCompletion(Long subscriberId) {
         return snapshotRepository.save(new HealthScoreSnapshot(subscriberId, computeScore(subscriberId)));
+    }
+
+    /**
+     * Returns the live score for a subscriber the caller has already resolved/verified
+     * ownership for. For cross-domain reads only (e.g. the subscription domain's
+     * {@code GET /api/app/properties} portfolio summary) — mirrors the pattern in
+     * {@link VisitQueryService}: the caller passes a {@code subscriberId} it already owns,
+     * never a raw, untrusted HTTP parameter, so this does not reopen the IDOR concern that
+     * {@link AppHealthScoreController} guards against.
+     *
+     * @param subscriberId the subscription-domain subscriber id
+     * @return the current score (0..100)
+     */
+    @Transactional(readOnly = true)
+    public int getScoreForSubscriber(Long subscriberId) {
+        return computeScore(subscriberId);
     }
 
     // ── Rubric ──────────────────────────────────────────────────────────────────

@@ -23,9 +23,11 @@ import java.util.Optional;
 public class VisitQueryService {
 
     private final VisitRepository visitRepository;
+    private final TodoItemRepository todoItemRepository;
 
-    public VisitQueryService(VisitRepository visitRepository) {
+    public VisitQueryService(VisitRepository visitRepository, TodoItemRepository todoItemRepository) {
         this.visitRepository = visitRepository;
+        this.todoItemRepository = todoItemRepository;
     }
 
     /**
@@ -39,5 +41,20 @@ public class VisitQueryService {
         return visitRepository
                 .findFirstBySubscriberIdAndStatusOrderByScheduledForAscIdAsc(subscriberId, VisitStatus.SCHEDULED)
                 .map(Visit::getScheduledFor);
+    }
+
+    /**
+     * Returns the count of OPEN todo items ("your list") for a subscriber.
+     *
+     * <p>Used by the subscription domain's portfolio summary ({@code GET
+     * /api/app/properties}) so it doesn't need to reach into the visit domain's
+     * {@link TodoItemRepository} directly (domain-boundary rule).
+     *
+     * @param subscriberId the subscription-domain subscriber id
+     * @return count of OPEN items
+     */
+    @Transactional(readOnly = true)
+    public long countOpenTodos(Long subscriberId) {
+        return todoItemRepository.countBySubscriberIdAndStatus(subscriberId, TodoItemStatus.OPEN);
     }
 }
