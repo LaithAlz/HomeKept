@@ -1,9 +1,12 @@
 package com.homekept.visit;
 
 import com.homekept.catalog.CatalogService;
+import com.homekept.storage.StorageService;
+import com.homekept.storage.StorageUnavailableException;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AppVisitDetail;
 import com.homekept.visit.dto.AppVisitListItem;
+import com.homekept.visit.dto.AppVisitPhoto;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.VisitNotFoundException;
@@ -13,6 +16,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +39,9 @@ import java.util.stream.Collectors;
  *
  * <p>Service names for display are resolved via {@link CatalogService#getServiceNamesByIds}
  * — never by calling the catalog repository directly.
+ *
+ * <p>Photo download URLs are signed via {@link StorageService#presignDownload} (the storage
+ * domain's service) — never by reading R2 credentials or building URLs here.
  */
 @Service
 public class VisitAppService {
@@ -44,20 +51,26 @@ public class VisitAppService {
 
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
+    private final VisitPhotoRepository visitPhotoRepository;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final VisitTemplateRepository visitTemplateRepository;
+    private final StorageService storageService;
 
     public VisitAppService(VisitRepository visitRepository,
                            VisitServiceRepository visitServiceRepository,
+                           VisitPhotoRepository visitPhotoRepository,
                            SubscriberQueryService subscriberQueryService,
                            CatalogService catalogService,
-                           VisitTemplateRepository visitTemplateRepository) {
+                           VisitTemplateRepository visitTemplateRepository,
+                           StorageService storageService) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
+        this.visitPhotoRepository = visitPhotoRepository;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.visitTemplateRepository = visitTemplateRepository;
+        this.storageService = storageService;
     }
 
     /**
@@ -116,8 +129,9 @@ public class VisitAppService {
                     return new VisitNotFoundException(visitId);
                 });
         List<VisitServiceItem> services = loadServiceItems(visit.getId());
+        List<AppVisitPhoto> photos = loadPhotos(visit.getId());
         Map<Long, String> templateNames = loadTemplateNames(List.of(visit));
-        return toDetail(visit, services, templateNames);
+        return toDetail(visit, services, photos, templateNames);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────
@@ -137,6 +151,7 @@ public class VisitAppService {
     }
 
     private AppVisitDetail toDetail(Visit v, List<VisitServiceItem> services,
+                                    List<AppVisitPhoto> photos,
                                     Map<Long, String> templateNames) {
         return new AppVisitDetail(
                 v.getId(),
@@ -150,7 +165,8 @@ public class VisitAppService {
                 v.getCompletionNotes(),
                 v.getCompletedAt(),
                 null,          // technicianFirstName — technician slice not yet built
-                services
+                services,
+                photos
         );
     }
 
@@ -234,6 +250,39 @@ public class VisitAppService {
                         vs.getTechnicianNotes()
                 ))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Loads the photos for a visit (scoped strictly to this visit id — the query is a
+     * {@code visit_id} equality lookup, so it cannot return another visit's rows), signing
+     * each download URL via {@link StorageService#presignDownload}.
+     *
+     * <p>Graceful degradation: if R2 is not configured, {@code presignDownload} throws
+     * {@link StorageUnavailableException}. Rather than fail the whole visit-detail request,
+     * this returns an empty list — never a fabricated or dead URL. The same per-photo catch
+     * also skips any single photo whose signing fails for another reason, without dropping
+     * the rest.
+     */
+    private List<AppVisitPhoto> loadPhotos(Long visitId) {
+        List<VisitPhoto> rows = visitPhotoRepository.findByVisitIdOrderByIdAsc(visitId);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        List<AppVisitPhoto> photos = new ArrayList<>(rows.size());
+        for (VisitPhoto row : rows) {
+            try {
+                String url = storageService.presignDownload(row.getStorageKey());
+                if (url == null || url.isBlank()) {
+                    continue;
+                }
+                photos.add(new AppVisitPhoto(url, row.getCaption(), row.getTakenAt()));
+            } catch (StorageUnavailableException e) {
+                log.debug("visit_photo_presign_unavailable visitId={} photoId={}", visitId, row.getId());
+                // R2 not configured — skip this (and, in practice, every) photo rather than
+                // return a dead link. The honest result is an empty photos[].
+            }
+        }
+        return photos;
     }
 
     private VisitStatus parseStatus(String status) {

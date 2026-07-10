@@ -63,6 +63,7 @@ class AppVisitIntegrationTest {
     @Autowired MockMvc mockMvc;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
+    @Autowired VisitPhotoRepository visitPhotoRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired UserRepository userRepository;
@@ -278,6 +279,51 @@ class AppVisitIntegrationTest {
                         .cookie(new Cookie("hk_access", customerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.technicianFirstName").value(nullValue()));
+    }
+
+    // ── GET /api/app/visits/{id} — photos ────────────────────────────────────
+
+    @Test
+    void getVisit_noPhotoRows_returnsEmptyPhotosArray() throws Exception {
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+
+        mockMvc.perform(get(DETAIL_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photos").isArray())
+                .andExpect(jsonPath("$.photos.length()").value(0));
+    }
+
+    @Test
+    void getVisit_photoRowsButR2Unconfigured_returnsEmptyPhotosArray() throws Exception {
+        // R2 is unconfigured in the test profile (no FakeStorageServiceConfig imported on
+        // this test class) — presignDownload throws StorageUnavailableException, and the
+        // service degrades to an empty photos[] rather than a dead or fabricated URL.
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+        visitPhotoRepository.save(new VisitPhoto(
+                visit.getId(), "visits/" + visit.getId() + "/some-uuid", "North wall crack",
+                Instant.now().minus(1, ChronoUnit.DAYS)));
+
+        mockMvc.perform(get(DETAIL_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.photos").isArray())
+                .andExpect(jsonPath("$.photos.length()").value(0));
+    }
+
+    @Test
+    void getVisit_otherSubscribersVisit_photosNeverLeak() throws Exception {
+        // Even though the ownership check already 404s before photos are loaded, seed a
+        // photo on the other subscriber's visit to make the isolation explicit.
+        Visit otherVisit = seedVisitForSubscriber(otherSubscriber,
+                Instant.now().plus(30, ChronoUnit.DAYS));
+        visitPhotoRepository.save(new VisitPhoto(
+                otherVisit.getId(), "visits/" + otherVisit.getId() + "/some-uuid",
+                "Not yours", Instant.now()));
+
+        mockMvc.perform(get(DETAIL_URL, otherVisit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isNotFound());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

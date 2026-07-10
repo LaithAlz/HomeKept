@@ -6,7 +6,8 @@ import java.util.List;
 /**
  * Full visit detail for the customer app ({@code GET /api/app/visits/{id}}).
  *
- * <p>Includes checklist items. Photos, notes, and health-score are deferred to later slices.
+ * <p>Includes checklist items and photos (signed download URLs, ~15-min TTL). Notes and
+ * health-score are deferred to later slices.
  */
 public record AppVisitDetail(
         Long id,
@@ -20,5 +21,6 @@ public record AppVisitDetail(
         String completionNotes,          // nullable
         Instant completedAt,             // nullable
         String technicianFirstName,      // nullable — technician slice not yet built
-        List<VisitServiceItem> services
+        List<VisitServiceItem> services,
+        List<AppVisitPhoto> photos       // empty if R2 unconfigured or no photos — never fabricated
 ) {}
