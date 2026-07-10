@@ -49,6 +49,10 @@ public class VisitAppService {
     private static final Logger log = LoggerFactory.getLogger(VisitAppService.class);
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** Defense-in-depth cap — photo count is technician-controlled, not customer-controlled,
+     * but this bounds the number of presign calls a single request can trigger. */
+    private static final int MAX_PHOTOS_PER_VISIT = 50;
+
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
     private final VisitPhotoRepository visitPhotoRepository;
@@ -258,15 +262,20 @@ public class VisitAppService {
      * each download URL via {@link StorageService#presignDownload}.
      *
      * <p>Graceful degradation: if R2 is not configured, {@code presignDownload} throws
-     * {@link StorageUnavailableException}. Rather than fail the whole visit-detail request,
-     * this returns an empty list — never a fabricated or dead URL. The same per-photo catch
-     * also skips any single photo whose signing fails for another reason, without dropping
-     * the rest.
+     * {@link StorageUnavailableException} — logged at DEBUG (expected in dev/test) and the
+     * photo is skipped. Any OTHER exception from signing (SDK error, malformed/legacy key,
+     * etc.) is also caught per-photo, logged at WARN (id only — never the storage key), and
+     * skipped, so one bad photo degrades to a missing thumbnail rather than a 500 for the
+     * whole visit-detail response. The honest result when everything fails is an empty
+     * {@code photos[]}, still 200.
      */
     private List<AppVisitPhoto> loadPhotos(Long visitId) {
         List<VisitPhoto> rows = visitPhotoRepository.findByVisitIdOrderByIdAsc(visitId);
         if (rows.isEmpty()) {
             return List.of();
+        }
+        if (rows.size() > MAX_PHOTOS_PER_VISIT) {
+            rows = rows.subList(0, MAX_PHOTOS_PER_VISIT);
         }
         List<AppVisitPhoto> photos = new ArrayList<>(rows.size());
         for (VisitPhoto row : rows) {
@@ -280,6 +289,10 @@ public class VisitAppService {
                 log.debug("visit_photo_presign_unavailable visitId={} photoId={}", visitId, row.getId());
                 // R2 not configured — skip this (and, in practice, every) photo rather than
                 // return a dead link. The honest result is an empty photos[].
+            } catch (Exception e) {
+                log.warn("visit_photo_presign_failed visitId={} photoId={}", visitId, row.getId());
+                // Any other signing failure (SDK error, malformed key, etc.) — skip just this
+                // photo rather than 500 the whole visit-detail response.
             }
         }
         return photos;
