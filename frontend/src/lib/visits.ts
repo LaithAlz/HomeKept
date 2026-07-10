@@ -46,6 +46,19 @@ export interface AppVisitListItem {
   services: VisitServiceItem[];
 }
 
+/**
+ * A single photo attached to a visit, as shown to the customer. Mirrors
+ * `AppVisitPhoto.java` verbatim (issue #135). `url` is a signed R2 download URL with a
+ * ~15-minute TTL, generated fresh on every `GET /api/app/visits/{id}` call — never
+ * cache or persist it client-side. A photo is simply absent from this list (not a
+ * placeholder) if R2 is unconfigured or signing failed for it.
+ */
+export interface AppVisitPhoto {
+  url: string;
+  caption: string | null;
+  takenAt: string | null; // ISO instant (UTC)
+}
+
 export interface AppVisitDetail {
   id: number;
   name: string;
@@ -59,6 +72,7 @@ export interface AppVisitDetail {
   completedAt: string | null;
   technicianFirstName: string | null; // nullable — technician slice not yet built
   services: VisitServiceItem[];
+  photos: AppVisitPhoto[]; // empty if R2 unconfigured or no photos — never fabricated
 }
 
 interface ListVisitsParams {
