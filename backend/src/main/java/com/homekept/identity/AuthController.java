@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Auth endpoints: login, refresh, logout, me, forgot, reset.
@@ -37,6 +38,18 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+
+    /**
+     * Fixed wall-clock budget (ms) that {@code POST /api/auth/forgot} pads BOTH the
+     * found-email and not-found-email branches to, so response time can't reveal whether an
+     * email belongs to an account (#115 finding 1). Chosen comfortably above a real SendGrid
+     * send; public so the integration test can assert against the real value instead of a
+     * hardcoded duplicate.
+     */
+    public static final long FORGOT_RESPONSE_BUDGET_MS = 500;
+
+    /** Light jitter applied to the target itself, so the padded response isn't a constant. */
+    public static final long FORGOT_RESPONSE_JITTER_MS = 50;
 
     private final AuthService authService;
     private final CookieHelper cookieHelper;
@@ -130,6 +143,16 @@ public class AuthController {
      * POST /api/auth/forgot
      * Always returns 202, whether or not the email belongs to an account — no
      * enumeration (api-contract.md). Rate-limited: 5 attempts per IP per hour.
+     *
+     * <p>Constant-time response (#115 finding 1): after {@link AuthService#forgotPassword}
+     * returns — i.e. after its {@code @Transactional} block has committed and released its
+     * pooled DB connection — this method pads the response to a shared fixed wall-clock
+     * budget on BOTH the found-email and not-found-email paths, via {@link #padToBudget}.
+     * A one-sided delay on only the unknown-email branch would not work here: SendGrid is
+     * unconfigured by default (#120), so the found-email branch's outbound send currently
+     * log-and-skips in a few ms too, and a one-sided sleep would make the unknown-email
+     * branch the slow one instead — a clean, worse oracle. Padding both branches to the same
+     * budget is required regardless of whether the outbound send is actually configured.
      */
     @PostMapping("/forgot")
     public ResponseEntity<Void> forgot(@Valid @RequestBody ForgotPasswordRequest request,
@@ -138,22 +161,56 @@ public class AuthController {
         if (!forgotPasswordRateLimiter.tryConsume(ip)) {
             throw new RateLimitExceededException();
         }
+        long startNanos = System.nanoTime();
         authService.forgotPassword(request.email());
+        padToBudget(startNanos);
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 
     /**
+     * Sleeps out the remainder of a fixed (lightly jittered) response-time budget, measured
+     * from {@code startNanos}. Called only after the triggering service call has returned —
+     * never from inside an {@code @Transactional} method — so the sleep never pins a pooled
+     * Hikari connection (a DoS amplifier: the pool defaults to 10 connections).
+     *
+     * <p><b>Tradeoff/limitations:</b> this ties up a request-handling thread for up to
+     * {@value #FORGOT_RESPONSE_BUDGET_MS}ms per request. The complete fix is asynchronous
+     * email dispatch (arch doc Stage 2 note on {@code SendGridEmailSender}, shared infra with
+     * #89), which would let both branches return immediately instead of padding on the
+     * request thread; that infra isn't in place yet. This budget also only fully hides timing
+     * while the real work finishes under budget — a real send that happens to take longer
+     * than {@value #FORGOT_RESPONSE_BUDGET_MS}ms would show through, since no padding is
+     * applied once elapsed time already exceeds the target.
+     */
+    private void padToBudget(long startNanos) {
+        long jitter = ThreadLocalRandom.current()
+                .nextLong(-FORGOT_RESPONSE_JITTER_MS, FORGOT_RESPONSE_JITTER_MS + 1);
+        long targetMs = FORGOT_RESPONSE_BUDGET_MS + jitter;
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        long remainingMs = targetMs - elapsedMs;
+        if (remainingMs > 0) {
+            try {
+                Thread.sleep(remainingMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
      * POST /api/auth/reset
-     * Consumes the reset token, sets the new password, revokes all the user's refresh
-     * tokens, and sets fresh auth cookies so the caller is signed in immediately.
+     * Consumes the reset token, sets the new password, and revokes all the user's refresh
+     * tokens. Fresh auth cookies (auto-sign-in) are set only if the user is ACTIVE — see
+     * {@link AuthService#resetPassword}. Always 200 either way: the password change itself
+     * succeeds regardless of auto-sign-in eligibility.
      */
     @PostMapping("/reset")
     public ResponseEntity<Void> reset(@Valid @RequestBody ResetPasswordRequest request,
                                       HttpServletRequest httpRequest,
                                       HttpServletResponse httpResponse) {
-        AuthService.TokenPair tokens = authService.resetPassword(request.token(), request.password());
-        cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(),
-                httpRequest.isSecure());
+        Optional<AuthService.TokenPair> tokens = authService.resetPassword(request.token(), request.password());
+        tokens.ifPresent(t -> cookieHelper.setAuthCookies(httpResponse, t.accessToken(), t.refreshToken(),
+                httpRequest.isSecure()));
         return ResponseEntity.ok().build();
     }
 }

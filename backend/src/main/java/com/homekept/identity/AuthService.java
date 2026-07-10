@@ -10,6 +10,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Optional;
+
 /**
  * Orchestrates login, token refresh, logout, and identity fetching.
  * All credential failures return the same generic exception to prevent user enumeration.
@@ -191,8 +193,15 @@ public class AuthService {
      *
      * <p>Timing: when the email is unknown, {@link PasswordResetTokenService#mintDummy()}
      * runs the same nonce/HMAC computation as a real mint so the two branches' CPU cost is
-     * close (same idea as the dummy bcrypt comparison in {@link #login}). See that method's
-     * Javadoc for the documented residual timing risk from the outbound email call.
+     * close (same idea as the dummy bcrypt comparison in {@link #login}). This method does
+     * <b>not</b> attempt to equalize wall-clock time on its own — a one-sided sleep here
+     * would only work if the found-email branch's outbound SendGrid call actually costs
+     * real network time, which it doesn't in the default (SendGrid-unconfigured) config
+     * (#120), so a one-sided delay would invert the oracle instead of closing it. The
+     * wall-clock gap is closed by {@link AuthController#forgot} padding BOTH branches to a
+     * shared fixed response-time budget after this method returns (i.e. after this method's
+     * {@code @Transactional} block has committed) — see that method's Javadoc for the budget
+     * and its tradeoffs.
      *
      * @param email the email address submitted on the forgot-password form
      */
@@ -212,17 +221,24 @@ public class AuthService {
 
     /**
      * Completes a password reset: validates and consumes the token, sets the new bcrypt
-     * password, revokes all the user's refresh tokens, and issues a fresh token pair so the
-     * caller is signed in immediately (per api-contract.md).
+     * password, and revokes all the user's refresh tokens.
+     *
+     * <p>Auto-sign-in gate: a fresh token pair is issued (per api-contract.md) only if the
+     * user's status is {@link UserStatus#ACTIVE} — the same check {@link #login} and
+     * {@link #refresh} use to reject non-ACTIVE users. The password is still changed and the
+     * old tokens still revoked either way; a non-ACTIVE user simply isn't auto-signed-in by
+     * this call (mirrors the login-lockout so a reset can't be used to bypass it once a
+     * suspend feature ships). The caller must not set auth cookies when this returns empty.
      *
      * @param rawToken    the raw reset token from the reset link
      * @param newPassword the new plaintext password (bcrypt-hashed here)
+     * @return a fresh token pair if the user is ACTIVE, otherwise {@link Optional#empty()}
      * @throws InvalidPasswordResetRequestException if the password is null or shorter than
      *         8 characters
      * @throws InvalidPasswordResetTokenException if the token is invalid, expired, or consumed
      */
     @Transactional
-    public TokenPair resetPassword(String rawToken, String newPassword) {
+    public Optional<TokenPair> resetPassword(String rawToken, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
             throw new InvalidPasswordResetRequestException("Password must be at least 8 characters");
         }
@@ -236,7 +252,11 @@ public class AuthService {
 
         refreshTokenService.revokeAll(user.getId());
 
-        return issueTokensFor(user);
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            return Optional.empty();
+        }
+
+        return Optional.of(issueTokensFor(user));
     }
 
     /**

@@ -25,4 +25,13 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE PasswordResetToken t SET t.consumedAt = :now WHERE t.tokenHash = :hash AND t.consumedAt IS NULL")
     int consumeIfUnconsumed(@Param("hash") String hash, @Param("now") Instant now);
+
+    /**
+     * Invalidates every other outstanding (unconsumed) reset token belonging to a user, by
+     * marking them consumed. Called after a successful reset so an earlier, still-unexpired
+     * reset link can't be replayed once the password has already been changed.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE PasswordResetToken t SET t.consumedAt = :now WHERE t.user.id = :userId AND t.consumedAt IS NULL")
+    int consumeAllUnconsumedForUser(@Param("userId") Long userId, @Param("now") Instant now);
 }

@@ -86,11 +86,14 @@ public class PasswordResetTokenService {
      * CPU cost is closer to the "email found" branch's cost — the same enumeration-timing
      * idea as {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
      *
-     * <p><b>Residual risk:</b> this closes the CPU-time gap only. The found-email branch also
-     * makes a synchronous outbound SendGrid call ({@code EmailSender}), whose network latency
-     * is not equalized here. Fully closing that gap would require dispatch to be asynchronous
-     * (arch doc Stage 2 note on {@code SendGridEmailSender}) or an artificial delay, neither of
-     * which is in scope for this endpoint today.
+     * <p>This closes only the CPU-time gap. The wall-clock gap (the found-email branch's DB
+     * insert plus outbound SendGrid attempt vs. this branch's few-ms HMAC computation) is
+     * closed separately by a fixed-budget response-time pad applied to BOTH branches in
+     * {@link AuthController#forgot}, after this method's caller returns — see that method's
+     * Javadoc. Deliberately no sleep lives here: this method still runs inside
+     * {@link AuthService#forgotPassword}'s {@code @Transactional} block, and a sleep inside a
+     * transaction would pin a pooled DB connection for its duration (a DoS amplifier) — the
+     * padding must happen only once the transaction has committed and released its connection.
      */
     public void mintDummy() {
         String nonce = generateNonce();
@@ -150,7 +153,9 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Validates and consumes the token (sets {@code consumed_at}).
+     * Validates and consumes the token (sets {@code consumed_at}), then invalidates every
+     * other outstanding reset token belonging to the same user, so a successful reset retires
+     * all of that user's live reset links, not just the one used.
      * MUST be called within the same transaction as the password update.
      *
      * @param rawToken the raw token from the reset link
@@ -168,11 +173,17 @@ public class PasswordResetTokenService {
         // Atomic single-use gate: only one concurrent caller can flip consumed_at from NULL.
         // The loser of the race updates 0 rows and is rejected — single-use is DB-enforced,
         // not dependent on a read-then-write window.
+        Instant now = Instant.now();
         String hash = sha256Hex(rawToken);
-        int updated = tokenRepository.consumeIfUnconsumed(hash, Instant.now());
+        int updated = tokenRepository.consumeIfUnconsumed(hash, now);
         if (updated == 0) {
             throw new InvalidPasswordResetTokenException("USED");
         }
+
+        // Retire any other still-outstanding reset tokens for this user (#115 finding 3):
+        // otherwise an earlier, unexpired reset link would stay valid for up to 30 minutes
+        // after the password has already been changed via this one.
+        tokenRepository.consumeAllUnconsumedForUser(result.userId(), now);
 
         return result.userId();
     }

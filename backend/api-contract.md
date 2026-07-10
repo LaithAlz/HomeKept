@@ -99,7 +99,7 @@ subscriber to `ACTIVE`.
 | `POST /api/auth/logout` | — | `204`, revokes all refresh tokens |
 | `GET /api/auth/me` | — | `200 { id, firstName, lastName, email, role }` |
 | `POST /api/auth/forgot` | `{ email }` | always `202` (same response whether the account exists — no enumeration); emails a single-use HMAC reset token, 30-min expiry · rate limit 5/IP/hour |
-| `POST /api/auth/reset` | `{ token, password }` | `200`, consumes token, revokes all refresh tokens, sets fresh cookies |
+| `POST /api/auth/reset` | `{ token, password }` | `200`, consumes token, revokes all refresh tokens, updates the password either way; sets fresh cookies only if the user is ACTIVE (no auto-sign-in for a non-ACTIVE user) |
 
 There is **no** `POST /api/auth/register` at MVP. Customer accounts are created only via
 the activation flow; the first ADMIN (and any TECHNICIAN) users are created by seed

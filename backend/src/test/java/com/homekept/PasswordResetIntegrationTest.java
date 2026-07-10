@@ -1,6 +1,7 @@
 package com.homekept;
 
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
+import com.homekept.identity.AuthController;
 import com.homekept.identity.ForgotPasswordRateLimiter;
 import com.homekept.identity.PasswordResetToken;
 import com.homekept.identity.PasswordResetTokenRepository;
@@ -52,11 +53,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>POST /api/auth/forgot — only the token hash is persisted, never the raw token</li>
  *   <li>POST /api/auth/forgot — rate limit: 6th attempt from the same IP → 429</li>
  *   <li>POST /api/auth/reset — happy path: sets the new password, revokes existing refresh
- *       tokens, sets fresh auth cookies</li>
+ *       tokens, sets fresh auth cookies, auto-signs-in an ACTIVE user</li>
+ *   <li>POST /api/auth/reset — non-ACTIVE user: password is still updated, but no auto
+ *       sign-in (no cookies set) — mirrors the login/refresh ACTIVE gate (#115)</li>
+ *   <li>POST /api/auth/reset — a successful reset invalidates the user's other outstanding
+ *       reset tokens, not just the one used (#115)</li>
  *   <li>POST /api/auth/reset — re-using a consumed token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — expired token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — garbage token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — password too short → 400</li>
+ *   <li>POST /api/auth/forgot — known and unknown email both pad to the same fixed
+ *       response-time budget, closing the enumeration-timing oracle regardless of whether
+ *       the outbound SendGrid send is configured (#115, #120)</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -174,6 +182,25 @@ class PasswordResetIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
+    @Test
+    void forgot_knownAndUnknownEmail_bothPadToTheSameConstantTimeBudget() throws Exception {
+        // #115 finding 1 (fix-loop 1): a one-sided delay on only the unknown-email branch
+        // would invert the oracle, because SendGrid is unconfigured by default (#120) — the
+        // known-email branch's "send" is a few-ms log-and-skip in this test environment too
+        // (RecordingEmailSender). The fix must pad BOTH branches to the same fixed budget, so
+        // this test asserts both reach it, not just one side of a floor.
+        createTestUser("forgot-timing-known@test.local", "OldPassword1");
+
+        long knownElapsedMs = timeForgotRequest("forgot-timing-known@test.local");
+        long unknownElapsedMs = timeForgotRequest("forgot-timing-unknown-budget@test.local");
+
+        // Behavioral contract, not a precise/flaky wall-clock number: both branches must reach
+        // (at least) the budget minus its jitter, with a small tolerance for scheduling noise.
+        long minExpectedMs = AuthController.FORGOT_RESPONSE_BUDGET_MS - AuthController.FORGOT_RESPONSE_JITTER_MS - 20;
+        assertThat(knownElapsedMs).isGreaterThanOrEqualTo(minExpectedMs);
+        assertThat(unknownElapsedMs).isGreaterThanOrEqualTo(minExpectedMs);
+    }
+
     // ── POST /api/auth/reset ──────────────────────────────────────────────────
 
     @Test
@@ -212,6 +239,70 @@ class PasswordResetIntegrationTest {
                         .cookie(new Cookie("hk_refresh", oldRefreshToken)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("TOKEN_INVALID"));
+    }
+
+    @Test
+    void reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn() throws Exception {
+        // Mirrors the login/refresh ACTIVE gate (#115 finding 2): the password change must
+        // still happen, but a non-ACTIVE user must not be auto-signed-in via reset — that
+        // would be a future login-lockout bypass once a suspend feature ships.
+        User user = createTestUserWithStatus("reset-suspended@test.local", "OldPassword1", UserStatus.SUSPENDED);
+        PasswordResetTokenService.MintResult mint = tokenService.mint(user);
+
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().doesNotExist("hk_access"))
+                .andExpect(cookie().doesNotExist("hk_refresh"));
+
+        // Password is still changed even though the user isn't auto-signed-in.
+        User reloaded = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(passwordEncoder.matches("NewPassword2", reloaded.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isFalse();
+
+        // The token is still consumed (single-use is unaffected by the status gate).
+        PasswordResetToken token = tokenRepository.findById(mint.tokenId()).orElseThrow();
+        assertThat(token.isConsumed()).isTrue();
+    }
+
+    @Test
+    void reset_activeUser_autoSignsIn_setsCookies() throws Exception {
+        // Contrast case for reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn — an
+        // ACTIVE user's behavior must be unchanged: fresh cookies ARE set.
+        User user = createTestUser("reset-active@test.local", "OldPassword1");
+        PasswordResetTokenService.MintResult mint = tokenService.mint(user);
+
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("hk_access"))
+                .andExpect(cookie().exists("hk_refresh"));
+    }
+
+    @Test
+    void reset_successfulReset_invalidatesTheUsersOtherOutstandingTokens() throws Exception {
+        User user = createTestUser("reset-invalidate-others@test.local", "OldPassword1");
+        PasswordResetTokenService.MintResult firstMint = tokenService.mint(user);
+        PasswordResetTokenService.MintResult secondMint = tokenService.mint(user);
+
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + firstMint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isOk());
+
+        // The second token, minted earlier for the same user and still within its 30-minute
+        // window, must now be rejected — a successful reset retires ALL of that user's
+        // outstanding tokens, not just the one used (#115 finding 3).
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + secondMint.rawToken() + "\",\"password\":\"AnotherPassword3\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+
+        PasswordResetToken secondToken = tokenRepository.findById(secondMint.tokenId()).orElseThrow();
+        assertThat(secondToken.isConsumed()).isTrue();
     }
 
     @Test
@@ -286,11 +377,25 @@ class PasswordResetIntegrationTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private User createTestUser(String email, String rawPassword) {
+        return createTestUserWithStatus(email, rawPassword, UserStatus.ACTIVE);
+    }
+
+    private User createTestUserWithStatus(String email, String rawPassword, UserStatus status) {
         User user = userRepository.save(
                 new User(email, passwordEncoder.encode(rawPassword), "Test", "User",
-                        Role.CUSTOMER, UserStatus.ACTIVE));
+                        Role.CUSTOMER, status));
         createdUserIds.add(user.getId());
         return user;
+    }
+
+    /** Times a POST /api/auth/forgot round-trip in milliseconds, wall-clock. */
+    private long timeForgotRequest(String email) throws Exception {
+        long start = System.nanoTime();
+        mockMvc.perform(post(FORGOT_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\"}"))
+                .andExpect(status().isAccepted());
+        return (System.nanoTime() - start) / 1_000_000;
     }
 
     private String extractCookieValue(List<String> setCookieHeaders, String name) {
