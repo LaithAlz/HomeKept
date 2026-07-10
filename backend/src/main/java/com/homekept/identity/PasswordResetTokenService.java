@@ -46,13 +46,6 @@ public class PasswordResetTokenService {
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     static final long TOKEN_TTL_SECONDS = 30L * 60; // 30 minutes
 
-    // Bounds for the enumeration-timing compensation delay in mintDummy() — chosen to overlap
-    // the found-email branch's observed DB-insert + synchronous SendGrid-send cost (~100-300ms).
-    // Public (like ForgotPasswordRateLimiter.MAX_ATTEMPTS) so tests can assert against the real
-    // bound instead of a hardcoded duplicate that could silently drift out of sync.
-    public static final long MIN_DUMMY_DELAY_MS = 100;
-    public static final long MAX_DUMMY_DELAY_MS = 300;
-
     private final PasswordResetTokenRepository tokenRepository;
     private final byte[] signingKeyBytes;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -89,29 +82,24 @@ public class PasswordResetTokenService {
 
     /**
      * Performs the same nonce-generation and HMAC computation as {@link #mint} but persists
-     * nothing, then blocks the calling thread for a bounded, randomized delay. Called on the
-     * "email not found" branch of forgot-password so that branch's total response time
-     * overlaps the "email found" branch's — the same enumeration-timing idea as
-     * {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
+     * nothing. Called on the "email not found" branch of forgot-password so that branch's
+     * CPU cost is closer to the "email found" branch's cost — the same enumeration-timing
+     * idea as {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
      *
-     * <p>The found-email branch does a DB insert plus a synchronous outbound SendGrid call
-     * (roughly {@value #MIN_DUMMY_DELAY_MS}-{@value #MAX_DUMMY_DELAY_MS}ms); the not-found
-     * branch's HMAC computation alone takes only a few ms, which previously leaked account
-     * existence via wall-clock timing. The jittered (not constant) sleep below closes that
-     * gap by making the two branches' response-time distributions overlap.
-     *
-     * <p><b>Tradeoff:</b> this ties up a request-handling thread for up to
-     * {@value #MAX_DUMMY_DELAY_MS}ms per unknown-email request. The proper fix is to dispatch
-     * the reset email asynchronously (arch doc Stage 2 note on {@code SendGridEmailSender},
-     * shared infra with #89) so neither branch blocks the request thread on network I/O; that
-     * infra isn't in place yet, so this bounded sleep is a stopgap, not the final fix.
+     * <p>This closes only the CPU-time gap. The wall-clock gap (the found-email branch's DB
+     * insert plus outbound SendGrid attempt vs. this branch's few-ms HMAC computation) is
+     * closed separately by a fixed-budget response-time pad applied to BOTH branches in
+     * {@link AuthController#forgot}, after this method's caller returns — see that method's
+     * Javadoc. Deliberately no sleep lives here: this method still runs inside
+     * {@link AuthService#forgotPassword}'s {@code @Transactional} block, and a sleep inside a
+     * transaction would pin a pooled DB connection for its duration (a DoS amplifier) — the
+     * padding must happen only once the transaction has committed and released its connection.
      */
     public void mintDummy() {
         String nonce = generateNonce();
         long expEpoch = Instant.now().plusSeconds(TOKEN_TTL_SECONDS).getEpochSecond();
         String payload = "userId=0&nonce=" + nonce + "&exp=" + expEpoch;
         buildSignedToken(payload);
-        sleepJittered();
     }
 
     /**
@@ -274,31 +262,6 @@ public class PasswordResetTokenService {
         byte[] bytes = new byte[16];
         secureRandom.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
-    }
-
-    /**
-     * Sleeps the current thread for a randomized (jittered) duration in
-     * {@code [MIN_DUMMY_DELAY_MS, MAX_DUMMY_DELAY_MS]}. See {@link #mintDummy()} for why this
-     * exists and its tradeoff.
-     */
-    private void sleepJittered() {
-        try {
-            Thread.sleep(computeJitteredDelayMs());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * Computes (without sleeping) a randomized delay in
-     * {@code [MIN_DUMMY_DELAY_MS, MAX_DUMMY_DELAY_MS]}. Package-private so unit tests can
-     * assert on the distribution directly without paying the real sleep cost. A constant
-     * delay would itself become a distinguishing signal once an attacker samples enough
-     * requests, so the delay is uniformly randomized rather than fixed.
-     */
-    long computeJitteredDelayMs() {
-        long range = MAX_DUMMY_DELAY_MS - MIN_DUMMY_DELAY_MS + 1;
-        return MIN_DUMMY_DELAY_MS + Math.floorMod(secureRandom.nextLong(), range);
     }
 
     static String sha256Hex(String input) {

@@ -192,10 +192,16 @@ public class AuthService {
      * enumeration, per api-contract.md).
      *
      * <p>Timing: when the email is unknown, {@link PasswordResetTokenService#mintDummy()}
-     * runs the same nonce/HMAC computation as a real mint and then blocks for a bounded,
-     * randomized delay so the two branches' response times overlap (same idea as the dummy
-     * bcrypt comparison in {@link #login}, extended to cover this branch's synchronous
-     * outbound SendGrid send). See that method's Javadoc for the delay bounds and tradeoff.
+     * runs the same nonce/HMAC computation as a real mint so the two branches' CPU cost is
+     * close (same idea as the dummy bcrypt comparison in {@link #login}). This method does
+     * <b>not</b> attempt to equalize wall-clock time on its own — a one-sided sleep here
+     * would only work if the found-email branch's outbound SendGrid call actually costs
+     * real network time, which it doesn't in the default (SendGrid-unconfigured) config
+     * (#120), so a one-sided delay would invert the oracle instead of closing it. The
+     * wall-clock gap is closed by {@link AuthController#forgot} padding BOTH branches to a
+     * shared fixed response-time budget after this method returns (i.e. after this method's
+     * {@code @Transactional} block has committed) — see that method's Javadoc for the budget
+     * and its tradeoffs.
      *
      * @param email the email address submitted on the forgot-password form
      */

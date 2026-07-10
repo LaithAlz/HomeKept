@@ -1,6 +1,7 @@
 package com.homekept;
 
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
+import com.homekept.identity.AuthController;
 import com.homekept.identity.ForgotPasswordRateLimiter;
 import com.homekept.identity.PasswordResetToken;
 import com.homekept.identity.PasswordResetTokenRepository;
@@ -61,8 +62,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>POST /api/auth/reset — expired token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — garbage token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — password too short → 400</li>
- *   <li>POST /api/auth/forgot — unknown-email branch applies the bounded, randomized
- *       enumeration-timing compensation delay (#115)</li>
+ *   <li>POST /api/auth/forgot — known and unknown email both pad to the same fixed
+ *       response-time budget, closing the enumeration-timing oracle regardless of whether
+ *       the outbound SendGrid send is configured (#115, #120)</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -181,21 +183,22 @@ class PasswordResetIntegrationTest {
     }
 
     @Test
-    void forgot_unknownEmail_appliesBoundedRandomizedDelay_closingTheTimingOracle() throws Exception {
-        long start = System.nanoTime();
+    void forgot_knownAndUnknownEmail_bothPadToTheSameConstantTimeBudget() throws Exception {
+        // #115 finding 1 (fix-loop 1): a one-sided delay on only the unknown-email branch
+        // would invert the oracle, because SendGrid is unconfigured by default (#120) — the
+        // known-email branch's "send" is a few-ms log-and-skip in this test environment too
+        // (RecordingEmailSender). The fix must pad BOTH branches to the same fixed budget, so
+        // this test asserts both reach it, not just one side of a floor.
+        createTestUser("forgot-timing-known@test.local", "OldPassword1");
 
-        mockMvc.perform(post(FORGOT_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"forgot-timing-unknown@test.local\"}"))
-                .andExpect(status().isAccepted());
+        long knownElapsedMs = timeForgotRequest("forgot-timing-known@test.local");
+        long unknownElapsedMs = timeForgotRequest("forgot-timing-unknown-budget@test.local");
 
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-
-        // Behavioral contract, not a precise/flaky wall-clock number: the unknown-email
-        // (dummy) branch must apply at least the configured minimum compensating delay so it
-        // can't be distinguished from the known-email branch's DB-insert + synchronous
-        // SendGrid-send cost by response time alone (#115 finding 1).
-        assertThat(elapsedMs).isGreaterThanOrEqualTo(PasswordResetTokenService.MIN_DUMMY_DELAY_MS - 20);
+        // Behavioral contract, not a precise/flaky wall-clock number: both branches must reach
+        // (at least) the budget minus its jitter, with a small tolerance for scheduling noise.
+        long minExpectedMs = AuthController.FORGOT_RESPONSE_BUDGET_MS - AuthController.FORGOT_RESPONSE_JITTER_MS - 20;
+        assertThat(knownElapsedMs).isGreaterThanOrEqualTo(minExpectedMs);
+        assertThat(unknownElapsedMs).isGreaterThanOrEqualTo(minExpectedMs);
     }
 
     // ── POST /api/auth/reset ──────────────────────────────────────────────────
@@ -383,6 +386,16 @@ class PasswordResetIntegrationTest {
                         Role.CUSTOMER, status));
         createdUserIds.add(user.getId());
         return user;
+    }
+
+    /** Times a POST /api/auth/forgot round-trip in milliseconds, wall-clock. */
+    private long timeForgotRequest(String email) throws Exception {
+        long start = System.nanoTime();
+        mockMvc.perform(post(FORGOT_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + email + "\"}"))
+                .andExpect(status().isAccepted());
+        return (System.nanoTime() - start) / 1_000_000;
     }
 
     private String extractCookieValue(List<String> setCookieHeaders, String name) {
