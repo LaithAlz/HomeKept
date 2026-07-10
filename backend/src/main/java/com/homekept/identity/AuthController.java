@@ -144,16 +144,18 @@ public class AuthController {
 
     /**
      * POST /api/auth/reset
-     * Consumes the reset token, sets the new password, revokes all the user's refresh
-     * tokens, and sets fresh auth cookies so the caller is signed in immediately.
+     * Consumes the reset token, sets the new password, and revokes all the user's refresh
+     * tokens. Fresh auth cookies (auto-sign-in) are set only if the user is ACTIVE — see
+     * {@link AuthService#resetPassword}. Always 200 either way: the password change itself
+     * succeeds regardless of auto-sign-in eligibility.
      */
     @PostMapping("/reset")
     public ResponseEntity<Void> reset(@Valid @RequestBody ResetPasswordRequest request,
                                       HttpServletRequest httpRequest,
                                       HttpServletResponse httpResponse) {
-        AuthService.TokenPair tokens = authService.resetPassword(request.token(), request.password());
-        cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(),
-                httpRequest.isSecure());
+        Optional<AuthService.TokenPair> tokens = authService.resetPassword(request.token(), request.password());
+        tokens.ifPresent(t -> cookieHelper.setAuthCookies(httpResponse, t.accessToken(), t.refreshToken(),
+                httpRequest.isSecure()));
         return ResponseEntity.ok().build();
     }
 }

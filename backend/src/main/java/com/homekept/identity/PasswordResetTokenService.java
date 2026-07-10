@@ -46,6 +46,13 @@ public class PasswordResetTokenService {
     private static final String HMAC_ALGORITHM = "HmacSHA256";
     static final long TOKEN_TTL_SECONDS = 30L * 60; // 30 minutes
 
+    // Bounds for the enumeration-timing compensation delay in mintDummy() — chosen to overlap
+    // the found-email branch's observed DB-insert + synchronous SendGrid-send cost (~100-300ms).
+    // Public (like ForgotPasswordRateLimiter.MAX_ATTEMPTS) so tests can assert against the real
+    // bound instead of a hardcoded duplicate that could silently drift out of sync.
+    public static final long MIN_DUMMY_DELAY_MS = 100;
+    public static final long MAX_DUMMY_DELAY_MS = 300;
+
     private final PasswordResetTokenRepository tokenRepository;
     private final byte[] signingKeyBytes;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -82,21 +89,29 @@ public class PasswordResetTokenService {
 
     /**
      * Performs the same nonce-generation and HMAC computation as {@link #mint} but persists
-     * nothing. Called on the "email not found" branch of forgot-password so that branch's
-     * CPU cost is closer to the "email found" branch's cost — the same enumeration-timing
-     * idea as {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
+     * nothing, then blocks the calling thread for a bounded, randomized delay. Called on the
+     * "email not found" branch of forgot-password so that branch's total response time
+     * overlaps the "email found" branch's — the same enumeration-timing idea as
+     * {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
      *
-     * <p><b>Residual risk:</b> this closes the CPU-time gap only. The found-email branch also
-     * makes a synchronous outbound SendGrid call ({@code EmailSender}), whose network latency
-     * is not equalized here. Fully closing that gap would require dispatch to be asynchronous
-     * (arch doc Stage 2 note on {@code SendGridEmailSender}) or an artificial delay, neither of
-     * which is in scope for this endpoint today.
+     * <p>The found-email branch does a DB insert plus a synchronous outbound SendGrid call
+     * (roughly {@value #MIN_DUMMY_DELAY_MS}-{@value #MAX_DUMMY_DELAY_MS}ms); the not-found
+     * branch's HMAC computation alone takes only a few ms, which previously leaked account
+     * existence via wall-clock timing. The jittered (not constant) sleep below closes that
+     * gap by making the two branches' response-time distributions overlap.
+     *
+     * <p><b>Tradeoff:</b> this ties up a request-handling thread for up to
+     * {@value #MAX_DUMMY_DELAY_MS}ms per unknown-email request. The proper fix is to dispatch
+     * the reset email asynchronously (arch doc Stage 2 note on {@code SendGridEmailSender},
+     * shared infra with #89) so neither branch blocks the request thread on network I/O; that
+     * infra isn't in place yet, so this bounded sleep is a stopgap, not the final fix.
      */
     public void mintDummy() {
         String nonce = generateNonce();
         long expEpoch = Instant.now().plusSeconds(TOKEN_TTL_SECONDS).getEpochSecond();
         String payload = "userId=0&nonce=" + nonce + "&exp=" + expEpoch;
         buildSignedToken(payload);
+        sleepJittered();
     }
 
     /**
@@ -150,7 +165,9 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Validates and consumes the token (sets {@code consumed_at}).
+     * Validates and consumes the token (sets {@code consumed_at}), then invalidates every
+     * other outstanding reset token belonging to the same user, so a successful reset retires
+     * all of that user's live reset links, not just the one used.
      * MUST be called within the same transaction as the password update.
      *
      * @param rawToken the raw token from the reset link
@@ -168,11 +185,17 @@ public class PasswordResetTokenService {
         // Atomic single-use gate: only one concurrent caller can flip consumed_at from NULL.
         // The loser of the race updates 0 rows and is rejected — single-use is DB-enforced,
         // not dependent on a read-then-write window.
+        Instant now = Instant.now();
         String hash = sha256Hex(rawToken);
-        int updated = tokenRepository.consumeIfUnconsumed(hash, Instant.now());
+        int updated = tokenRepository.consumeIfUnconsumed(hash, now);
         if (updated == 0) {
             throw new InvalidPasswordResetTokenException("USED");
         }
+
+        // Retire any other still-outstanding reset tokens for this user (#115 finding 3):
+        // otherwise an earlier, unexpired reset link would stay valid for up to 30 minutes
+        // after the password has already been changed via this one.
+        tokenRepository.consumeAllUnconsumedForUser(result.userId(), now);
 
         return result.userId();
     }
@@ -251,6 +274,31 @@ public class PasswordResetTokenService {
         byte[] bytes = new byte[16];
         secureRandom.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
+    }
+
+    /**
+     * Sleeps the current thread for a randomized (jittered) duration in
+     * {@code [MIN_DUMMY_DELAY_MS, MAX_DUMMY_DELAY_MS]}. See {@link #mintDummy()} for why this
+     * exists and its tradeoff.
+     */
+    private void sleepJittered() {
+        try {
+            Thread.sleep(computeJitteredDelayMs());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Computes (without sleeping) a randomized delay in
+     * {@code [MIN_DUMMY_DELAY_MS, MAX_DUMMY_DELAY_MS]}. Package-private so unit tests can
+     * assert on the distribution directly without paying the real sleep cost. A constant
+     * delay would itself become a distinguishing signal once an attacker samples enough
+     * requests, so the delay is uniformly randomized rather than fixed.
+     */
+    long computeJitteredDelayMs() {
+        long range = MAX_DUMMY_DELAY_MS - MIN_DUMMY_DELAY_MS + 1;
+        return MIN_DUMMY_DELAY_MS + Math.floorMod(secureRandom.nextLong(), range);
     }
 
     static String sha256Hex(String input) {
