@@ -1,0 +1,239 @@
+/**
+ * Reschedule-request dialog, shared by the visit detail page
+ * (`routes/app.visits.$id.tsx`), the visits list's next-visit card
+ * (`routes/app.visits.tsx`), and the dashboard's next-visit card
+ * (`routes/app.index.tsx`) — every place a customer can ask to move a
+ * scheduled visit funnels through the same form and the same mutation
+ * (`useCreateRescheduleRequest` in `@/lib/visits`), so the request shape
+ * never drifts between entry points.
+ *
+ * The customer proposes 1-3 preferred start times; the backend accepts up
+ * to 5 (`CreateRescheduleRequest.java`), but three is already generous and
+ * keeps the dialog short. An admin later confirms one of the proposed
+ * times (or negotiates another) — this only records the request.
+ */
+
+import { useEffect, useId, useState, type FormEvent } from "react";
+import { Loader2, Plus, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ApiError } from "@/lib/api";
+import { TZ } from "@/lib/format";
+import { useCreateRescheduleRequest } from "@/lib/visits";
+
+const MAX_SLOTS = 3;
+
+interface Slot {
+  date: string; // yyyy-mm-dd, from <input type="date">
+  time: string; // HH:mm, from <input type="time">
+}
+
+const emptySlot: Slot = { date: "", time: "" };
+
+function todayInToronto(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+/**
+ * Converts a filled-in slot to an ISO instant for the wire. Interprets the
+ * date/time the customer typed as their local (browser) time, which for our
+ * GTA West customers is America/Toronto — there's no reliable way to know
+ * they mean Toronto time specifically if they're travelling, but that's an
+ * edge case we accept for a v1 self-serve form.
+ */
+function slotToIso(slot: Slot): string | null {
+  if (!slot.date || !slot.time) return null;
+  const local = new Date(`${slot.date}T${slot.time}`);
+  if (Number.isNaN(local.getTime())) return null;
+  return local.toISOString();
+}
+
+interface RescheduleDialogProps {
+  visitId: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Called once the request is recorded, before the dialog closes. */
+  onRequested?: () => void;
+}
+
+export function RescheduleDialog({
+  visitId,
+  open,
+  onOpenChange,
+  onRequested,
+}: RescheduleDialogProps) {
+  const [slots, setSlots] = useState<Slot[]>([emptySlot]);
+  const [error, setError] = useState<string | null>(null);
+  const mutation = useCreateRescheduleRequest(visitId);
+  const baseId = useId();
+  const titleId = `${baseId}-title`;
+  const descId = `${baseId}-desc`;
+  const errorId = `${baseId}-error`;
+
+  // Reset to a clean single-slot form every time the dialog is (re)opened.
+  useEffect(() => {
+    if (open) {
+      setSlots([emptySlot]);
+      setError(null);
+      mutation.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, visitId]);
+
+  function updateSlot(index: number, patch: Partial<Slot>) {
+    setSlots((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
+  }
+
+  function addSlot() {
+    setSlots((prev) => (prev.length >= MAX_SLOTS ? prev : [...prev, emptySlot]));
+  }
+
+  function removeSlot(index: number) {
+    setSlots((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    const isos = slots.map(slotToIso);
+    if (isos.some((iso) => iso === null)) {
+      setError("Fill in a date and time for every preferred slot.");
+      return;
+    }
+    const preferredDates = isos as string[];
+
+    const now = Date.now();
+    if (preferredDates.some((iso) => new Date(iso).getTime() <= now)) {
+      setError("Preferred times must be in the future.");
+      return;
+    }
+
+    mutation.mutate(preferredDates, {
+      onSuccess: () => {
+        toast.success("Reschedule requested", {
+          description: "We'll confirm one of your preferred times and let you know.",
+        });
+        onRequested?.();
+        onOpenChange(false);
+      },
+      onError: (err) => {
+        // A 409 here means the visit is no longer schedulable or a pending request
+        // already exists (see `RescheduleService.createRequest`); either way the
+        // backend's message is a pre-canned, safe string, fine to show verbatim.
+        setError(
+          err instanceof ApiError ? err.message : "That didn't go through. Please try again.",
+        );
+      },
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (mutation.isPending) return;
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent aria-labelledby={titleId} aria-describedby={descId} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle id={titleId}>Request a reschedule</DialogTitle>
+          <DialogDescription id={descId}>
+            Propose up to {MAX_SLOTS} times that work for you. We'll confirm one and let you know.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} noValidate>
+          <fieldset disabled={mutation.isPending} className="space-y-4">
+            <legend className="sr-only">Preferred times</legend>
+            {slots.map((slot, i) => (
+              <div key={i} className="flex items-end gap-2">
+                <div className="flex-1">
+                  <Label htmlFor={`${baseId}-date-${i}`}>Preferred time {i + 1}</Label>
+                  <Input
+                    id={`${baseId}-date-${i}`}
+                    type="date"
+                    min={todayInToronto()}
+                    value={slot.date}
+                    onChange={(e) => updateSlot(i, { date: e.target.value })}
+                    required
+                    aria-describedby={error ? errorId : undefined}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="w-32 shrink-0">
+                  <Label htmlFor={`${baseId}-time-${i}`} className="sr-only">
+                    Time for preferred time {i + 1}
+                  </Label>
+                  <Input
+                    id={`${baseId}-time-${i}`}
+                    type="time"
+                    value={slot.time}
+                    onChange={(e) => updateSlot(i, { time: e.target.value })}
+                    required
+                    aria-describedby={error ? errorId : undefined}
+                    className="mt-1"
+                  />
+                </div>
+                {slots.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 shrink-0"
+                    onClick={() => removeSlot(i)}
+                    aria-label={`Remove preferred time ${i + 1}`}
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                  </Button>
+                )}
+              </div>
+            ))}
+
+            {slots.length < MAX_SLOTS && (
+              <Button type="button" variant="outline" size="sm" onClick={addSlot}>
+                <Plus className="size-4" aria-hidden="true" />
+                Add another time
+              </Button>
+            )}
+          </fieldset>
+
+          {error && (
+            <p id={errorId} role="alert" className="mt-4 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <DialogFooter className="mt-6">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={mutation.isPending}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending}>
+              {mutation.isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              Send request
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

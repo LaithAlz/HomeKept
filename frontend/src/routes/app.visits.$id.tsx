@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -10,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { ApiError } from "@/lib/api";
 import { useSessionExpiredRedirect } from "@/lib/auth";
@@ -100,6 +102,12 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
   const fullDate = formatFullDate(visit.scheduledFor);
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Client-side only: there's no field on the visit yet that tells us a reschedule
+  // request is pending (the backend only exposes that to admins), so this resets on
+  // reload. Good enough to stop an immediate second submit in the same session.
+  const [requested, setRequested] = useState(false);
+
   return (
     <>
       {/* Header */}
@@ -130,12 +138,26 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
 
         {/* Actions */}
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <RefreshCcw className="size-4" aria-hidden="true" />
-            Reschedule
-          </Button>
+          {requested ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+              <RefreshCcw className="size-3.5" aria-hidden="true" />
+              Reschedule requested, pending confirmation
+            </span>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+              <RefreshCcw className="size-4" aria-hidden="true" />
+              Reschedule
+            </Button>
+          )}
         </div>
       </header>
+
+      <RescheduleDialog
+        visitId={visit.id}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onRequested={() => setRequested(true)}
+      />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
         {/* Services */}
