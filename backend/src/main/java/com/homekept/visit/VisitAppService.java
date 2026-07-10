@@ -1,9 +1,12 @@
 package com.homekept.visit;
 
 import com.homekept.catalog.CatalogService;
+import com.homekept.storage.StorageService;
+import com.homekept.storage.StorageUnavailableException;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AppVisitDetail;
 import com.homekept.visit.dto.AppVisitListItem;
+import com.homekept.visit.dto.AppVisitPhoto;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.VisitNotFoundException;
@@ -13,6 +16,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +39,9 @@ import java.util.stream.Collectors;
  *
  * <p>Service names for display are resolved via {@link CatalogService#getServiceNamesByIds}
  * — never by calling the catalog repository directly.
+ *
+ * <p>Photo download URLs are signed via {@link StorageService#presignDownload} (the storage
+ * domain's service) — never by reading R2 credentials or building URLs here.
  */
 @Service
 public class VisitAppService {
@@ -42,22 +49,32 @@ public class VisitAppService {
     private static final Logger log = LoggerFactory.getLogger(VisitAppService.class);
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** Defense-in-depth cap — photo count is technician-controlled, not customer-controlled,
+     * but this bounds the number of presign calls a single request can trigger. */
+    private static final int MAX_PHOTOS_PER_VISIT = 50;
+
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
+    private final VisitPhotoRepository visitPhotoRepository;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final VisitTemplateRepository visitTemplateRepository;
+    private final StorageService storageService;
 
     public VisitAppService(VisitRepository visitRepository,
                            VisitServiceRepository visitServiceRepository,
+                           VisitPhotoRepository visitPhotoRepository,
                            SubscriberQueryService subscriberQueryService,
                            CatalogService catalogService,
-                           VisitTemplateRepository visitTemplateRepository) {
+                           VisitTemplateRepository visitTemplateRepository,
+                           StorageService storageService) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
+        this.visitPhotoRepository = visitPhotoRepository;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.visitTemplateRepository = visitTemplateRepository;
+        this.storageService = storageService;
     }
 
     /**
@@ -116,8 +133,9 @@ public class VisitAppService {
                     return new VisitNotFoundException(visitId);
                 });
         List<VisitServiceItem> services = loadServiceItems(visit.getId());
+        List<AppVisitPhoto> photos = loadPhotos(visit.getId());
         Map<Long, String> templateNames = loadTemplateNames(List.of(visit));
-        return toDetail(visit, services, templateNames);
+        return toDetail(visit, services, photos, templateNames);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────
@@ -137,6 +155,7 @@ public class VisitAppService {
     }
 
     private AppVisitDetail toDetail(Visit v, List<VisitServiceItem> services,
+                                    List<AppVisitPhoto> photos,
                                     Map<Long, String> templateNames) {
         return new AppVisitDetail(
                 v.getId(),
@@ -150,7 +169,8 @@ public class VisitAppService {
                 v.getCompletionNotes(),
                 v.getCompletedAt(),
                 null,          // technicianFirstName — technician slice not yet built
-                services
+                services,
+                photos
         );
     }
 
@@ -234,6 +254,48 @@ public class VisitAppService {
                         vs.getTechnicianNotes()
                 ))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Loads the photos for a visit (scoped strictly to this visit id — the query is a
+     * {@code visit_id} equality lookup, so it cannot return another visit's rows), signing
+     * each download URL via {@link StorageService#presignDownload}.
+     *
+     * <p>Graceful degradation: if R2 is not configured, {@code presignDownload} throws
+     * {@link StorageUnavailableException} — logged at DEBUG (expected in dev/test) and the
+     * photo is skipped. Any OTHER exception from signing (SDK error, malformed/legacy key,
+     * etc.) is also caught per-photo, logged at WARN (id only — never the storage key), and
+     * skipped, so one bad photo degrades to a missing thumbnail rather than a 500 for the
+     * whole visit-detail response. The honest result when everything fails is an empty
+     * {@code photos[]}, still 200.
+     */
+    private List<AppVisitPhoto> loadPhotos(Long visitId) {
+        List<VisitPhoto> rows = visitPhotoRepository.findByVisitIdOrderByIdAsc(visitId);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        if (rows.size() > MAX_PHOTOS_PER_VISIT) {
+            rows = rows.subList(0, MAX_PHOTOS_PER_VISIT);
+        }
+        List<AppVisitPhoto> photos = new ArrayList<>(rows.size());
+        for (VisitPhoto row : rows) {
+            try {
+                String url = storageService.presignDownload(row.getStorageKey());
+                if (url == null || url.isBlank()) {
+                    continue;
+                }
+                photos.add(new AppVisitPhoto(url, row.getCaption(), row.getTakenAt()));
+            } catch (StorageUnavailableException e) {
+                log.debug("visit_photo_presign_unavailable visitId={} photoId={}", visitId, row.getId());
+                // R2 not configured — skip this (and, in practice, every) photo rather than
+                // return a dead link. The honest result is an empty photos[].
+            } catch (Exception e) {
+                log.warn("visit_photo_presign_failed visitId={} photoId={}", visitId, row.getId());
+                // Any other signing failure (SDK error, malformed key, etc.) — skip just this
+                // photo rather than 500 the whole visit-detail response.
+            }
+        }
+        return photos;
     }
 
     private VisitStatus parseStatus(String status) {
