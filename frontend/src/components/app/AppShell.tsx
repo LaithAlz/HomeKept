@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { subscriber } from "@/lib/mock-account";
 import { cn } from "@/lib/utils";
 import { getSession, logout } from "@/lib/auth";
@@ -102,6 +103,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
+      <Toaster />
       {/* Mobile top bar */}
       <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur md:hidden">
         <Link to="/app" aria-label="HomeKept dashboard">

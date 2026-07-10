@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   CalendarPlus,
@@ -12,6 +13,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { useAccount, type AppAccount } from "@/lib/account";
 import { useHealthScore, type HealthScoreFlaggedItem } from "@/lib/health";
 import {
@@ -273,6 +275,10 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
   const { month, day, weekday } = getCalendarParts(visit.scheduledFor);
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Client-side only — see the note in `app.visits.$id.tsx`'s ScheduledDetail.
+  const [requested, setRequested] = useState(false);
+
   return (
     <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:gap-8">
       {/* Calendar block */}
@@ -314,17 +320,33 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
           ))}
         </ul>
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button variant="outline" size="sm">
-            <RefreshCcw className="size-4" />
-            Reschedule
-          </Button>
-          <Button size="sm">
-            <CalendarPlus className="size-4" />
-            Add a request
-          </Button>
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          {requested ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+              <RefreshCcw className="size-3.5" aria-hidden="true" />
+              Reschedule requested, pending confirmation
+            </span>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+                <RefreshCcw className="size-4" aria-hidden="true" />
+                Reschedule
+              </Button>
+              <Button size="sm" onClick={() => setDialogOpen(true)}>
+                <CalendarPlus className="size-4" aria-hidden="true" />
+                Add a request
+              </Button>
+            </>
+          )}
         </div>
       </div>
+
+      <RescheduleDialog
+        visitId={visit.id}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onRequested={() => setRequested(true)}
+      />
     </div>
   );
 }

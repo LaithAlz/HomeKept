@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, BellRing, Loader2, User } from "lucide-react";
+import { ArrowRight, BellRing, Loader2, RefreshCcw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { formatVisitWindow, getCalendarParts } from "@/lib/format";
 import { useNextVisit, useRecentCompletedVisits, type AppVisitListItem } from "@/lib/visits";
@@ -114,6 +116,10 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
   const { month, day, weekday } = getCalendarParts(visit.scheduledFor);
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Client-side only — see the note in `app.visits.$id.tsx`'s ScheduledDetail.
+  const [requested, setRequested] = useState(false);
+
   return (
     <article
       aria-label="Next visit"
@@ -166,22 +172,37 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
             </ul>
           )}
 
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <Button asChild size="sm" variant="accent">
               <Link to="/app/visits/$id" params={{ id: String(visit.id) }}>
                 View details
               </Link>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground hover:text-primary"
-            >
-              Add request
-            </Button>
+            {requested ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold text-primary-foreground/80">
+                <RefreshCcw className="size-3.5" aria-hidden="true" />
+                Reschedule requested, pending confirmation
+              </span>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground hover:text-primary"
+                onClick={() => setDialogOpen(true)}
+              >
+                Add request
+              </Button>
+            )}
           </div>
         </div>
       </div>
+
+      <RescheduleDialog
+        visitId={visit.id}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onRequested={() => setRequested(true)}
+      />
     </article>
   );
 }

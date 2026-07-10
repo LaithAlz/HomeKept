@@ -7,8 +7,14 @@
  * `AppVisitDetail.java`, and `VisitServiceItem.java`.
  */
 
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { get } from "@/lib/api";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from "@tanstack/react-query";
+import { get, post } from "@/lib/api";
 
 export type VisitStatus =
   | "SCHEDULED"
@@ -94,5 +100,54 @@ export function useVisit(id: number): UseQueryResult<AppVisitDetail> {
     queryKey: ["app-visit", id],
     queryFn: () => get<AppVisitDetail>(`/api/app/visits/${id}`),
     enabled: Number.isFinite(id),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reschedule requests (issue #128)                                          */
+/* -------------------------------------------------------------------------- */
+
+export type RescheduleRequestStatus = "PENDING" | "CONFIRMED" | "DECLINED";
+
+/**
+ * Mirrors `backend/src/main/java/com/homekept/visit/dto/RescheduleRequestResponse.java`
+ * verbatim (the body of a successful `POST .../reschedule-request`).
+ */
+export interface RescheduleRequestResponse {
+  id: number;
+  visitId: number;
+  status: RescheduleRequestStatus;
+  preferredDates: string[]; // ISO instants (UTC)
+  createdAt: string;
+}
+
+/**
+ * `POST /api/app/visits/{id}/reschedule-request` — records a PENDING reschedule request
+ * with 1-5 proposed start times for admin confirmation. The mutation variable mirrors
+ * `CreateRescheduleRequest.java` field-for-field: `preferredDates`, a list of 1-5 ISO
+ * instants. There is no reason/note field on this endpoint — don't add one client-side.
+ *
+ * 404s if the visit isn't the caller's. 409s if the visit isn't SCHEDULED or a PENDING
+ * request already exists for it (`RescheduleService.createRequest`); in both cases the
+ * thrown `ApiError.message` is a pre-canned, safe string from the backend, safe to show
+ * to the customer directly.
+ *
+ * On success, invalidates both the visits list(s) and this visit's detail query so
+ * anything reading visit data picks up any change (the visit's own status is unchanged
+ * by this call, but the request marks the underlying data stale regardless).
+ */
+export function useCreateRescheduleRequest(
+  visitId: number,
+): UseMutationResult<RescheduleRequestResponse, unknown, string[]> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (preferredDates: string[]) =>
+      post<RescheduleRequestResponse>(`/api/app/visits/${visitId}/reschedule-request`, {
+        preferredDates,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["app-visits"] });
+      void queryClient.invalidateQueries({ queryKey: ["app-visit", visitId] });
+    },
   });
 }
