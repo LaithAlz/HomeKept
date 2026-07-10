@@ -11,12 +11,20 @@ import {
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { ApiError } from "@/lib/api";
 import { useSessionExpiredRedirect } from "@/lib/auth";
 import {
   formatCentsCad,
+  formatDateTime,
   formatFullDate,
   formatTime,
   formatVisitWindow,
@@ -348,7 +356,101 @@ function CompletedDetail({ visit }: { visit: AppVisitDetail }) {
           </div>
         )}
       </div>
+
+      <VisitPhotos visit={visit} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+function VisitPhotos({ visit }: { visit: AppVisitDetail }) {
+  const { photos } = visit;
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+
+  if (photos.length === 0) {
+    // Only a COMPLETED visit is a natural place to expect photos. For any other
+    // terminal status (cancelled, rescheduled, incomplete) with none, say nothing
+    // rather than imply photos should exist.
+    if (visit.status !== "COMPLETED") return null;
+    return (
+      <section aria-labelledby="photos-heading" className="mt-8">
+        <h2
+          id="photos-heading"
+          className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
+        >
+          Photos
+        </h2>
+        <p className="mt-3 text-sm text-muted-foreground">No photos for this visit yet.</p>
+      </section>
+    );
+  }
+
+  const selected = openIndex !== null ? photos[openIndex] : null;
+
+  return (
+    <section aria-labelledby="photos-heading" className="mt-8">
+      <h2
+        id="photos-heading"
+        className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
+      >
+        Photos
+      </h2>
+      <ul role="list" className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {photos.map((photo, i) => (
+          <li key={i}>
+            <button
+              type="button"
+              onClick={() => setOpenIndex(i)}
+              aria-label={
+                photo.caption
+                  ? `Open photo: ${photo.caption}`
+                  : `Open visit photo ${i + 1} of ${photos.length}`
+              }
+              className="group relative block aspect-[4/3] w-full cursor-pointer overflow-hidden rounded-2xl border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <img
+                src={photo.url}
+                alt={photo.caption || "Visit photo"}
+                loading="lazy"
+                className="size-full object-cover transition-transform duration-200 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+              />
+              {photo.caption && (
+                <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-foreground/70 to-transparent px-2.5 py-2 text-left text-xs font-medium text-background">
+                  {photo.caption}
+                </span>
+              )}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <Dialog open={selected !== null} onOpenChange={(open) => !open && setOpenIndex(null)}>
+        <DialogContent className="max-w-2xl gap-3">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display">
+                  {selected.caption || "Visit photo"}
+                </DialogTitle>
+                <DialogDescription>
+                  {selected.takenAt
+                    ? `Taken ${formatDateTime(selected.takenAt)}`
+                    : "Full-size view of this visit photo."}
+                </DialogDescription>
+              </DialogHeader>
+              <img
+                src={selected.url}
+                alt={selected.caption || "Visit photo"}
+                className="max-h-[70vh] w-full rounded-xl object-contain"
+              />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </section>
   );
 }
 
