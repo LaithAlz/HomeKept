@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -18,7 +20,15 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { formatDateShort } from "@/lib/format";
-import { useAdminSubscriber, useAdminSubscribers, formatCentsCAD } from "@/lib/admin";
+import { ApiError } from "@/lib/api";
+import {
+  useAdminSubscriber,
+  useAdminSubscribers,
+  useUpdatePropertySku,
+  formatCentsCAD,
+  type AdminSubscriberPropertySummary,
+  type AdminUpdateSkuRequest,
+} from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/subscribers")({
@@ -303,6 +313,10 @@ function SubscriberDetailSheet({
               </div>
             )}
 
+            {detail.property?.propertyId && (
+              <PropertySkuForm key={detail.property.propertyId} property={detail.property} />
+            )}
+
             <div className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
               Visit history isn't available yet.
             </div>
@@ -310,6 +324,201 @@ function SubscriberDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+type FlushEligibility = "unknown" | "yes" | "no";
+
+function toFlushEligibility(value: boolean | null): FlushEligibility {
+  if (value === null) return "unknown";
+  return value ? "yes" : "no";
+}
+
+/**
+ * Surfaces the backend's error honestly rather than a generic fallback:
+ * `VALIDATION_FAILED` carries per-field messages (only `waterHeaterAgeYears` can
+ * fail validation here — see `AdminUpdateSkuRequest.java`), and `PropertyNotFoundException`
+ * maps to a plain "Property not found" 404 message that's safe to show verbatim
+ * (same "pre-canned backend message" pattern as `RescheduleDialog`).
+ */
+function describeSkuError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 400 && err.fields && Object.keys(err.fields).length > 0) {
+      return Object.values(err.fields).join(" ");
+    }
+    return err.message;
+  }
+  return "That didn't go through. Please try again.";
+}
+
+/**
+ * The property SKU sheet (#56): technician-prep data captured on the walk-through
+ * and refined over subsequent visits (docs/pricing-and-visits.md §Materials). Keyed
+ * by `property.propertyId` from the parent so switching between subscribers in the
+ * sheet remounts this form with fresh local state instead of carrying over stale
+ * edits from a previously viewed property.
+ */
+function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummary }) {
+  const [hvacFilterSizes, setHvacFilterSizes] = useState(property.hvacFilterSizes ?? "");
+  const [smokeCoDetectorModels, setSmokeCoDetectorModels] = useState(
+    property.smokeCoDetectorModels ?? "",
+  );
+  const [humidifierModel, setHumidifierModel] = useState(property.humidifierModel ?? "");
+  const [waterHeaterAgeYears, setWaterHeaterAgeYears] = useState(
+    property.waterHeaterAgeYears !== null ? String(property.waterHeaterAgeYears) : "",
+  );
+  const [flushEligible, setFlushEligible] = useState<FlushEligibility>(
+    toFlushEligibility(property.waterHeaterFlushEligible),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const mutation = useUpdatePropertySku(property.propertyId);
+  const baseId = useId();
+  const errorId = `${baseId}-sku-error`;
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+
+    const trimmedAge = waterHeaterAgeYears.trim();
+    let ageYears: number | null = null;
+    if (trimmedAge !== "") {
+      ageYears = Number(trimmedAge);
+      if (!Number.isInteger(ageYears) || ageYears < 0 || ageYears > 100) {
+        setError("Water heater age must be a whole number of years, between 0 and 100.");
+        return;
+      }
+    }
+
+    const request: AdminUpdateSkuRequest = {
+      hvacFilterSizes: hvacFilterSizes.trim() === "" ? null : hvacFilterSizes.trim(),
+      smokeCoDetectorModels:
+        smokeCoDetectorModels.trim() === "" ? null : smokeCoDetectorModels.trim(),
+      humidifierModel: humidifierModel.trim() === "" ? null : humidifierModel.trim(),
+      waterHeaterAgeYears: ageYears,
+      waterHeaterFlushEligible: flushEligible === "unknown" ? null : flushEligible === "yes",
+    };
+
+    mutation.mutate(request, {
+      onSuccess: () => {
+        toast.success("SKU sheet saved");
+      },
+      onError: (err) => setError(describeSkuError(err)),
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <h3 className="font-display text-sm font-bold">SKU sheet</h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Technician prep captured on the walk-through and refined over later visits.
+      </p>
+
+      <form onSubmit={handleSubmit} noValidate className="mt-3 space-y-3">
+        <fieldset disabled={mutation.isPending} className="space-y-3">
+          <legend className="sr-only">SKU sheet fields</legend>
+
+          <div>
+            <Label htmlFor={`${baseId}-hvac`}>HVAC filter sizes</Label>
+            <Input
+              id={`${baseId}-hvac`}
+              value={hvacFilterSizes}
+              onChange={(e) => setHvacFilterSizes(e.target.value)}
+              className="mt-1"
+              aria-describedby={error ? errorId : undefined}
+            />
+            {!hvacFilterSizes && (
+              <p className="mt-1 text-xs text-muted-foreground">Not captured yet.</p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor={`${baseId}-detectors`}>Smoke/CO detector models</Label>
+            <Input
+              id={`${baseId}-detectors`}
+              value={smokeCoDetectorModels}
+              onChange={(e) => setSmokeCoDetectorModels(e.target.value)}
+              className="mt-1"
+              aria-describedby={error ? errorId : undefined}
+            />
+            {!smokeCoDetectorModels && (
+              <p className="mt-1 text-xs text-muted-foreground">Not captured yet.</p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor={`${baseId}-humidifier`}>Humidifier model</Label>
+            <Input
+              id={`${baseId}-humidifier`}
+              value={humidifierModel}
+              onChange={(e) => setHumidifierModel(e.target.value)}
+              className="mt-1"
+              aria-describedby={error ? errorId : undefined}
+            />
+            {!humidifierModel && (
+              <p className="mt-1 text-xs text-muted-foreground">Not captured yet.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor={`${baseId}-wh-age`}>Water heater age (years)</Label>
+              <Input
+                id={`${baseId}-wh-age`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={100}
+                step={1}
+                value={waterHeaterAgeYears}
+                onChange={(e) => setWaterHeaterAgeYears(e.target.value)}
+                className="mt-1"
+                aria-describedby={error ? errorId : undefined}
+              />
+              {!waterHeaterAgeYears && (
+                <p className="mt-1 text-xs text-muted-foreground">Not captured yet.</p>
+              )}
+            </div>
+
+            <div>
+              <Label htmlFor={`${baseId}-wh-flush`}>Water heater flush eligible</Label>
+              <Select
+                value={flushEligible}
+                onValueChange={(v) => setFlushEligible(v as FlushEligibility)}
+                disabled={mutation.isPending}
+              >
+                <SelectTrigger id={`${baseId}-wh-flush`} className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unknown">Not captured yet</SelectItem>
+                  <SelectItem value="yes">Yes</SelectItem>
+                  <SelectItem value="no">No</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </fieldset>
+
+        {error && (
+          <p id={errorId} role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={mutation.isPending}
+            aria-busy={mutation.isPending}
+          >
+            {mutation.isPending && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+            Save SKU sheet
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
 

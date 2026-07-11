@@ -7,6 +7,8 @@
  *     (backend/src/main/java/com/homekept/booking/dto/*.java)
  *   - AdminSubscriberListItem / AdminSubscriberDetail / AdminSubscriberPropertySummary
  *     (backend/src/main/java/com/homekept/subscription/dto/*.java)
+ *   - AdminUpdateSkuRequest / AdminPropertySkuResponse
+ *     (backend/src/main/java/com/homekept/property/dto/*.java)
  *   - AdminVisitListItem (backend/src/main/java/com/homekept/visit/dto/AdminVisitListItem.java)
  *   - AdminTechnicianListItem
  *     (backend/src/main/java/com/homekept/technician/dto/AdminTechnicianListItem.java)
@@ -126,11 +128,23 @@ export interface AdminSubscriberListItem {
 }
 
 export interface AdminSubscriberPropertySummary {
+  propertyId: number;
   streetAddress: string;
   city: string;
   postalCode: string;
   propertyType?: string;
   hasAccessNotes: boolean;
+  /**
+   * SKU sheet (technician-prep) fields captured by the walk-through and refined
+   * over subsequent visits (#56). `AdminSubscriberPropertySummary` on the backend
+   * has no `@JsonInclude(NON_NULL)` of its own, so an unset field arrives as an
+   * explicit `null`, not an omitted key — typed `| null` here, not optional.
+   */
+  hvacFilterSizes: string | null;
+  smokeCoDetectorModels: string | null;
+  humidifierModel: string | null;
+  waterHeaterAgeYears: number | null;
+  waterHeaterFlushEligible: boolean | null;
 }
 
 export interface AdminSubscriberDetail {
@@ -173,6 +187,48 @@ export function useAdminSubscriber(id: number | null) {
     queryKey: ["admin", "subscriber", id],
     queryFn: () => get<AdminSubscriberDetail>(`/api/admin/subscribers/${id}`),
     enabled: id !== null,
+  });
+}
+
+/**
+ * Request body for `PATCH /api/admin/properties/{propertyId}/sku`. Every field is
+ * optional/nullable on the backend (`AdminUpdateSkuRequest.java`) — an omitted key
+ * or an explicit `null` both leave that column unchanged (partial/ongoing capture
+ * as the SKU sheet is filled in over time; there is currently no way to clear a
+ * field that was already set). `waterHeaterAgeYears` must be 0–100 when present.
+ */
+export interface AdminUpdateSkuRequest {
+  hvacFilterSizes?: string | null;
+  smokeCoDetectorModels?: string | null;
+  humidifierModel?: string | null;
+  waterHeaterAgeYears?: number | null;
+  waterHeaterFlushEligible?: boolean | null;
+}
+
+/** Response body for `PATCH /api/admin/properties/{propertyId}/sku` — the updated SKU sheet. */
+export interface AdminPropertySkuResponse {
+  propertyId: number;
+  hvacFilterSizes: string | null;
+  smokeCoDetectorModels: string | null;
+  humidifierModel: string | null;
+  waterHeaterAgeYears: number | null;
+  waterHeaterFlushEligible: boolean | null;
+}
+
+/**
+ * `PATCH /api/admin/properties/{propertyId}/sku` — updates the property's SKU
+ * sheet (#56). Invalidates every `["admin", "subscriber", ...]` detail query
+ * (the subscriber whose property this is, keyed by subscriber id, not property
+ * id) so the subscriber detail sheet refetches and shows the saved values.
+ */
+export function useUpdatePropertySku(propertyId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: AdminUpdateSkuRequest) =>
+      patch<AdminPropertySkuResponse>(`/api/admin/properties/${propertyId}/sku`, request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "subscriber"] });
+    },
   });
 }
 
