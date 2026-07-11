@@ -193,7 +193,8 @@ checklist response, are not yet built.
 | `PATCH /api/admin/bookings/{id}` | status transitions (via `WalkthroughBookingStateMachine`), set `scheduledFor` |
 | `POST /api/admin/bookings/{id}/activation-invite` | mint token + send activation email |
 | `GET /api/admin/subscribers?cursor=` | subscriber list w/ status, plan, MRR |
-| `GET /api/admin/subscribers/{id}` | detail incl. property, visits, Stripe links |
+| `GET /api/admin/subscribers/{id}` | detail incl. property, visits, Stripe links. `property` includes `propertyId` (targets the SKU update below) and the SKU sheet fields — `hvacFilterSizes`, `smokeCoDetectorModels`, `humidifierModel`, `waterHeaterAgeYears`, `waterHeaterFlushEligible` (all `null` until captured; technician-prep data per docs/pricing-and-visits.md §Materials) |
+| `PATCH /api/admin/properties/{propertyId}/sku` | `{ hvacFilterSizes?, smokeCoDetectorModels?, humidifierModel?, waterHeaterAgeYears?, waterHeaterFlushEligible? }` — all fields optional/nullable; a field omitted or `null` leaves that column unchanged (partial/ongoing capture as the SKU sheet is filled in over time). `waterHeaterAgeYears` must be 0–100 when present. 200 with the updated SKU fields; unknown `propertyId` → 404; non-ADMIN → 403; invalid `waterHeaterAgeYears` → 400 `VALIDATION_FAILED` |
 | `GET /api/admin/visits?status=&cursor=&limit=` | cursor-paginated visit list (newest first; mirrors the bookings pagination style): `[{ id, subscriberId, propertyId, technicianId, scheduledFor, durationMinutes, actualDurationMinutes, materialsCostCents, status, type, completedAt, createdAt }]`. Invalid `status` → 400 |
 | `POST /api/admin/visits` | `{ subscriberId, scheduledFor, durationMinutes, serviceIds[], technicianUserId? }` |
 | `PATCH /api/admin/visits/{id}` | reschedule (creates new row per state machine) / cancel / assign technician |

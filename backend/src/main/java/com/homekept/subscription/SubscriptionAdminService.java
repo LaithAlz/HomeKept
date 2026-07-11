@@ -136,11 +136,17 @@ public class SubscriptionAdminService {
         var property = propertyService.findById(s.getPropertyId());
         if (property != null) {
             propertySummary = new AdminSubscriberPropertySummary(
+                    property.getId(),
                     property.getStreetAddress(),
                     property.getCity(),
                     property.getPostalCode(),
                     property.getPropertyType() != null ? property.getPropertyType().name() : null,
-                    property.hasAccessNotes()
+                    property.hasAccessNotes(),
+                    property.getHvacFilterSizes(),
+                    property.getSmokeCODetectorModels(),
+                    property.getHumidifierModel(),
+                    property.getWaterHeaterAgeYears(),
+                    property.getWaterHeaterFlushEligible()
             );
         }
 

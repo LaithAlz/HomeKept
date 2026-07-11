@@ -1,6 +1,7 @@
 package com.homekept.common;
 
 import com.homekept.booking.exception.BookingNotFoundException;
+import com.homekept.property.exception.PropertyNotFoundException;
 import com.homekept.technician.TechnicianAlreadyExistsException;
 import com.homekept.storage.StorageUnavailableException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
@@ -102,6 +103,14 @@ public class GlobalExceptionHandler {
                                                                HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorEnvelope.of("NOT_FOUND", "Booking not found", requestId(request)));
+    }
+
+    /** Property not found — 404 per ownership-failure rule. */
+    @ExceptionHandler(PropertyNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handlePropertyNotFound(PropertyNotFoundException ex,
+                                                                 HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Property not found", requestId(request)));
     }
 
     /** Illegal state machine transition — 409 Conflict per api-contract.md. */
