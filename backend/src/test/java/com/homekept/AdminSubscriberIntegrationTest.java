@@ -30,6 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,6 +48,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>GET /api/admin/subscribers/{id} — as ADMIN → 200 with property summary; hasAccessNotes present</li>
  *   <li>GET /api/admin/subscribers/{id} — response NEVER contains a decrypted access notes field</li>
  *   <li>GET /api/admin/subscribers/{id} — missing id → 404</li>
+ *   <li>GET /api/admin/subscribers/{id} — SKU sheet fields (issue #56, read side) are null
+ *       until set, and reflect a subsequent {@code PATCH /api/admin/properties/{propertyId}/sku}</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -57,6 +60,7 @@ class AdminSubscriberIntegrationTest {
     private static final String WALKTHROUGH_URL    = "/api/bookings/walkthrough";
     private static final String ADMIN_INVITE_URL   = "/api/admin/bookings/%d/activation-invite";
     private static final String ADMIN_SUBSCRIBERS  = "/api/admin/subscribers";
+    private static final String ADMIN_PROPERTY_SKU_URL = "/api/admin/properties/%d/sku";
     private static final String LOGIN_URL          = "/api/auth/login";
     private static final String COMPLETE_URL       = "/api/activation/complete";
 
@@ -278,6 +282,58 @@ class AdminSubscriberIntegrationTest {
                 .andExpect(status().isOk())
                 // The activation flow does not set access notes, so hasAccessNotes must be false.
                 .andExpect(jsonPath("$.property.hasAccessNotes").value(false));
+    }
+
+    @Test
+    void getSubscriberDetail_asAdmin_showsSkuFieldsNullInitially() throws Exception {
+        Long subscriberId = createSubscriberViaActivation("sku-null@test.local", "Sku Null");
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + subscriberId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.property.propertyId").isNumber())
+                .andExpect(jsonPath("$.property.hvacFilterSizes").value(nullValue()))
+                .andExpect(jsonPath("$.property.smokeCoDetectorModels").value(nullValue()))
+                .andExpect(jsonPath("$.property.humidifierModel").value(nullValue()))
+                .andExpect(jsonPath("$.property.waterHeaterAgeYears").value(nullValue()))
+                .andExpect(jsonPath("$.property.waterHeaterFlushEligible").value(nullValue()));
+    }
+
+    @Test
+    void getSubscriberDetail_asAdmin_reflectsSkuAfterAdminPatch() throws Exception {
+        Long subscriberId = createSubscriberViaActivation("sku-patched@test.local", "Sku Patched");
+        String adminToken = loginAs(Role.ADMIN);
+
+        MvcResult detail = mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + subscriberId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        Long propertyId = ((Number) com.jayway.jsonpath.JsonPath.read(
+                detail.getResponse().getContentAsString(), "$.property.propertyId")).longValue();
+
+        mockMvc.perform(patch(ADMIN_PROPERTY_SKU_URL.formatted(propertyId))
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "hvacFilterSizes": "16x25x1",
+                                  "smokeCoDetectorModels": "Kidde P4010ACSCO-CA",
+                                  "humidifierModel": "Aprilaire 600",
+                                  "waterHeaterAgeYears": 5,
+                                  "waterHeaterFlushEligible": true
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + subscriberId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.property.hvacFilterSizes").value("16x25x1"))
+                .andExpect(jsonPath("$.property.smokeCoDetectorModels").value("Kidde P4010ACSCO-CA"))
+                .andExpect(jsonPath("$.property.humidifierModel").value("Aprilaire 600"))
+                .andExpect(jsonPath("$.property.waterHeaterAgeYears").value(5))
+                .andExpect(jsonPath("$.property.waterHeaterFlushEligible").value(true));
     }
 
     @Test
