@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { getSession } from "@/lib/auth";
 import { useAdminDashboard } from "@/lib/admin";
@@ -209,6 +210,7 @@ function AdminConsole() {
 
   return (
     <div className="min-h-dvh bg-surface/30 text-foreground">
+      <Toaster />
       <div className="flex min-h-dvh">
         <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-border bg-card md:flex">
           <div className="flex h-16 items-center gap-2 border-b border-border px-5">
