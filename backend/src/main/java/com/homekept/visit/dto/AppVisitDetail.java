@@ -22,5 +22,6 @@ public record AppVisitDetail(
         Instant completedAt,             // nullable
         String technicianFirstName,      // nullable — technician slice not yet built
         List<VisitServiceItem> services,
-        List<AppVisitPhoto> photos       // empty if R2 unconfigured or no photos — never fabricated
+        List<AppVisitPhoto> photos,      // empty if R2 unconfigured or no photos — never fabricated
+        boolean hasPendingRescheduleRequest  // true iff a PENDING reschedule_request exists for this visit
 ) {}

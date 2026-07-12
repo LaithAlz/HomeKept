@@ -42,6 +42,10 @@ import java.util.stream.Collectors;
  *
  * <p>Photo download URLs are signed via {@link StorageService#presignDownload} (the storage
  * domain's service) — never by reading R2 credentials or building URLs here.
+ *
+ * <p>Whether a visit has a pending reschedule request is resolved via
+ * {@link RescheduleService#hasPendingRequest} — {@code RescheduleService} lives in this same
+ * domain (visit), so this is a same-domain service call, not a cross-domain one.
  */
 @Service
 public class VisitAppService {
@@ -60,6 +64,7 @@ public class VisitAppService {
     private final CatalogService catalogService;
     private final VisitTemplateRepository visitTemplateRepository;
     private final StorageService storageService;
+    private final RescheduleService rescheduleService;
 
     public VisitAppService(VisitRepository visitRepository,
                            VisitServiceRepository visitServiceRepository,
@@ -67,7 +72,8 @@ public class VisitAppService {
                            SubscriberQueryService subscriberQueryService,
                            CatalogService catalogService,
                            VisitTemplateRepository visitTemplateRepository,
-                           StorageService storageService) {
+                           StorageService storageService,
+                           RescheduleService rescheduleService) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
         this.visitPhotoRepository = visitPhotoRepository;
@@ -75,6 +81,7 @@ public class VisitAppService {
         this.catalogService = catalogService;
         this.visitTemplateRepository = visitTemplateRepository;
         this.storageService = storageService;
+        this.rescheduleService = rescheduleService;
     }
 
     /**
@@ -135,7 +142,8 @@ public class VisitAppService {
         List<VisitServiceItem> services = loadServiceItems(visit.getId());
         List<AppVisitPhoto> photos = loadPhotos(visit.getId());
         Map<Long, String> templateNames = loadTemplateNames(List.of(visit));
-        return toDetail(visit, services, photos, templateNames);
+        boolean hasPendingRescheduleRequest = rescheduleService.hasPendingRequest(visit.getId());
+        return toDetail(visit, services, photos, templateNames, hasPendingRescheduleRequest);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────
@@ -156,7 +164,8 @@ public class VisitAppService {
 
     private AppVisitDetail toDetail(Visit v, List<VisitServiceItem> services,
                                     List<AppVisitPhoto> photos,
-                                    Map<Long, String> templateNames) {
+                                    Map<Long, String> templateNames,
+                                    boolean hasPendingRescheduleRequest) {
         return new AppVisitDetail(
                 v.getId(),
                 resolveVisitName(v, templateNames),
@@ -170,7 +179,8 @@ public class VisitAppService {
                 v.getCompletedAt(),
                 null,          // technicianFirstName — technician slice not yet built
                 services,
-                photos
+                photos,
+                hasPendingRescheduleRequest
         );
     }
 

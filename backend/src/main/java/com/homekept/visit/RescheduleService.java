@@ -111,6 +111,19 @@ public class RescheduleService {
                 request.getCreatedAt());
     }
 
+    /**
+     * Whether the given visit currently has a PENDING reschedule request.
+     *
+     * <p>Used by {@link VisitAppService#getVisit} to populate
+     * {@code AppVisitDetail.hasPendingRescheduleRequest} so the "reschedule requested,
+     * pending confirmation" state persists across reloads instead of relying on optimistic
+     * client-side state that resets on refresh.
+     */
+    @Transactional(readOnly = true)
+    public boolean hasPendingRequest(Long visitId) {
+        return rescheduleRequestRepository.existsByVisitIdAndStatus(visitId, RescheduleRequestStatus.PENDING);
+    }
+
     // ── Admin ─────────────────────────────────────────────────────────────────
 
     /** Lists PENDING reschedule requests for the admin queue, oldest first. */
