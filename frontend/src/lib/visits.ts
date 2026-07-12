@@ -44,6 +44,7 @@ export interface AppVisitListItem {
   type: VisitType;
   technicianFirstName: string | null; // nullable — technician slice not yet built
   services: VisitServiceItem[];
+  hasPendingRescheduleRequest: boolean; // true if a PENDING reschedule_request exists for this visit
 }
 
 /**
