@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -44,7 +45,8 @@ import java.util.stream.Collectors;
  * domain's service) — never by reading R2 credentials or building URLs here.
  *
  * <p>Whether a visit has a pending reschedule request is resolved via
- * {@link RescheduleService#hasPendingRequest} — {@code RescheduleService} lives in this same
+ * {@link RescheduleService#hasPendingRequest} (detail) / {@link RescheduleService#pendingRequestVisitIds}
+ * (list, batch — one query for the whole page) — {@code RescheduleService} lives in this same
  * domain (visit), so this is a same-domain service call, not a cross-domain one.
  */
 @Service
@@ -117,8 +119,10 @@ public class VisitAppService {
         }
 
         Map<Long, String> templateNames = loadTemplateNames(visits);
+        Set<Long> pendingVisitIds = rescheduleService.pendingRequestVisitIds(
+                visits.stream().map(Visit::getId).collect(Collectors.toList()));
         return visits.stream()
-                .map(v -> toListItem(v, loadServiceItems(v.getId()), templateNames))
+                .map(v -> toListItem(v, loadServiceItems(v.getId()), templateNames, pendingVisitIds))
                 .collect(Collectors.toList());
     }
 
@@ -149,7 +153,7 @@ public class VisitAppService {
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private AppVisitListItem toListItem(Visit v, List<VisitServiceItem> services,
-                                        Map<Long, String> templateNames) {
+                                        Map<Long, String> templateNames, Set<Long> pendingVisitIds) {
         return new AppVisitListItem(
                 v.getId(),
                 resolveVisitName(v, templateNames),
@@ -158,7 +162,8 @@ public class VisitAppService {
                 v.getStatus().name(),
                 v.getType().name(),
                 null,          // technicianFirstName — technician slice not yet built
-                services
+                services,
+                pendingVisitIds.contains(v.getId())
         );
     }
 

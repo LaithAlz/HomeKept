@@ -8,7 +8,8 @@ import java.util.List;
  * ({@code GET /api/app/visits}).
  *
  * <p>Matches the API contract shape: id, name (template name or type), scheduledFor,
- * durationMinutes, status, type, technicianFirstName, services (checklist summary).
+ * durationMinutes, status, type, technicianFirstName, services (checklist summary),
+ * hasPendingRescheduleRequest.
  */
 public record AppVisitListItem(
         Long id,
@@ -18,5 +19,6 @@ public record AppVisitListItem(
         String status,
         String type,
         String technicianFirstName,   // nullable — technician slice not yet built
-        List<VisitServiceItem> services
+        List<VisitServiceItem> services,
+        boolean hasPendingRescheduleRequest
 ) {}

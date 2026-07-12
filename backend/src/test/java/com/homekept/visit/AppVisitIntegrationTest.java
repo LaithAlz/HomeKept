@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
@@ -50,7 +51,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Anonymous → 401.</li>
  *   <li>ADMIN on CUSTOMER endpoint → 403 (wrong role).</li>
  *   <li>{@code hasPendingRescheduleRequest} reflects whether a PENDING
- *       {@link RescheduleRequest} exists for the visit.</li>
+ *       {@link RescheduleRequest} exists for the visit, on both the detail endpoint and
+ *       (batch-computed for the whole page) the list endpoint.</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -219,6 +221,65 @@ class AppVisitIntegrationTest {
                         .cookie(new Cookie("hk_access", customerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    // ── GET /api/app/visits — hasPendingRescheduleRequest (batch) ───────────
+
+    @Test
+    void listVisits_noRescheduleRequest_hasPendingRescheduleRequestIsFalse() throws Exception {
+        seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+
+        mockMvc.perform(get(LIST_URL)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hasPendingRescheduleRequest").value(false));
+    }
+
+    @Test
+    void listVisits_pendingRescheduleRequest_hasPendingRescheduleRequestIsTrue() throws Exception {
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+        rescheduleRequestRepository.save(
+                new RescheduleRequest(visit.getId(), customerSubscriber.getId()));
+
+        mockMvc.perform(get(LIST_URL)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hasPendingRescheduleRequest").value(true));
+    }
+
+    @Test
+    void listVisits_mixOfVisits_flagsOnlyTheOneWithAPendingRequest() throws Exception {
+        // Three visits: one with a PENDING request, one with a resolved (DECLINED) request
+        // (should not count), one with none — exercises the batch query across a page of
+        // more than one visit.
+        Visit pendingVisit = seedVisitForCustomer(Instant.now().plus(10, ChronoUnit.DAYS));
+        rescheduleRequestRepository.save(
+                new RescheduleRequest(pendingVisit.getId(), customerSubscriber.getId()));
+
+        Visit declinedVisit = seedVisitForCustomer(Instant.now().plus(20, ChronoUnit.DAYS));
+        RescheduleRequest declined = new RescheduleRequest(declinedVisit.getId(), customerSubscriber.getId());
+        declined.setStatus(RescheduleRequestStatus.DECLINED);
+        declined.setAdminNote("No availability");
+        rescheduleRequestRepository.save(declined);
+
+        Visit plainVisit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+
+        MvcResult result = mockMvc.perform(get(LIST_URL)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Map<String, Object>> items = com.jayway.jsonpath.JsonPath.read(body, "$");
+        Map<Long, Boolean> flagById = items.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        item -> Long.valueOf(String.valueOf(item.get("id"))),
+                        item -> (Boolean) item.get("hasPendingRescheduleRequest")));
+
+        assertThat(flagById.get(pendingVisit.getId())).isTrue();
+        assertThat(flagById.get(declinedVisit.getId())).isFalse();
+        assertThat(flagById.get(plainVisit.getId())).isFalse();
     }
 
     // ── GET /api/app/visits/{id} — detail ────────────────────────────────────

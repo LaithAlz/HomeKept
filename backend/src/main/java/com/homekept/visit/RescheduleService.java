@@ -13,7 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Customer self-serve reschedule requests and the admin confirm/decline loop (#54).
@@ -122,6 +124,23 @@ public class RescheduleService {
     @Transactional(readOnly = true)
     public boolean hasPendingRequest(Long visitId) {
         return rescheduleRequestRepository.existsByVisitIdAndStatus(visitId, RescheduleRequestStatus.PENDING);
+    }
+
+    /**
+     * Batch equivalent of {@link #hasPendingRequest} for a page of visits: returns the subset
+     * of {@code visitIds} that have a PENDING reschedule request, in a single query.
+     *
+     * <p>Used by {@link VisitAppService#listVisits} to populate
+     * {@code AppVisitListItem.hasPendingRescheduleRequest} for a whole page without one
+     * {@code exists} query per row (no N+1).
+     */
+    @Transactional(readOnly = true)
+    public Set<Long> pendingRequestVisitIds(Collection<Long> visitIds) {
+        if (visitIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(rescheduleRequestRepository.findVisitIdByStatusAndVisitIdIn(
+                RescheduleRequestStatus.PENDING, visitIds));
     }
 
     // ── Admin ─────────────────────────────────────────────────────────────────
