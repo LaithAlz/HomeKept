@@ -49,6 +49,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Another subscriber's visit → 404 (ownership, not 403).</li>
  *   <li>Anonymous → 401.</li>
  *   <li>ADMIN on CUSTOMER endpoint → 403 (wrong role).</li>
+ *   <li>{@code hasPendingRescheduleRequest} reflects whether a PENDING
+ *       {@link RescheduleRequest} exists for the visit.</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -64,6 +66,7 @@ class AppVisitIntegrationTest {
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired VisitPhotoRepository visitPhotoRepository;
+    @Autowired RescheduleRequestRepository rescheduleRequestRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired UserRepository userRepository;
@@ -132,6 +135,9 @@ class AppVisitIntegrationTest {
         // visit_service → visit (cascade on delete visit) → subscriber ON DELETE RESTRICT.
         // Delete visit_service and visit explicitly before subscriber.
         for (Long subId : createdSubscriberIds) {
+            jdbc.update("DELETE FROM reschedule_request_slot WHERE reschedule_request_id IN "
+                    + "(SELECT id FROM reschedule_request WHERE subscriber_id = ?)", subId);
+            jdbc.update("DELETE FROM reschedule_request WHERE subscriber_id = ?", subId);
             jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
             jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
             jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
@@ -279,6 +285,44 @@ class AppVisitIntegrationTest {
                         .cookie(new Cookie("hk_access", customerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.technicianFirstName").value(nullValue()));
+    }
+
+    // ── GET /api/app/visits/{id} — hasPendingRescheduleRequest ──────────────
+
+    @Test
+    void getVisit_noRescheduleRequest_hasPendingRescheduleRequestIsFalse() throws Exception {
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+
+        mockMvc.perform(get(DETAIL_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPendingRescheduleRequest").value(false));
+    }
+
+    @Test
+    void getVisit_pendingRescheduleRequest_hasPendingRescheduleRequestIsTrue() throws Exception {
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+        rescheduleRequestRepository.save(
+                new RescheduleRequest(visit.getId(), customerSubscriber.getId()));
+
+        mockMvc.perform(get(DETAIL_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPendingRescheduleRequest").value(true));
+    }
+
+    @Test
+    void getVisit_resolvedRescheduleRequest_hasPendingRescheduleRequestIsFalse() throws Exception {
+        Visit visit = seedVisitForCustomer(Instant.now().plus(30, ChronoUnit.DAYS));
+        RescheduleRequest request = new RescheduleRequest(visit.getId(), customerSubscriber.getId());
+        request.setStatus(RescheduleRequestStatus.DECLINED);
+        request.setAdminNote("No availability");
+        rescheduleRequestRepository.save(request);
+
+        mockMvc.perform(get(DETAIL_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPendingRescheduleRequest").value(false));
     }
 
     // ── GET /api/app/visits/{id} — photos ────────────────────────────────────

@@ -15,4 +15,7 @@ public interface RescheduleRequestRepository extends JpaRepository<RescheduleReq
 
     /** Admin queue: requests in the given status, oldest first. */
     List<RescheduleRequest> findByStatusOrderByIdAsc(RescheduleRequestStatus status);
+
+    /** Whether the given visit has a request in the given status (e.g. a PENDING one). */
+    boolean existsByVisitIdAndStatus(Long visitId, RescheduleRequestStatus status);
 }
