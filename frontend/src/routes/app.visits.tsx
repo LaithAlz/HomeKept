@@ -117,8 +117,11 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  // Client-side only — see the note in `app.visits.$id.tsx`'s ScheduledDetail.
-  const [requested, setRequested] = useState(false);
+  // Server truth: true whenever a PENDING reschedule_request exists for this visit.
+  // Persists across reloads (unlike a client-only flag) because it comes back on
+  // every GET /api/app/visits. The dialog's success handler invalidates the visits
+  // query, so submitting a request flips this to true on refetch.
+  const hasPendingReschedule = visit.hasPendingRescheduleRequest;
 
   return (
     <article
@@ -178,7 +181,7 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
                 View details
               </Link>
             </Button>
-            {requested ? (
+            {hasPendingReschedule ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold text-primary-foreground/80">
                 <RefreshCcw className="size-3.5" aria-hidden="true" />
                 Reschedule requested, pending confirmation
@@ -197,12 +200,7 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
         </div>
       </div>
 
-      <RescheduleDialog
-        visitId={visit.id}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onRequested={() => setRequested(true)}
-      />
+      <RescheduleDialog visitId={visit.id} open={dialogOpen} onOpenChange={setDialogOpen} />
     </article>
   );
 }
