@@ -73,6 +73,7 @@ export interface AppVisitDetail {
   technicianFirstName: string | null; // nullable — technician slice not yet built
   services: VisitServiceItem[];
   photos: AppVisitPhoto[]; // empty if R2 unconfigured or no photos — never fabricated
+  hasPendingRescheduleRequest: boolean; // true if a PENDING reschedule_request exists for this visit
 }
 
 interface ListVisitsParams {
