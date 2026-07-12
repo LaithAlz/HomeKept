@@ -25,7 +25,8 @@ import java.util.Set;
  * (ownership → 404) and is SCHEDULED, then records a PENDING {@link RescheduleRequest} with
  * the proposed slots. Duplicate PENDING requests for one visit are prevented by the DB
  * partial unique index — we insert blind and translate the violation to a 409, avoiding a
- * pre-check query.
+ * pre-check query. {@link #cancelRequest} lets the customer withdraw their own PENDING
+ * request (hard delete, freeing the partial unique index) before an admin acts on it.
  *
  * <h2>Admin</h2>
  * <p>{@link #confirm} reschedules the visit via {@link VisitAdminService#rescheduleVisit}
@@ -111,6 +112,43 @@ public class RescheduleService {
                 request.getStatus().name(),
                 loadSlots(request.getId()),
                 request.getCreatedAt());
+    }
+
+    /**
+     * Cancels (hard-deletes) the authenticated customer's own PENDING reschedule request for
+     * a visit, before an admin has confirmed or declined it. Frees the partial-unique-index
+     * slot so the customer can submit a new request.
+     *
+     * @param userId  the authenticated user's id (JWT principal)
+     * @param visitId the visit whose pending request should be withdrawn
+     * @throws VisitNotFoundException             if the visit is not owned by the subscriber (404)
+     * @throws RescheduleRequestNotFoundException if there is no PENDING request for the visit
+     *                                            (already resolved or never created) — 404
+     */
+    @Transactional
+    public void cancelRequest(Long userId, Long visitId) {
+        Long subscriberId = resolveSubscriberId(userId);
+
+        Visit visit = visitRepository.findByIdAndSubscriberId(visitId, subscriberId)
+                .orElseThrow(() -> {
+                    log.debug("reschedule_cancel_visit_not_owned visitId={} subscriberId={}", visitId, subscriberId);
+                    return new VisitNotFoundException(visitId);
+                });
+
+        RescheduleRequest request = rescheduleRequestRepository
+                .findByVisitIdAndStatus(visit.getId(), RescheduleRequestStatus.PENDING)
+                .orElseThrow(() -> {
+                    log.debug("reschedule_cancel_no_pending_request visitId={} subscriberId={}", visitId, subscriberId);
+                    return new RescheduleRequestNotFoundException(visitId);
+                });
+
+        // Slots first, then the request row — the FK also cascades at the DB level, but we
+        // delete explicitly so no orphan slot rows depend on that alone.
+        slotRepository.deleteByRescheduleRequestId(request.getId());
+        rescheduleRequestRepository.delete(request);
+
+        log.info("reschedule_request_cancelled requestId={} visitId={} subscriberId={}",
+                request.getId(), visitId, subscriberId);
     }
 
     /**

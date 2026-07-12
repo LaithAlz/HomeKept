@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -229,6 +230,96 @@ class RescheduleRequestIntegrationTest {
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"preferredDates\":[\"2026-08-01T15:00:00Z\"]}"))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── Customer: cancel ────────────────────────────────────────────────────────
+
+    @Test
+    void cancelRequest_pendingRequest_returns204_freesIndex_andDeletesSlots() throws Exception {
+        Long requestId = createPendingRequest();
+
+        mockMvc.perform(delete(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isNoContent());
+
+        // The detail endpoint no longer reports a pending request.
+        mockMvc.perform(get("/api/app/visits/" + visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasPendingRescheduleRequest").value(false));
+
+        // The request row and its slots are gone.
+        assertThat(rescheduleRequestRepository.findById(requestId)).isEmpty();
+        Integer slotCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM reschedule_request_slot WHERE reschedule_request_id = ?",
+                Integer.class, requestId);
+        assertThat(slotCount).isZero();
+
+        // The partial unique index is freed — a new request can be submitted.
+        mockMvc.perform(post(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"preferredDates\":[\"2026-08-10T15:00:00Z\"]}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void cancelRequest_noPendingRequest_returns404() throws Exception {
+        mockMvc.perform(delete(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancelRequest_notOwnedVisit_returns404() throws Exception {
+        long nano = System.nanoTime();
+        User other = userRepository.save(new User(
+                "resched-cancel-other-" + nano + "@test.local",
+                passwordEncoder.encode("Other1234!"),
+                "Other", "Customer", Role.CUSTOMER, UserStatus.ACTIVE));
+        createdUserIds.add(other.getId());
+        Property otherProp = propertyRepository.save(new Property(
+                nano + " Other Cancel Rd", null, "Mississauga", "L5L 1A1", "L5L", null, null, PropertyType.DETACHED));
+        createdPropertyIds.add(otherProp.getId());
+        Subscriber otherSub = subscriberRepository.save(new Subscriber(
+                other.getId(), otherProp.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
+        createdSubscriberIds.add(otherSub.getId());
+        Visit otherVisit = visitRepository.save(new Visit(
+                otherSub.getId(), otherProp.getId(), null,
+                Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
+
+        mockMvc.perform(delete(rescheduleUrl(otherVisit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancelRequest_alreadyResolved_returns404() throws Exception {
+        Long requestId = createPendingRequest();
+
+        mockMvc.perform(post(ADMIN_LIST_URL + "/" + requestId + "/confirm")
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledFor\":\"2026-08-05T16:00:00Z\"}"))
+                .andExpect(status().isOk());
+
+        // The request is now CONFIRMED, not PENDING — nothing left to cancel.
+        mockMvc.perform(delete(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void cancelRequest_anonymous_returns401() throws Exception {
+        mockMvc.perform(delete(rescheduleUrl(visit.getId())))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void cancelRequest_asAdmin_returns403() throws Exception {
+        mockMvc.perform(delete(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isForbidden());
     }
 

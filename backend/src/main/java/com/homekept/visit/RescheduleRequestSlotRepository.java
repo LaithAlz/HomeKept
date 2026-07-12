@@ -11,4 +11,7 @@ public interface RescheduleRequestSlotRepository extends JpaRepository<Reschedul
 
     /** The proposed slots for a request, earliest first. */
     List<RescheduleRequestSlot> findByRescheduleRequestIdOrderByPreferredSlotAsc(Long rescheduleRequestId);
+
+    /** Deletes all slot rows for a request (used when cancelling a PENDING request). */
+    void deleteByRescheduleRequestId(Long rescheduleRequestId);
 }
