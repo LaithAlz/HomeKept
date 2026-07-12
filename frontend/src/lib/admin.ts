@@ -28,6 +28,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, patch, post } from "@/lib/api";
+import { submitWalkthroughBooking, type WalkthroughBookingRequest } from "@/lib/booking";
 
 /* -------------------------------------------------------------------------- */
 /* Bookings (walk-through pipeline)                                           */
@@ -112,6 +113,23 @@ export function useSendActivationInvite() {
   return useMutation({
     mutationFn: (bookingId: number) =>
       post<{ status: string }>(`/api/admin/bookings/${bookingId}/activation-invite`),
+  });
+}
+
+/**
+ * `POST /api/bookings/walkthrough` — the same public endpoint the customer
+ * booking wizard uses (see `@/lib/booking`), invoked here so staff can log a
+ * walk-through taken by phone or in person (the admin "New booking" sheet).
+ * Invalidates every `["admin", "bookings", ...]` list query so the new
+ * PENDING booking appears in the pipeline immediately.
+ */
+export function useCreateWalkthroughBooking() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: WalkthroughBookingRequest) => submitWalkthroughBooking(request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+    },
   });
 }
 
