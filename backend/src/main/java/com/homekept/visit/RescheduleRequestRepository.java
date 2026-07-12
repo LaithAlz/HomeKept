@@ -16,6 +16,12 @@ public interface RescheduleRequestRepository extends JpaRepository<RescheduleReq
     /** Ownership-scoped lookup for the customer (returns empty if not owned → 404). */
     Optional<RescheduleRequest> findByIdAndSubscriberId(Long id, Long subscriberId);
 
+    /**
+     * The request for a visit in the given status (e.g. the PENDING one, if any). The visit's
+     * ownership must already be resolved by the caller — this is scoped by visit id only.
+     */
+    Optional<RescheduleRequest> findByVisitIdAndStatus(Long visitId, RescheduleRequestStatus status);
+
     /** Admin queue: requests in the given status, oldest first. */
     List<RescheduleRequest> findByStatusOrderByIdAsc(RescheduleRequestStatus status);
 
