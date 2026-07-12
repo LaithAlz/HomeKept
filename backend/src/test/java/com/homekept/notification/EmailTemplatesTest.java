@@ -63,7 +63,10 @@ class EmailTemplatesTest {
                 EmailTemplates.subscriptionCancelled("A", "https://x/plans"),
                 EmailTemplates.bookingConfirmation("A", "July 6, 2026", "afternoon", "Wednesday and Thursday",
                         "14 Maple Ridge Crt, Mississauga"),
-                EmailTemplates.passwordReset("A", "https://x/reset-password?token=t"));
+                EmailTemplates.passwordReset("A", "https://x/reset-password?token=t"),
+                EmailTemplates.walkthroughReminder("A", "Tuesday, July 14 at 2:00 PM",
+                        "14 Maple Ridge Crt, Mississauga"),
+                EmailTemplates.visitReminder("A", "Tuesday, July 14 at 2:00 PM", "https://x/app"));
 
         for (RenderedEmail e : all) {
             assertThat(e.subject()).isNotBlank();
@@ -161,5 +164,59 @@ class EmailTemplatesTest {
         assertThat(e.htmlBody())
                 .contains("This is a transactional message about your password reset request.")
                 .doesNotContain("This is a transactional message about your HomeKept membership.");
+    }
+
+    // ── Reminder templates (#89) ──────────────────────────────────────────────────
+
+    @Test
+    void walkthroughReminder_hasSubjectWhenAndAddressNoCta() {
+        RenderedEmail e = EmailTemplates.walkthroughReminder(
+                "Priya", "Tuesday, July 14 at 2:00 PM", "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.subject()).isEqualTo("Reminder: your HomeKept walk-through is coming up");
+        assertThat(e.htmlBody())
+                .contains("Hi Priya,")
+                .contains("Tuesday, July 14 at 2:00 PM")
+                .contains("14 Maple Ridge Crt, Mississauga");
+        // No CTA button — there's no account yet, same as bookingConfirmation.
+        assertThat(e.htmlBody()).doesNotContain("<a href=");
+        assertThat(e.htmlBody())
+                .contains("This is a transactional message about your walk-through request.");
+    }
+
+    @Test
+    void walkthroughReminder_nullFirstName_fallsBackToNeutralGreeting() {
+        RenderedEmail e = EmailTemplates.walkthroughReminder(
+                null, "Tuesday, July 14 at 2:00 PM", "14 Maple Ridge Crt, Mississauga");
+
+        assertThat(e.htmlBody()).contains("Hi there,");
+    }
+
+    @Test
+    void visitReminder_hasSubjectWhenAndDashboardCta() {
+        RenderedEmail e = EmailTemplates.visitReminder(
+                "Alice", "Tuesday, July 14 at 2:00 PM", "https://app.test/app");
+
+        assertThat(e.subject()).isEqualTo("Reminder: your HomeKept visit is coming up");
+        assertThat(e.htmlBody())
+                .contains("Hi Alice,")
+                .contains("Tuesday, July 14 at 2:00 PM")
+                .contains("https://app.test/app")
+                .contains("View my dashboard")
+                .contains("This is a transactional message about your HomeKept membership.");
+    }
+
+    @Test
+    void reminderTemplates_haveNoEmDashOrExclamationMark() {
+        RenderedEmail walkthrough = EmailTemplates.walkthroughReminder(
+                "Priya", "Tuesday, July 14 at 2:00 PM", "14 Maple Ridge Crt, Mississauga");
+        RenderedEmail visit = EmailTemplates.visitReminder(
+                "Alice", "Tuesday, July 14 at 2:00 PM", "https://app.test/app");
+
+        for (RenderedEmail e : List.of(walkthrough, visit)) {
+            assertThat(e.subject()).doesNotContain("—").doesNotContain("!");
+            assertThat(e.htmlBody()).doesNotContain("—");
+            assertThat(e.htmlBody().replaceAll("<[^>]*>", " ")).doesNotContain("!");
+        }
     }
 }

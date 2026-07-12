@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -33,6 +35,10 @@ public class DefaultBookingNotifier implements BookingNotifier {
     private static final DateTimeFormatter WEEK_FORMAT =
             DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH);
 
+    /** Renders a reminder's scheduled time, e.g. "Tuesday, July 14 at 2:00 PM". */
+    private static final DateTimeFormatter REMINDER_WHEN_FORMAT =
+            DateTimeFormatter.ofPattern("EEEE, MMMM d 'at' h:mm a", Locale.ENGLISH);
+
     private static final Map<BookingDayOfWeek, String> DAY_NAMES = new EnumMap<>(BookingDayOfWeek.class);
 
     static {
@@ -46,9 +52,11 @@ public class DefaultBookingNotifier implements BookingNotifier {
     }
 
     private final EmailSender emailSender;
+    private final ZoneId renderZoneId;
 
-    public DefaultBookingNotifier(EmailSender emailSender) {
+    public DefaultBookingNotifier(EmailSender emailSender, ZoneId renderZoneId) {
         this.emailSender = emailSender;
+        this.renderZoneId = renderZoneId;
     }
 
     @Override
@@ -67,6 +75,18 @@ public class DefaultBookingNotifier implements BookingNotifier {
                 firstName, weekLabel, timeOfDayLabel, dayPreferencesLabel, addressLabel);
         emailSender.send(booking.getEmail(), firstName, rendered.subject(), rendered.htmlBody());
         log.info("booking_confirmation_email_dispatched bookingId={}", booking.getId());
+    }
+
+    @Override
+    public void sendBookingReminder(Long bookingId, String email, String fullName,
+            String streetAddress, String city, Instant scheduledFor) {
+        String firstName = firstNameOf(fullName);
+        String whenLabel = REMINDER_WHEN_FORMAT.format(scheduledFor.atZone(renderZoneId));
+        String addressLabel = formatAddress(streetAddress, city);
+
+        RenderedEmail rendered = EmailTemplates.walkthroughReminder(firstName, whenLabel, addressLabel);
+        emailSender.send(email, firstName, rendered.subject(), rendered.htmlBody());
+        log.info("walkthrough_reminder_email_dispatched bookingId={}", bookingId);
     }
 
     /** Splits the stored full name on the first space, mirroring BookingService's activation split. */

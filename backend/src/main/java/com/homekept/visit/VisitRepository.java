@@ -94,6 +94,14 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
      */
     long countByStatusAndScheduledForGreaterThanEqual(VisitStatus status, java.time.Instant scheduledFor);
 
+    /**
+     * Visits in {@code status} whose {@code scheduledFor} falls within {@code [from, to]}.
+     * Used by {@link VisitQueryService#findScheduledInWindow} (#89) to find SCHEDULED visits
+     * due for the 24h-before reminder.
+     */
+    List<Visit> findByStatusAndScheduledForBetween(
+            VisitStatus status, java.time.Instant from, java.time.Instant to);
+
     // ── Scheduling idempotency guard ──────────────────────────────────────────
 
     /**
