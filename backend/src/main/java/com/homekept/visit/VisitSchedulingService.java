@@ -15,16 +15,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Schedules the initial set of upcoming ROUTINE visits for a newly-activated subscriber.
+ * Schedules a subscriber's upcoming ROUTINE visits: the initial batch on activation, and a
+ * rolling top-up thereafter as new months enter the lookahead window (#57).
  *
  * <h2>Scheduling window</h2>
- * <p>On activation, this service looks at the current month and schedules visits for
- * the <em>next {@value #LOOKAHEAD_MONTHS} months</em> (exclusive of the past). For each
- * calendar month in that window, if the subscriber's tier has a matching template, a
- * {@link Visit} is created in SCHEDULED status at noon Toronto time on the 15th of
- * that month (a neutral mid-month placeholder — admin confirms/adjusts the real date).
- * If the 15th is in the past relative to today, the visit is pushed to a week from now
- * (so admin still gets a window to confirm before it's overdue).
+ * <p>This service looks at the current month and schedules visits for the <em>next
+ * {@value #LOOKAHEAD_MONTHS} months</em> (exclusive of the past). For each calendar month in
+ * that window, if the subscriber's tier has a matching template, a {@link Visit} is created in
+ * SCHEDULED status at noon Toronto time on the 15th of that month (a neutral mid-month
+ * placeholder — admin confirms/adjusts the real date). If the 15th is in the past relative to
+ * today, the visit is pushed to a week from now (so admin still gets a window to confirm
+ * before it's overdue).
  *
  * <h2>Cumulative calendar</h2>
  * <p>The calendar is cumulative: an ESSENTIAL subscriber gets ESSENTIAL-only templates;
@@ -32,9 +33,22 @@ import java.util.List;
  * all three. The {@link VisitTemplateRepository#findByMinTierIn} query handles this.
  *
  * <h2>Idempotency</h2>
- * <p>If the subscriber already has any SCHEDULED or IN_PROGRESS visits, this method
- * returns immediately without creating duplicates. This keeps the Stripe webhook safe to
- * retry and prevents double-scheduling on webhook replay.
+ * <p>Idempotency is per-template <em>and window-scoped</em>, not per-subscriber and not
+ * unbounded: for each of the subscriber's tier-eligible templates that falls in the lookahead
+ * window, a visit is created only if the subscriber doesn't already have one tied to that
+ * template <em>with {@code scheduledFor} inside the current window</em> ({@link
+ * VisitRepository#existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween}, any status).
+ * Templates that already produced a visit inside this window are skipped; templates newly
+ * inside the window (because time has passed since the last call) still get one. This keeps
+ * the Stripe webhook safe to retry (a replay finds every in-window template already has an
+ * in-window visit and creates nothing new) while also letting {@link VisitTopUpScheduler} call
+ * this method repeatedly, over months, to keep the rolling window populated as it advances.
+ * The window bound matters because {@link VisitTemplate templates} recur <em>annually</em> —
+ * one row per (month, min tier) — so an unbounded "has this subscriber ever had a visit for
+ * this template" check would permanently cap every subscriber at one lifetime pass through
+ * their tier's calendar instead of a fresh occurrence every year. Once a template's window
+ * has rolled past this year's visit, its next candidate date falls in a future window whose
+ * range no longer contains that old visit, so next year's occurrence schedules correctly.
  *
  * <h2>Standing items only</h2>
  * <p>Each created visit gets only the template's standing-item services (those linked via
@@ -85,29 +99,20 @@ public class VisitSchedulingService {
     }
 
     /**
-     * Creates the initial ROUTINE visits for a newly-activated subscriber.
+     * Schedules any of a subscriber's tier-eligible ROUTINE visits that fall in the rolling
+     * lookahead window and don't already have a visit.
      *
-     * <p>Should be called immediately after the subscriber transitions to ACTIVE
-     * (in the Stripe webhook handler). The subscriber's {@code planTierId} must be set.
+     * <p>Called immediately after the subscriber transitions to ACTIVE (via {@link
+     * VisitSchedulingListener}) and again daily thereafter, for every ACTIVE subscriber, by
+     * {@link VisitTopUpScheduler} — both callers rely on the per-template idempotency
+     * described above. The subscriber's {@code planTierId} must be set.
      *
-     * <p>Idempotent: returns without creating any visits if the subscriber already has
-     * SCHEDULED or IN_PROGRESS visits.
-     *
-     * @param subscriber the newly-activated subscriber (planTierId must be non-null)
+     * @param subscriber the subscriber to schedule visits for (planTierId must be non-null)
      */
     @Transactional
     public void scheduleInitialVisits(Subscriber subscriber) {
         if (subscriber.getPlanTierId() == null) {
             log.warn("visit_scheduling_skipped subscriberId={} reason=no_plan_tier", subscriber.getId());
-            return;
-        }
-
-        // Idempotency guard: skip if visits already exist (e.g. webhook replay).
-        boolean alreadyScheduled = visitRepository.existsBySubscriberIdAndStatusIn(
-                subscriber.getId(),
-                List.of(VisitStatus.SCHEDULED, VisitStatus.IN_PROGRESS));
-        if (alreadyScheduled) {
-            log.info("visit_scheduling_skipped subscriberId={} reason=visits_already_exist", subscriber.getId());
             return;
         }
 
@@ -135,13 +140,32 @@ public class VisitSchedulingService {
         LocalDate today = LocalDate.now(renderZoneId);
         LocalDate windowEnd = today.plusMonths(LOOKAHEAD_MONTHS);
 
+        // Instant bounds of the current window (start-of-day in the render zone). Scopes the
+        // per-template idempotency guard below to "already scheduled within THIS window"
+        // rather than "ever" — see class Javadoc "Idempotency" for why an unbounded check
+        // would be wrong given templates recur annually.
+        Instant windowStartInstant = today.atStartOfDay(renderZoneId).toInstant();
+        Instant windowEndInstant = windowEnd.atStartOfDay(renderZoneId).toInstant();
+
         List<Visit> createdVisits = new ArrayList<>();
+        int alreadyScheduled = 0;
 
         for (VisitTemplate template : templates) {
             // Find the next occurrence of this template's month in the window.
             LocalDate candidateDate = nextOccurrenceInWindow(template.getMonth(), today, windowEnd, renderZoneId);
             if (candidateDate == null) {
                 continue; // month does not fall in the lookahead window
+            }
+
+            // Per-template, window-scoped idempotency guard (see class Javadoc
+            // "Idempotency"): skip only this template if the subscriber already has a visit
+            // tied to it scheduled within the current window — other eligible templates newly
+            // in the window still get scheduled, and next year's occurrence of this same
+            // template schedules again once the window has rolled past this year's visit.
+            if (visitRepository.existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween(
+                    subscriber.getId(), template.getId(), windowStartInstant, windowEndInstant)) {
+                alreadyScheduled++;
+                continue;
             }
 
             Instant scheduledFor = candidateDate.atTime(12, 0).atZone(renderZoneId).toInstant();
@@ -170,8 +194,8 @@ public class VisitSchedulingService {
             createdVisits.add(savedVisit);
         }
 
-        log.info("visit_scheduling_complete subscriberId={} tier={} visits_created={}",
-                subscriber.getId(), subscriberTier, createdVisits.size());
+        log.info("visit_scheduling_complete subscriberId={} tier={} visits_created={} visits_already_scheduled={}",
+                subscriber.getId(), subscriberTier, createdVisits.size(), alreadyScheduled);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
