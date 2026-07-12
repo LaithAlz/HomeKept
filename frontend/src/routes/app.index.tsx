@@ -13,7 +13,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RescheduleDialog } from "@/components/app/reschedule-dialog";
+import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { useAccount, type AppAccount } from "@/lib/account";
 import { useHealthScore, type HealthScoreFlaggedItem } from "@/lib/health";
 import {
@@ -325,10 +325,7 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
 
         <div className="mt-6 flex flex-wrap items-center gap-3">
           {hasPendingReschedule ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              <RefreshCcw className="size-3.5" aria-hidden="true" />
-              Reschedule requested, pending confirmation
-            </span>
+            <PendingReschedulePill visitId={visit.id} />
           ) : (
             <>
               <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>

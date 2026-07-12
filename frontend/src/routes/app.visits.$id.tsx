@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RescheduleDialog } from "@/components/app/reschedule-dialog";
+import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { ApiError } from "@/lib/api";
 import { useSessionExpiredRedirect } from "@/lib/auth";
@@ -148,10 +148,7 @@ function ScheduledDetail({ visit }: { visit: AppVisitDetail }) {
         {/* Actions */}
         <div className="flex gap-2">
           {hasPendingReschedule ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
-              <RefreshCcw className="size-3.5" aria-hidden="true" />
-              Reschedule requested, pending confirmation
-            </span>
+            <PendingReschedulePill visitId={visit.id} />
           ) : (
             <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
               <RefreshCcw className="size-4" aria-hidden="true" />
