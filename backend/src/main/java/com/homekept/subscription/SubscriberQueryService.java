@@ -3,6 +3,7 @@ package com.homekept.subscription;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,5 +49,21 @@ public class SubscriberQueryService {
     @Transactional(readOnly = true)
     public Optional<Subscriber> findByUserId(Long userId) {
         return subscriberRepository.findByUserId(userId);
+    }
+
+    /**
+     * Finds all subscribers currently in the given status.
+     *
+     * <p>Used by {@code com.homekept.visit.VisitTopUpScheduler} (the daily visit-scheduling
+     * top-up job) to iterate every ACTIVE subscriber. At MVP the active-subscriber set is
+     * small enough to load as a single list. If the subscriber base grows large, this should
+     * become a paginated or streaming query instead of returning the whole set at once.
+     *
+     * @param status the subscriber status to filter by
+     * @return subscribers currently in that status, unordered
+     */
+    @Transactional(readOnly = true)
+    public List<Subscriber> findByStatus(SubscriberStatus status) {
+        return subscriberRepository.findByStatus(status);
     }
 }

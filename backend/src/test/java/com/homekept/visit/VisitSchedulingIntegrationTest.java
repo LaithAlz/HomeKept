@@ -233,6 +233,104 @@ class VisitSchedulingIntegrationTest {
         assertThat(visits).allMatch(v -> v.getStatus() == VisitStatus.SCHEDULED);
     }
 
+    // ── Per-template top-up (not a blanket "any visit exists" guard) ───────────
+
+    /**
+     * Proves the idempotency guard is per-template, not per-subscriber: pre-seeding a visit
+     * for exactly one in-window template must not block the other in-window templates from
+     * being scheduled. This is what makes {@link VisitTopUpScheduler}'s daily re-run useful —
+     * a blanket "any visit exists" guard would make every subsequent call a total no-op (see
+     * {@link VisitSchedulingService} class Javadoc "Idempotency").
+     *
+     * <p>Uses PREMIER (the cumulative union of all 12 monthly templates — every calendar
+     * month has exactly one) so the 4-month window always contains multiple templates
+     * regardless of which day the test happens to run.
+     */
+    @Test
+    void scheduleInitialVisits_existingVisitForOneTemplate_stillSchedulesOtherTemplatesInWindow() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-topup@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        // Every calendar month has exactly one template, so a 4-month window always spans
+        // at least a few of them.
+        assertThat(inWindow.size()).isGreaterThanOrEqualTo(2);
+
+        // Pre-seed a visit for the FIRST in-window template only — simulates "this template's
+        // visit was already scheduled by a previous run," without going through the service.
+        VisitTemplate preScheduled = inWindow.get(0);
+        visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), preScheduled.getId(),
+                java.time.Instant.now().plus(java.time.Duration.ofDays(30)),
+                120, VisitType.ROUTINE));
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        List<Visit> visits = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .toList();
+
+        // Exactly one visit for the pre-seeded template — no duplicate created.
+        assertThat(visits.stream().filter(v -> preScheduled.getId().equals(v.getVisitTemplateId())).count())
+                .isEqualTo(1);
+        // Every other in-window template now has a visit too — the "top up" actually happened.
+        assertThat(visits).hasSize(inWindow.size());
+    }
+
+    // ── Annual recurrence (year-boundary) ───────────────────────────────────────
+
+    /**
+     * Visit templates recur annually (one row per month, reused every year). A visit from a
+     * <em>prior year's</em> occurrence of a template must not block this year's occurrence
+     * once it enters the current window — the idempotency guard is scoped to the current
+     * window, not "has this subscriber ever had a visit for this template" (see
+     * {@link VisitSchedulingService} class Javadoc "Idempotency"). An unbounded guard would
+     * permanently cap a subscriber at one lifetime visit per template instead of a fresh one
+     * every year.
+     */
+    @Test
+    void scheduleInitialVisits_priorYearVisitForTemplate_stillSchedulesCurrentYearOccurrence() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-annual@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        assertThat(inWindow).isNotEmpty();
+
+        VisitTemplate template = inWindow.get(0);
+
+        // Pre-seed a visit for this same template dated a full year in the past — simulates
+        // last year's occurrence, well outside the current [today, windowEnd) window.
+        visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), template.getId(),
+                java.time.Instant.now().minus(java.time.Duration.ofDays(365)),
+                120, VisitType.ROUTINE));
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        List<Visit> templateVisits = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .filter(v -> template.getId().equals(v.getVisitTemplateId()))
+                .toList();
+
+        // The prior-year visit is untouched, and a fresh, future-dated visit for the same
+        // template was scheduled inside the current window.
+        assertThat(templateVisits).hasSize(2);
+        java.time.Instant now = java.time.Instant.now();
+        assertThat(templateVisits.stream().filter(v -> v.getScheduledFor().isAfter(now)).count())
+                .as("a fresh visit for this template must exist in the current window")
+                .isEqualTo(1);
+    }
+
     // ── No-plan-tier guard ────────────────────────────────────────────────────
 
     @Test

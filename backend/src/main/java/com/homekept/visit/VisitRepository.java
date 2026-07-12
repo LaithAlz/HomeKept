@@ -105,10 +105,23 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     // ── Scheduling idempotency guard ──────────────────────────────────────────
 
     /**
-     * Returns true if the subscriber already has at least one SCHEDULED or IN_PROGRESS
-     * visit. Used by {@link VisitSchedulingService} to skip duplicate scheduling.
+     * Returns true if the subscriber already has a visit (any status) tied to this specific
+     * template with {@code scheduledFor} inside {@code [windowStart, windowEnd]}. Used by
+     * {@link VisitSchedulingService} as a per-template, per-window scheduling guard: a
+     * template that already produced a visit for this subscriber <em>within the current
+     * lookahead window</em> is skipped, while other eligible templates newly in the window are
+     * still scheduled.
+     *
+     * <p>The window bound (rather than an unbounded "ever" check) is what allows a template's
+     * <em>next year's</em> occurrence to be scheduled once the current window has rolled past
+     * this year's visit — templates recur annually, so an unbounded check would permanently
+     * cap a subscriber at one lifetime visit per template. This is what makes both webhook
+     * replay (the activation listener) and the recurring {@link VisitTopUpScheduler} top-up
+     * job safe to call repeatedly without duplicating visits, while still scheduling each
+     * template's fresh occurrence every year.
      */
-    boolean existsBySubscriberIdAndStatusIn(Long subscriberId, List<VisitStatus> statuses);
+    boolean existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween(
+            Long subscriberId, Long visitTemplateId, java.time.Instant windowStart, java.time.Instant windowEnd);
 
     /**
      * Ownership check: returns the visit by id and subscriber id.
