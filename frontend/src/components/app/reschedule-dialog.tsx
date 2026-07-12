@@ -11,10 +11,15 @@
  * to 5 (`CreateRescheduleRequest.java`), but three is already generous and
  * keeps the dialog short. An admin later confirms one of the proposed
  * times (or negotiates another) — this only records the request.
+ *
+ * This file also exports `PendingReschedulePill`, the "pending confirmation"
+ * pill + its "Cancel request" affordance shown in place of the Reschedule
+ * button once `hasPendingRescheduleRequest` is true. Same three call sites,
+ * same shared piece, so the withdraw flow never drifts either.
  */
 
-import { useEffect, useId, useState, type FormEvent } from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { useId, useEffect, useState, type FormEvent } from "react";
+import { Loader2, Plus, RefreshCcw, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,7 +35,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import { TZ } from "@/lib/format";
-import { useCreateRescheduleRequest } from "@/lib/visits";
+import { cn } from "@/lib/utils";
+import { useCancelRescheduleRequest, useCreateRescheduleRequest } from "@/lib/visits";
 
 const MAX_SLOTS = 3;
 
@@ -235,5 +241,101 @@ export function RescheduleDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pending pill + cancel affordance
+// ---------------------------------------------------------------------------
+
+interface PendingReschedulePillProps {
+  visitId: number;
+  /**
+   * `"default"` for a light card surface (the visits list and dashboard
+   * cards); `"inverse"` for the visits page's dark `bg-primary` next-visit
+   * hero, so both the pill and the cancel control stay readable in place.
+   */
+  variant?: "default" | "inverse";
+}
+
+/**
+ * Renders the "Reschedule requested, pending confirmation" pill (unchanged
+ * copy) together with a "Cancel request" control that calls
+ * `useCancelRescheduleRequest`. Success is implicit: the mutation's own
+ * `onSuccess` invalidates the visit queries, so this pill unmounts and the
+ * normal Reschedule button reappears once the parent re-renders with fresh
+ * data. A 404 (already resolved or already withdrawn) is treated the same
+ * way, no error shown, since the hook already invalidates on that path too.
+ */
+export function PendingReschedulePill({
+  visitId,
+  variant = "default",
+}: PendingReschedulePillProps) {
+  const mutation = useCancelRescheduleRequest(visitId);
+  const [error, setError] = useState<string | null>(null);
+  const baseId = useId();
+  const errorId = `${baseId}-cancel-reschedule-error`;
+  const isInverse = variant === "inverse";
+
+  function handleCancel() {
+    setError(null);
+    mutation.mutate(undefined, {
+      onError: (err) => {
+        // A 404 means the request was already resolved or already withdrawn
+        // elsewhere — the hook still invalidates on that path, so the pill
+        // will unmount on refetch. Nothing actionable to show the customer.
+        if (err instanceof ApiError && err.status === 404) return;
+        setError(
+          err instanceof ApiError ? err.message : "That didn't go through. Please try again.",
+        );
+      },
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
+            isInverse
+              ? "bg-primary-foreground/10 text-primary-foreground/80"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          <RefreshCcw className="size-3.5" aria-hidden="true" />
+          Reschedule requested, pending confirmation
+        </span>
+        <button
+          type="button"
+          onClick={handleCancel}
+          disabled={mutation.isPending}
+          aria-busy={mutation.isPending}
+          aria-describedby={error ? errorId : undefined}
+          className={cn(
+            "rounded text-xs font-semibold underline underline-offset-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+            isInverse
+              ? "text-primary-foreground/70 hover:text-primary-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {mutation.isPending ? "Cancelling request…" : "Cancel request"}
+        </button>
+      </div>
+      {error && (
+        <p
+          id={errorId}
+          role="alert"
+          className={cn(
+            "text-xs",
+            isInverse
+              ? "rounded-lg bg-destructive px-2 py-1 font-medium text-destructive-foreground"
+              : "text-destructive",
+          )}
+        >
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

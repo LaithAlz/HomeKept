@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, BellRing, Loader2, RefreshCcw, User } from "lucide-react";
+import { ArrowRight, BellRing, Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RescheduleDialog } from "@/components/app/reschedule-dialog";
+import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { formatVisitWindow, getCalendarParts } from "@/lib/format";
 import { useNextVisit, useRecentCompletedVisits, type AppVisitListItem } from "@/lib/visits";
@@ -182,10 +182,7 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
               </Link>
             </Button>
             {hasPendingReschedule ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 px-3 py-1.5 text-xs font-semibold text-primary-foreground/80">
-                <RefreshCcw className="size-3.5" aria-hidden="true" />
-                Reschedule requested, pending confirmation
-              </span>
+              <PendingReschedulePill visitId={visit.id} variant="inverse" />
             ) : (
               <Button
                 size="sm"

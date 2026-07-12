@@ -14,7 +14,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { get, post } from "@/lib/api";
+import { ApiError, del, get, post } from "@/lib/api";
 
 export type VisitStatus =
   | "SCHEDULED"
@@ -164,6 +164,38 @@ export function useCreateRescheduleRequest(
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["app-visits"] });
       void queryClient.invalidateQueries({ queryKey: ["app-visit", visitId] });
+    },
+  });
+}
+
+/**
+ * `DELETE /api/app/visits/{id}/reschedule-request` — withdraws the customer's own
+ * PENDING reschedule request, freeing the visit for a new request. Returns `204`
+ * with an empty body on success.
+ *
+ * 404s if the visit isn't the caller's, or if there's no PENDING request left to
+ * cancel (already confirmed/declined by an admin, or already withdrawn elsewhere).
+ * Either way the desired end state, no pending request for this visit, already
+ * holds, so a 404 is treated the same as success here and still triggers the
+ * invalidation below, which flips the UI's pill back to the normal Reschedule
+ * button on refetch. Callers only need to surface an error for non-404 failures.
+ *
+ * Invalidates both the visits list(s) and this visit's detail query, mirroring
+ * `useCreateRescheduleRequest` above.
+ */
+export function useCancelRescheduleRequest(
+  visitId: number,
+): UseMutationResult<void, unknown, void> {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["app-visits"] });
+    void queryClient.invalidateQueries({ queryKey: ["app-visit", visitId] });
+  };
+  return useMutation({
+    mutationFn: () => del<void>(`/api/app/visits/${visitId}/reschedule-request`),
+    onSuccess: invalidate,
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 404) invalidate();
     },
   });
 }
