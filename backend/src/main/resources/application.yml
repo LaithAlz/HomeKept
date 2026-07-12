@@ -55,6 +55,10 @@ app:
   # When false (default), the app refuses to start if JWT_SIGNING_KEY is blank,
   # shorter than 32 bytes, or equals the well-known dev sentinel.
   dev-mode: ${APP_DEV_MODE:false}
+  # Public base URL of the frontend, used to build links in transactional emails
+  # (e.g. the activation magic link). Set FRONTEND_BASE_URL in production
+  # (e.g. https://homekept.ca). Defaults to the local dev origin.
+  frontend-base-url: ${FRONTEND_BASE_URL:http://localhost:8080}
   cors:
     allowed-origins:
       - ${CORS_ALLOWED_ORIGIN_1:http://localhost:5173}
@@ -91,3 +95,11 @@ app:
     access-key-id: ${R2_ACCESS_KEY_ID:}
     secret-access-key: ${R2_SECRET_ACCESS_KEY:}
     region: ${R2_REGION:auto}
+  # SendGrid transactional email (notification domain). In production set
+  # SENDGRID_API_KEY and SENDGRID_FROM_EMAIL (a verified sender). If either is
+  # blank, SendGridEmailSender logs and skips the send (no hard failure), so dev,
+  # test, and CI run without a real key. NEVER commit a real API key.
+  sendgrid:
+    api-key: ${SENDGRID_API_KEY:}
+    from-email: ${SENDGRID_FROM_EMAIL:}
+    from-name: ${SENDGRID_FROM_NAME:HomeKept}
