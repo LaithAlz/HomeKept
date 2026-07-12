@@ -4,7 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { cn } from "@/lib/utils";
 import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
-import { ApiError, post } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import {
+  submitWalkthroughBooking,
+  type WalkthroughBookingRequest as BookingRequest,
+} from "@/lib/booking";
 
 export const Route = createFileRoute("/book")({
   head: () => ({
@@ -34,30 +38,11 @@ export const Route = createFileRoute("/book")({
 });
 
 /* -------------------------------------------------------------------------- */
-/* Contract-accurate request shape — mirrors POST /api/bookings/walkthrough   */
-/* See backend/api-contract.md for the exact field spec.                      */
+/* Request shape + submit function are shared with the admin "New booking"    */
+/* sheet — see @/lib/booking, which mirrors POST /api/bookings/walkthrough    */
+/* field-for-field (backend/api-contract.md).                                 */
 /* -------------------------------------------------------------------------- */
-interface BookingRequest {
-  fullName: string;
-  email: string;
-  phone: string;
-  streetAddress: string;
-  city: string;
-  postalCode: string;
-  yearBuilt?: number;
-  squareFootageRange?: "<1500" | "1500-2500" | "2500-4000" | ">4000";
-  propertyType: "DETACHED" | "SEMI" | "TOWNHOUSE";
-  preferredWeek: string; // ISO Monday date e.g. "2026-06-15"
-  timeOfDay: "MORNING" | "AFTERNOON" | "EVENING";
-  dayPreferences: ("MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN")[];
-  notes?: string;
-  leadSource?: "WEBSITE_ORGANIC";
-  contactConsent: true;
-}
-
-function submitBooking(payload: BookingRequest): Promise<{ id: number; status: "PENDING" }> {
-  return post<{ id: number; status: "PENDING" }>("/api/bookings/walkthrough", payload);
-}
+const submitBooking = submitWalkthroughBooking;
 
 /**
  * Maps a backend validation field name (the request payload key, per
