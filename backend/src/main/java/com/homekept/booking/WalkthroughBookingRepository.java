@@ -3,6 +3,7 @@ package com.homekept.booking;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,4 +41,12 @@ public interface WalkthroughBookingRepository extends JpaRepository<WalkthroughB
      * ("pending walk-throughs" = count of PENDING bookings, i.e. not yet confirmed).
      */
     long countByStatus(BookingStatus status);
+
+    /**
+     * Bookings in {@code status} whose {@code scheduledFor} falls within {@code [from, to]}.
+     * Used by {@code BookingService#findConfirmedInWindow} (#89) to find CONFIRMED
+     * walk-throughs due for the 24h-before reminder.
+     */
+    List<WalkthroughBooking> findByStatusAndScheduledForBetween(
+            BookingStatus status, Instant from, Instant to);
 }

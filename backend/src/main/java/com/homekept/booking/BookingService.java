@@ -288,6 +288,25 @@ public class BookingService {
         bookingRepository.save(booking);
     }
 
+    /**
+     * Returns the CONFIRMED bookings whose {@code scheduledFor} falls within
+     * {@code [from, to]}. Called by {@code com.homekept.notification.ReminderScheduler} (#89)
+     * to find walk-throughs due for the 24h-before reminder — the notification domain must
+     * never touch {@link WalkthroughBookingRepository} or {@link WalkthroughBooking} directly,
+     * only this narrow {@link BookingReminderTarget} projection.
+     *
+     * @param from window lower bound (inclusive)
+     * @param to   window upper bound (inclusive)
+     */
+    @Transactional(readOnly = true)
+    public List<BookingReminderTarget> findConfirmedInWindow(Instant from, Instant to) {
+        return bookingRepository.findByStatusAndScheduledForBetween(BookingStatus.CONFIRMED, from, to)
+                .stream()
+                .map(b -> new BookingReminderTarget(b.getId(), b.getEmail(), b.getFullName(),
+                        b.getStreetAddress(), b.getCity(), b.getScheduledFor()))
+                .toList();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private int resolveLimit(Integer limit) {
@@ -326,5 +345,25 @@ public class BookingService {
             Integer yearBuilt,
             String squareFootageRange,
             String propertyType
+    ) {}
+
+    /**
+     * Projection of walk-through booking data needed by the notification domain's reminder
+     * scheduler (#89). No entity references cross the boundary.
+     *
+     * @param bookingId     the booking id
+     * @param email         prospective subscriber email
+     * @param fullName      full name as submitted (the notifier splits it for the greeting)
+     * @param streetAddress property street address
+     * @param city          property city
+     * @param scheduledFor  the walk-through's scheduled time (set when CONFIRMED)
+     */
+    public record BookingReminderTarget(
+            Long bookingId,
+            String email,
+            String fullName,
+            String streetAddress,
+            String city,
+            Instant scheduledFor
     ) {}
 }

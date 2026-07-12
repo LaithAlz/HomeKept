@@ -123,6 +123,41 @@ public final class EmailTemplates {
                         "your walk-through request"));
     }
 
+    /**
+     * Walk-through reminder, sent roughly 24h before a CONFIRMED booking's scheduled time
+     * (#89). No CTA — same reasoning as {@link #bookingConfirmation}: there's no account yet.
+     *
+     * @param firstName   recipient's first name (nullable — falls back to "there")
+     * @param whenLabel   human-readable scheduled time in the display zone, e.g.
+     *                    "Tuesday, July 14 at 2:00 PM"
+     * @param addressLabel human-readable property address, e.g. "14 Maple Ridge Crt, Mississauga"
+     */
+    public static RenderedEmail walkthroughReminder(String firstName, String whenLabel, String addressLabel) {
+        String body = paragraph("This is a reminder that your HomeKept walk-through is scheduled for "
+                + escape(whenLabel) + ". We'll see you at " + escape(addressLabel) + ".");
+        return new RenderedEmail(
+                "Reminder: your HomeKept walk-through is coming up",
+                layout("Your walk-through is coming up", greeting(firstName) + body, null, null,
+                        "your walk-through request"));
+    }
+
+    /**
+     * Visit reminder, sent roughly 24h before a SCHEDULED visit's scheduled time (#89).
+     *
+     * @param firstName    recipient's first name (nullable — falls back to "there")
+     * @param whenLabel    human-readable scheduled time in the display zone, e.g.
+     *                     "Tuesday, July 14 at 2:00 PM"
+     * @param dashboardUrl link to the customer's dashboard
+     */
+    public static RenderedEmail visitReminder(String firstName, String whenLabel, String dashboardUrl) {
+        String body = paragraph("This is a reminder that your HomeKept visit is scheduled for "
+                + escape(whenLabel) + ". We'll send your report once the visit is complete.");
+        return new RenderedEmail(
+                "Reminder: your HomeKept visit is coming up",
+                layout("Your visit is coming up", greeting(firstName) + body,
+                        "View my dashboard", dashboardUrl));
+    }
+
     // ── Layout ──────────────────────────────────────────────────────────────────
 
     private static String greeting(String firstName) {
