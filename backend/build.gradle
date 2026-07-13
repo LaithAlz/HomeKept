@@ -13,6 +13,13 @@ java {
 	}
 }
 
+// Only produce the executable Spring Boot jar (bootJar). Disabling the plain jar
+// keeps build/libs/ to a single artifact, so the Dockerfile can COPY *.jar
+// unambiguously.
+jar {
+	enabled = false
+}
+
 repositories {
 	mavenCentral()
 }
