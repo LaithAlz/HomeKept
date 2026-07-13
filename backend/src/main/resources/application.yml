@@ -29,7 +29,9 @@ spring:
     baseline-on-migrate: false
 
 server:
-  port: 8080
+  # Bind to the platform-injected PORT in production (Render/Cloudflare set it);
+  # default to 8080 for local dev.
+  port: ${PORT:8080}
   servlet:
     context-path: /
   # Honor X-Forwarded-Proto from the TLS-terminating proxy (Render/Cloudflare) so that

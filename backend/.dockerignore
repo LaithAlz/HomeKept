@@ -1,0 +1,9 @@
+# Keep the Docker build context small and free of local/secret files.
+.env
+.env.*
+!.env.example
+build/
+.gradle/
+.git/
+*.iml
+.idea/
