@@ -22,8 +22,13 @@ import java.util.Optional;
  *       same registrable domain (homekept.ca) → same-site → cookies flow. CSRF risk
  *       is therefore low. See security-config comments for full CSRF rationale.</li>
  *   <li>Access cookie path={@code /api} so it's sent on all API calls.</li>
- *   <li>Refresh cookie path={@code /api/auth/refresh} — narrower path so the
- *       7-day token is only sent to the one endpoint that needs it.</li>
+ *   <li>Refresh cookie path={@code /api/auth} — scoped to the auth endpoints. It must
+ *       cover BOTH {@code /api/auth/refresh} (to rotate) AND {@code /api/auth/logout} (to
+ *       revoke): with the old narrower {@code /api/auth/refresh} path the browser never
+ *       sent the refresh cookie to logout, so a logout after the access token expired
+ *       could not revoke the refresh token server-side (a stolen token stayed valid for
+ *       its full 7 days). Still kept off the broad {@code /api} path so it is not sent on
+ *       ordinary API calls.</li>
  * </ul>
  */
 @Component
@@ -31,6 +36,20 @@ public class CookieHelper {
 
     static final String ACCESS_COOKIE  = "hk_access";
     static final String REFRESH_COOKIE = "hk_refresh";
+
+    /** Refresh cookie path — must cover /api/auth/refresh (rotate) AND /api/auth/logout (revoke). */
+    static final String REFRESH_PATH = "/api/auth";
+
+    /**
+     * Legacy refresh-cookie path from before the widening to {@link #REFRESH_PATH}. A
+     * transitional {@code Max-Age=0} clear is emitted at this path on every set/clear so a
+     * session created before this deploy — whose {@code hk_refresh} lives at the old path and
+     * holds a since-rotated, revoked token — cannot shadow the new cookie (cookies key on
+     * path; {@link #extractCookie} does {@code findFirst()}) and force a {@code /refresh} 401
+     * loop that logout can't clear. Safe to delete once every pre-deploy refresh token has
+     * expired (7 days after this ships).
+     */
+    static final String LEGACY_REFRESH_PATH = "/api/auth/refresh";
 
     private final long accessMaxAge;
     private final long refreshMaxAge;
@@ -58,13 +77,17 @@ public class CookieHelper {
                                boolean requestIsSecure) {
         boolean secure = secureCookiesConfig || requestIsSecure;
         response.addHeader("Set-Cookie", buildCookie(ACCESS_COOKIE, accessToken, "/api", (int) accessMaxAge, secure));
-        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, refreshToken, "/api/auth/refresh", (int) refreshMaxAge, secure));
+        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, refreshToken, REFRESH_PATH, (int) refreshMaxAge, secure));
+        // Transitional: clear any old-path refresh cookie so it can't shadow the new one.
+        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, "", LEGACY_REFRESH_PATH, 0, secure));
     }
 
     public void clearAuthCookies(HttpServletResponse response, boolean requestIsSecure) {
         boolean secure = secureCookiesConfig || requestIsSecure;
         response.addHeader("Set-Cookie", buildCookie(ACCESS_COOKIE, "", "/api", 0, secure));
-        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, "", "/api/auth/refresh", 0, secure));
+        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, "", REFRESH_PATH, 0, secure));
+        // Transitional: also clear a pre-widening old-path refresh cookie if the browser still holds one.
+        response.addHeader("Set-Cookie", buildCookie(REFRESH_COOKIE, "", LEGACY_REFRESH_PATH, 0, secure));
     }
 
     public Optional<String> extractAccessToken(HttpServletRequest request) {
