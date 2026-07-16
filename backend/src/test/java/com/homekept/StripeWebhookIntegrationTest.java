@@ -309,6 +309,87 @@ class StripeWebhookIntegrationTest {
         assertThat(count).isZero();
     }
 
+    // ── checkout.session.completed on an ineligible subscriber (B1: no dirty-flush) ──
+
+    @Test
+    void checkoutSessionCompleted_onCancelledSubscriber_doesNotActivateOrMutateAnyField() throws Exception {
+        // B1 regression. The Subscriber is a managed JPA entity: if the handler mutated its
+        // Stripe ids / plan / period BEFORE the transition guard and then returned on the illegal
+        // CANCELLED → ACTIVE transition, dirty-checking would still flush those writes onto a dead
+        // row (corrupting Stripe linkage / burning a founding slot). The guard now runs first, so
+        // an ineligible event mutates nothing. CheckoutService already blocks this checkout from
+        // starting; this proves the webhook is safe as defense in depth.
+        Subscriber sub = seedSubscriberWithStatus("checkout-on-cancelled@test.local",
+                SubscriberStatus.CANCELLED);
+        String originalCustomerId = sub.getStripeCustomerId();
+        String originalSubscriptionId = sub.getStripeSubscriptionId();
+
+        String eventId = "evt_checkout_on_cancelled_1";
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
+
+        postSignedWebhook(payload); // asserts 200 — Stripe must not retry
+
+        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.CANCELLED);
+        // The webhook's cus_test / sub_test must NOT have overwritten the seeded ids.
+        assertThat(updated.getStripeCustomerId()).isEqualTo(originalCustomerId);
+        assertThat(updated.getStripeSubscriptionId()).isEqualTo(originalSubscriptionId);
+        assertThat(updated.getStartedAt()).isNull();
+
+        // No event row written for a skipped transition.
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM subscription_event WHERE stripe_event_id = ?",
+                Integer.class, eventId);
+        assertThat(count).isZero();
+    }
+
+    // ── checkout.session.completed with a founding slot claimed at checkout (B2) ──
+
+    @Test
+    void checkoutSessionCompleted_foundingClaimedAtCheckout_activatesAndStampsExpiry() throws Exception {
+        // B2: the founding slot is claimed at checkout (founding_rate already true on the row).
+        // The webhook must NOT re-grant or re-count it — it only stamps the 12-month expiry on
+        // activation. Verifies founding_rate survives activation and the expiry is set.
+        Subscriber sub = seedSubscriberWithStatus("founding-preclaimed@test.local",
+                SubscriberStatus.PENDING_ACTIVATION);
+        sub.setFoundingRate(true);
+        subscriberRepository.save(sub);
+
+        String eventId = "evt_checkout_founding_preclaimed_1";
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "true");
+
+        postSignedWebhook(payload);
+
+        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.ACTIVE);
+        assertThat(updated.isFoundingRate()).isTrue();
+        assertThat(updated.getFoundingRateExpiresAt()).isNotNull();
+    }
+
+    @Test
+    void checkoutSessionCompleted_reservedFoundingButCompletedNormalSession_reconcilesFlagToFalse() throws Exception {
+        // HIGH regression: a customer can reserve a founding slot at checkout (founding_rate
+        // set true) and then complete a NORMAL-price session. The webhook must reconcile the
+        // recorded flag to what Stripe actually billed — otherwise the customer is recorded
+        // founding while billed normal and permanently consumes one of 15 founding slots.
+        Subscriber sub = seedSubscriberWithStatus("reserved-then-normal@test.local",
+                SubscriberStatus.PENDING_ACTIVATION);
+        sub.setFoundingRate(true); // reserved a founding slot at a prior founding checkout
+        subscriberRepository.save(sub);
+
+        String eventId = "evt_reserved_then_normal_1";
+        // The COMPLETED session is normal-price: foundingRate metadata = false.
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
+
+        postSignedWebhook(payload);
+
+        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
+        assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.ACTIVE);
+        // Reconciled to false — the slot is released, matching the normal price billed.
+        assertThat(updated.isFoundingRate()).isFalse();
+        assertThat(updated.getFoundingRateExpiresAt()).isNull();
+    }
+
     // ── Helpers: payload builders ──────────────────────────────────────────────
 
     /**
