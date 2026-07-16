@@ -179,15 +179,36 @@ public class StripeWebhookService {
         }
         Subscriber subscriber = subscriberOpt.get();
 
+        // GUARD FIRST — before mutating any field. The Subscriber is a managed JPA entity,
+        // so any setter called before an early return is still flushed by dirty-checking at
+        // commit. checkout.session.completed may ONLY activate a brand-new subscription:
+        // guard on PENDING_ACTIVATION specifically (PAUSED/PAYMENT_ISSUE also satisfy the
+        // generic → ACTIVE transition, but those are reached via subscription.resumed /
+        // invoice.payment_succeeded, never checkout). A returning customer is a NEW row (see
+        // SubscriberStatus), and CheckoutService only lets PENDING_ACTIVATION subscribers
+        // reach checkout — so an event here for an ineligible (e.g. CANCELLED) subscriber
+        // means Stripe may have charged with no eligible row to activate. Log it as an alarm
+        // for a manual refund and return WITHOUT touching the entity, so nothing is silently
+        // overwritten on a row that never activates. The canTransition clause keeps the write
+        // routed through SubscriberStateMachine (the non-negotiable) and fails closed if the
+        // PENDING_ACTIVATION → ACTIVE transition is ever made illegal.
+        if (subscriber.getStatus() != SubscriberStatus.PENDING_ACTIVATION
+                || !stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.ACTIVE)) {
+            log.error("webhook_activation_on_ineligible_subscriber status={} subscriberId={} "
+                    + "stripeSubscriptionId={} stripeEventId={} — NOT activating; payment may need a "
+                    + "manual refund, no fields mutated",
+                    subscriber.getStatus(), subscriber.getId(), session.getSubscription(), event.getId());
+            return;
+        }
+
+        Instant now = Instant.now();
+
         // Set Stripe identifiers.
         subscriber.setStripeCustomerId(session.getCustomer());
         subscriber.setStripeSubscriptionId(session.getSubscription());
 
         // Resolve plan tier from metadata.
         String planTierIdMeta = session.getMetadata().get("planTierId");
-        String foundingRateMeta = session.getMetadata().get("foundingRate");
-        boolean foundingRate = "true".equals(foundingRateMeta);
-
         if (planTierIdMeta != null) {
             try {
                 subscriber.setPlanTierId(Long.parseLong(planTierIdMeta));
@@ -196,38 +217,25 @@ public class StripeWebhookService {
             }
         }
 
-        // Set founding-rate flag and expiry (12 months from activation).
-        // Re-assert the cap here inside the webhook transaction to close the race window:
-        // the checkout-time check is a fast-fail UX guard, but multiple checkouts can be
-        // initiated concurrently before any webhook lands. The advisory lock serialises all
-        // concurrent founding grants so only the first N <= 15 win the founding rate.
-        if (foundingRate) {
-            subscriberRepository.lockFoundingCounter(); // blocks until prior txn commits
-            long currentFoundingCount = subscriberRepository.countByFoundingRateTrue();
-            if (currentFoundingCount < FoundingRateAvailabilityImpl.FOUNDING_CAP) {
-                subscriber.setFoundingRate(true);
-                subscriber.setFoundingRateExpiresAt(Instant.now().plusSeconds(365L * 24 * 3600));
-            } else {
-                log.warn("founding_cap_exceeded subscriberId={} stripeEventId={} — cap already at {} "
-                        + "activating at normal rate",
-                        subscriberId, event.getId(), currentFoundingCount);
-                // foundingRate remains false — subscriber still activates at the normal rate.
-            }
+        // Reconcile founding status from THIS completed session's metadata — the session
+        // Stripe is actually billing — so the recorded flag always matches what is charged.
+        // The cap is enforced at checkout (the slot is reserved under the advisory lock
+        // before the founding price is ever offered); here we SETTLE that reservation to
+        // reality. A customer who reserved founding but ultimately completed a normal-price
+        // session is released back to non-founding, so "recorded founding" can never diverge
+        // from "billed founding" (which would otherwise leak a slot forever).
+        boolean billedFounding = "true".equals(session.getMetadata().get("foundingRate"));
+        subscriber.setFoundingRate(billedFounding);
+        if (billedFounding) {
+            subscriber.setFoundingRateExpiresAt(now.plusSeconds(365L * 24 * 3600));
         }
 
         // Period dates: Stripe does not expose them directly on the session. We set
         // approximate values here; customer.subscription.updated (which fires immediately
         // after this event for new subscriptions) syncs the real dates.
-        Instant now = Instant.now();
         subscriber.setCurrentPeriodStart(now);
         subscriber.setCurrentPeriodEnd(now.plusSeconds(30L * 24 * 3600));
 
-        // Transition PENDING_ACTIVATION → ACTIVE via the state machine.
-        if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.ACTIVE)) {
-            log.warn("webhook_illegal_transition from={} to=ACTIVE subscriberId={} stripeEventId={} — skip",
-                    subscriber.getStatus(), subscriber.getId(), event.getId());
-            return;
-        }
         subscriber.setStatus(SubscriberStatus.ACTIVE);
         subscriber.setStartedAt(now);
 
@@ -247,7 +255,7 @@ public class StripeWebhookService {
         eventPublisher.publishEvent(new SubscriberActivatedEvent(subscriber.getId()));
 
         log.info("subscription_activated subscriberId={} planCode={} foundingRate={}",
-                subscriber.getId(), planCode, foundingRate);
+                subscriber.getId(), planCode, subscriber.isFoundingRate());
     }
 
     /**
