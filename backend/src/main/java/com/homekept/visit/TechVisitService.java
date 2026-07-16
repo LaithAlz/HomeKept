@@ -3,6 +3,9 @@ package com.homekept.visit;
 import com.homekept.catalog.CatalogService;
 import com.homekept.property.PropertyService;
 import com.homekept.storage.StorageService;
+import com.homekept.subscription.Subscriber;
+import com.homekept.subscription.SubscriberQueryService;
+import com.homekept.subscription.SubscriberStatus;
 import com.homekept.visit.dto.FlagResponse;
 import com.homekept.visit.dto.TechCompleteVisitRequest;
 import com.homekept.visit.dto.TechCompleteVisitResponse;
@@ -20,6 +23,7 @@ import com.homekept.visit.dto.TodoResponse;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
+import com.homekept.visit.exception.SubscriberNotActiveException;
 import com.homekept.visit.exception.VisitNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -77,6 +81,13 @@ public class TechVisitService {
     /** Follow-up visit scheduled N days from now when a visit is marked INCOMPLETE. */
     private static final int FOLLOW_UP_DAYS_AHEAD = 7;
 
+    /**
+     * Subscriber statuses for which a scheduled visit may be STARTED (see {@link #startVisit}).
+     * PAYMENT_ISSUE is included as dunning grace — see the rationale at the guard.
+     */
+    private static final Set<SubscriberStatus> SERVICEABLE_STATUSES =
+            java.util.EnumSet.of(SubscriberStatus.ACTIVE, SubscriberStatus.PAYMENT_ISSUE);
+
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
     private final VisitPhotoRepository visitPhotoRepository;
@@ -88,6 +99,7 @@ public class TechVisitService {
     private final StorageService storageService;
     private final VisitReportNotifier visitReportNotifier;
     private final HealthScoreService healthScoreService;
+    private final SubscriberQueryService subscriberQueryService;
     private final ZoneId renderZoneId;
 
     public TechVisitService(VisitRepository visitRepository,
@@ -101,6 +113,7 @@ public class TechVisitService {
                             StorageService storageService,
                             VisitReportNotifier visitReportNotifier,
                             HealthScoreService healthScoreService,
+                            SubscriberQueryService subscriberQueryService,
                             ZoneId renderZoneId) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
@@ -113,6 +126,7 @@ public class TechVisitService {
         this.storageService = storageService;
         this.visitReportNotifier = visitReportNotifier;
         this.healthScoreService = healthScoreService;
+        this.subscriberQueryService = subscriberQueryService;
         this.renderZoneId = renderZoneId;
     }
 
@@ -225,6 +239,30 @@ public class TechVisitService {
         if (!stateMachine.canTransition(visit.getStatus(), VisitStatus.IN_PROGRESS)) {
             throw new IllegalVisitTransitionException(visit.getStatus(), VisitStatus.IN_PROGRESS);
         }
+
+        // Don't perform (free) service for a subscriber who is no longer paying. Guard on
+        // START only — a visit already IN_PROGRESS is allowed to finish even if the customer
+        // pauses mid-visit. Cross-domain status read goes through SubscriberQueryService (a
+        // subscription service), never its repository. A missing subscriber is treated as
+        // not-serviceable (fail closed). On resume → ACTIVE the visit becomes startable again.
+        //
+        // Serviceable = ACTIVE or PAYMENT_ISSUE. PAYMENT_ISSUE is dunning grace: Stripe is
+        // retrying a card on an otherwise-active subscription, so we still perform the visit
+        // rather than penalise a transient decline (founder decision — flip by editing
+        // SERVICEABLE_STATUSES). PAUSED / CANCELLED / PENDING_ACTIVATION are blocked.
+        //
+        // NOTE: this keys on SUBSCRIPTION status, not per-visit payment. When prepaid EXTRA /
+        // WARRANTY visits land (#60; VisitType.EXTRA/WARRANTY exist but nothing creates them
+        // yet), this guard must also allow an independently-paid visit for a paused subscriber.
+        SubscriberStatus subStatus = subscriberQueryService.findById(visit.getSubscriberId())
+                .map(Subscriber::getStatus)
+                .orElse(null);
+        if (subStatus == null || !SERVICEABLE_STATUSES.contains(subStatus)) {
+            log.info("tech_visit_start_blocked visitId={} subscriberId={} subscriberStatus={}",
+                    visit.getId(), visit.getSubscriberId(), subStatus);
+            throw new SubscriberNotActiveException(String.valueOf(subStatus));
+        }
+
         visit.setStatus(VisitStatus.IN_PROGRESS);
         Visit saved = visitRepository.save(visit);
 
