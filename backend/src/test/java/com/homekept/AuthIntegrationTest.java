@@ -371,6 +371,36 @@ class AuthIntegrationTest {
                 .andExpect(status().isNoContent());
     }
 
+    // ── Auth hardening (security-audit fixes) ────────────────────────────────────
+
+    @Test
+    void login_refreshCookie_isScopedToApiAuthPath_soLogoutReceivesIt() throws Exception {
+        // The refresh cookie must reach /api/auth/logout (to revoke server-side), not only
+        // /api/auth/refresh. Assert the Set-Cookie Path is the widened /api/auth.
+        createTestUser("test@example.com", "Secret123", Role.CUSTOMER);
+
+        var result = mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"test@example.com\",\"password\":\"Secret123\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        var setCookies = result.getResponse().getHeaders("Set-Cookie");
+
+        // The LIVE refresh cookie (non-zero Max-Age) must be scoped to /api/auth so logout receives it.
+        String liveRefresh = setCookies.stream()
+                .filter(c -> c.startsWith("hk_refresh="))
+                .filter(c -> !c.contains("Max-Age=0"))
+                .findFirst().orElseThrow();
+        assertThat(liveRefresh).contains("Path=/api/auth;");
+        assertThat(liveRefresh).doesNotContain("Path=/api/auth/refresh");
+
+        // Transitional back-compat: a Max-Age=0 clear is also emitted at the legacy
+        // /api/auth/refresh path so a pre-deploy old-path cookie can't shadow the new one.
+        assertThat(setCookies).anyMatch(c ->
+                c.startsWith("hk_refresh=") && c.contains("Path=/api/auth/refresh") && c.contains("Max-Age=0"));
+    }
+
     // ── /api/auth/me ───────────────────────────────────────────────────────────
 
     @Test

@@ -54,12 +54,15 @@ public class AuthController {
     private final AuthService authService;
     private final CookieHelper cookieHelper;
     private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
+    private final LoginIpRateLimiter loginIpRateLimiter;
 
     public AuthController(AuthService authService, CookieHelper cookieHelper,
-                          ForgotPasswordRateLimiter forgotPasswordRateLimiter) {
+                          ForgotPasswordRateLimiter forgotPasswordRateLimiter,
+                          LoginIpRateLimiter loginIpRateLimiter) {
         this.authService = authService;
         this.cookieHelper = cookieHelper;
         this.forgotPasswordRateLimiter = forgotPasswordRateLimiter;
+        this.loginIpRateLimiter = loginIpRateLimiter;
     }
 
     /**
@@ -71,6 +74,14 @@ public class AuthController {
     public ResponseEntity<Void> login(@Valid @RequestBody LoginRequest request,
                                       HttpServletRequest httpRequest,
                                       HttpServletResponse httpResponse) {
+        // Per-IP throttle FIRST — this is the only guard against credential stuffing /
+        // password spraying across many different accounts from one source (the per-email
+        // limiter inside AuthService.login can't see that pattern). Checked before the email
+        // limiter and the password compare so a spray is cut off cheaply.
+        String ip = ClientIpResolver.resolve(httpRequest);
+        if (!loginIpRateLimiter.tryConsume(ip)) {
+            throw new RateLimitExceededException();
+        }
         AuthService.TokenPair tokens = authService.login(request.email(), request.password());
         cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(),
                 httpRequest.isSecure());
@@ -110,19 +121,22 @@ public class AuthController {
                                        HttpServletRequest httpRequest,
                                        HttpServletResponse httpResponse) {
         try {
-            if (authentication != null && authentication.isAuthenticated()) {
-                // Happy path: valid access token present.
-                Long userId = (Long) authentication.getPrincipal();
+            if (authentication != null && authentication.getPrincipal() instanceof Long userId) {
+                // Valid access token present: revoke all of this user's refresh tokens.
                 authService.logout(userId);
             } else {
-                // Access token absent or expired — try the refresh cookie.
-                Optional<String> refreshToken = cookieHelper.extractRefreshToken(httpRequest);
-                if (refreshToken.isPresent()) {
-                    authService.logoutViaRefreshToken(refreshToken.get());
-                }
+                // No valid access token (anonymous principal, or the access token expired).
+                // Spring's AnonymousAuthenticationToken reports isAuthenticated()==true with a
+                // String principal ("anonymousUser"), so an isAuthenticated() check would take
+                // this branch's place and the (Long) cast would throw. Resolve via the refresh
+                // cookie instead — now delivered to /api/auth/logout after the CookieHelper path
+                // widening — so a stolen refresh token can still be revoked once the access
+                // token has expired (the exact case this endpoint exists for).
+                cookieHelper.extractRefreshToken(httpRequest)
+                        .ifPresent(authService::logoutViaRefreshToken);
             }
         } catch (Exception ignored) {
-            // Silently swallow: always clear cookies and return 204, never leak token validity.
+            // Always clear cookies and return 204; never leak whether the tokens were valid.
         }
         cookieHelper.clearAuthCookies(httpResponse, httpRequest.isSecure());
         return ResponseEntity.noContent().build();

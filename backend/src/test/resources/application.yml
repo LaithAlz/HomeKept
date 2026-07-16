@@ -20,6 +20,13 @@ app:
   # non-sentinel ≥32-byte value so the guard passes.
   dev-mode: false
   secure-cookies: false
+  security:
+    # Effectively disable the per-IP login throttle for the suite: every MockMvc request
+    # shares one client IP (127.0.0.1) across the context-cached integration tests, so the
+    # production default (20) would 429 unrelated tests once the suite exceeds it. The
+    # throttle itself is covered by LoginIpRateLimiterTest (unit) and a dedicated low-cap
+    # @TestPropertySource wiring test (LoginIpThrottleWiringTest).
+    login-ip-max-attempts: 1000000
   cors:
     allowed-origins:
       - http://localhost:5173
