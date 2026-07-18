@@ -465,6 +465,35 @@ class TechVisitIntegrationTest {
     }
 
     @Test
+    void patchService_technicianNotesTooLong_returns400() throws Exception {
+        // Proves the @Size(max=2000) cap is actually enforced — i.e. @Valid IS applied on this
+        // endpoint (it was missing, so the cap was dead code until this fix).
+        String tooLong = "x".repeat(2001);
+        String body = "{\"completed\":true,\"technicianNotes\":\"" + tooLong + "\"}";
+        mockMvc.perform(patch(PATCH_SVC_URL, todayVisit.getId(), visitService1.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void completeVisit_durationOverMax_returns400() throws Exception {
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk());
+        // actualDurationMinutes has @Max(1440); 5000 must be rejected as a validation error.
+        String body = "{\"completionNotes\":\"x\",\"actualDurationMinutes\":5000,\"materialsCostCents\":0}";
+        mockMvc.perform(post(COMPLETE_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
     void patchService_crossVisitServiceId_returns404() throws Exception {
         // Create a second visit for the same subscriber with its own service row.
         Visit otherVisit = visitRepository.save(new Visit(

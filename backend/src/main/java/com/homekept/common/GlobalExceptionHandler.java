@@ -30,10 +30,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Map;
 import java.util.UUID;
@@ -71,6 +75,46 @@ public class GlobalExceptionHandler {
                 ));
         return ResponseEntity.badRequest()
                 .body(ErrorEnvelope.of("VALIDATION_FAILED", "Validation failed", fields, requestId(request)));
+    }
+
+    /**
+     * Malformed / missing request body (unparseable JSON, wrong type inside the body, empty
+     * body where one is required). Without this, these fell through to the catch-all → 500
+     * plus an ERROR stack-trace log; they are client errors → 400. Message is generic.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorEnvelope> handleUnreadableBody(HttpMessageNotReadableException ex,
+                                                              HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ErrorEnvelope.of("MALFORMED_REQUEST",
+                        "Request body is missing or malformed.", requestId(request)));
+    }
+
+    /** Wrong type for a path/query parameter (e.g. {@code ?limit=abc}) — 400, not 500. */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorEnvelope> handleTypeMismatch(MethodArgumentTypeMismatchException ex,
+                                                            HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ErrorEnvelope.of("INVALID_PARAMETER",
+                        "A request parameter has an invalid value.", requestId(request)));
+    }
+
+    /** Missing required query parameter — 400, not 500. */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorEnvelope> handleMissingParam(MissingServletRequestParameterException ex,
+                                                            HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ErrorEnvelope.of("MISSING_PARAMETER",
+                        "A required request parameter is missing.", requestId(request)));
+    }
+
+    /** Unsupported Content-Type (e.g. text/plain to a JSON endpoint) — 415, not 500. */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorEnvelope> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException ex,
+                                                                    HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(ErrorEnvelope.of("UNSUPPORTED_MEDIA_TYPE",
+                        "Content-Type is not supported. Use application/json.", requestId(request)));
     }
 
     /**

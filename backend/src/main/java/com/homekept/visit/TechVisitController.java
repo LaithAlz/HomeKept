@@ -109,7 +109,7 @@ public class TechVisitController {
     public ResponseEntity<VisitServiceItem> patchService(
             @PathVariable Long id,
             @PathVariable Long visitServiceId,
-            @RequestBody TechPatchServiceRequest request,
+            @Valid @RequestBody TechPatchServiceRequest request,
             Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(techVisitService.patchService(id, visitServiceId, request, techUserId));
