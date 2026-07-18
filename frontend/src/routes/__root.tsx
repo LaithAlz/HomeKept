@@ -73,7 +73,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      // viewport-fit=cover is required for the env(safe-area-inset-*) padding the tech app
+      // uses (notch / home indicator) to resolve to real values instead of 0.
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "HomeKept: Proactive home maintenance for the GTA" },
       {
         name: "description",
@@ -82,6 +84,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { name: "author", content: "HomeKept" },
       { name: "theme-color", content: "#edf1ec" },
+      // Installable-PWA hints: added to home screen, HomeKept opens standalone (no browser
+      // chrome) via the standalone manifest. Techs get an app-like /tech before the native
+      // build ships; customers can install /app too.
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "HomeKept" },
       { property: "og:title", content: "HomeKept: Proactive home maintenance for the GTA" },
       {
         property: "og:description",
