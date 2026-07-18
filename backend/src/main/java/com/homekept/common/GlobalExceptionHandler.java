@@ -7,6 +7,7 @@ import com.homekept.storage.StorageUnavailableException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
+import com.homekept.visit.exception.SubscriberNotActiveException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.RescheduleRequestConflictException;
 import com.homekept.visit.exception.RescheduleRequestNotFoundException;
@@ -248,6 +249,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
                         "Visit status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
                         requestId(request)));
+    }
+
+    /** Tech tried to start a visit for a non-ACTIVE (paused/cancelled) subscriber — 409. */
+    @ExceptionHandler(SubscriberNotActiveException.class)
+    public ResponseEntity<ErrorEnvelope> handleSubscriberNotActive(SubscriberNotActiveException ex,
+                                                                   HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("SUBSCRIBER_NOT_ACTIVE", ex.getMessage(), requestId(request)));
     }
 
     /** Invalid visit request parameters — 400. */

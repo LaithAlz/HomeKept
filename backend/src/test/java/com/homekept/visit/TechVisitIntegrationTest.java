@@ -352,6 +352,67 @@ class TechVisitIntegrationTest {
     }
 
     @Test
+    void startVisit_pausedSubscriber_returns409_andLeavesVisitScheduled() throws Exception {
+        // A paused (non-paying) subscriber's scheduled visit must not be startable — otherwise
+        // a churned/paused customer gets free service. Guard fires at START; the visit is left
+        // SCHEDULED so it becomes startable again if the subscriber resumes.
+        subscriber.setStatus(SubscriberStatus.PAUSED);
+        subscriberRepository.save(subscriber);
+
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SUBSCRIBER_NOT_ACTIVE"));
+
+        Visit unchanged = visitRepository.findById(todayVisit.getId()).orElseThrow();
+        assertThat(unchanged.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+    }
+
+    @Test
+    void startVisit_cancelledSubscriber_returns409() throws Exception {
+        subscriber.setStatus(SubscriberStatus.CANCELLED);
+        subscriberRepository.save(subscriber);
+
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SUBSCRIBER_NOT_ACTIVE"));
+    }
+
+    @Test
+    void startVisit_paymentIssueSubscriber_returns200_dunningGrace() throws Exception {
+        // PAYMENT_ISSUE = Stripe retrying a card on an otherwise-active subscription. We still
+        // perform the visit (dunning grace) rather than penalise a transient decline.
+        subscriber.setStatus(SubscriberStatus.PAYMENT_ISSUE);
+        subscriberRepository.save(subscriber);
+
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+    }
+
+    @Test
+    void completeVisit_subscriberPausedAfterStart_stillAllowed() throws Exception {
+        // The guard is START-only: a visit started while ACTIVE must still be completable even
+        // if the customer pauses billing mid-visit (the tech is physically on-site).
+        mockMvc.perform(post(START_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+
+        subscriber.setStatus(SubscriberStatus.PAUSED);
+        subscriberRepository.save(subscriber);
+
+        mockMvc.perform(post(COMPLETE_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"completionNotes\":\"done\",\"actualDurationMinutes\":60,\"materialsCostCents\":0}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
     void startVisit_visitNotAssignedToThisTech_returns404() throws Exception {
         // Seed a visit with NO technician assigned (technicianId = null).
         Visit unassigned = visitRepository.save(new Visit(
