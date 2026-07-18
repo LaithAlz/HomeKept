@@ -165,6 +165,26 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void login_malformedJsonBody_returns400_notServerError() throws Exception {
+        // Truncated JSON. Previously fell through to the catch-all → 500; now a client 400.
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("MALFORMED_REQUEST"))
+                .andExpect(jsonPath("$.error.request_id").isNotEmpty());
+    }
+
+    @Test
+    void login_wrongContentType_returns415() throws Exception {
+        mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("not json"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.error.code").value("UNSUPPORTED_MEDIA_TYPE"));
+    }
+
+    @Test
     void login_suspendedUser_returns401_sameMessageAsWrongPassword() throws Exception {
         // A SUSPENDED user with a valid password must receive the same generic 401 —
         // no status enumeration, no hint that the account exists.

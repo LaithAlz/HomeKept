@@ -3,12 +3,13 @@ package com.homekept.visit.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 
 /**
  * Request body for {@code POST /api/tech/visits/{id}/flags}.
  */
 public record TechCreateFlagRequest(
-        @NotBlank String body,
+        @NotBlank @Size(max = 2000) String body,
 
         @NotNull
         @Pattern(regexp = "INFO|ATTENTION|URGENT",
@@ -16,5 +17,5 @@ public record TechCreateFlagRequest(
         String severity,
 
         /** Optional R2 storage key for a photo attached to the flag. Nullable. */
-        String photoStorageKey
+        @Size(max = 1024) String photoStorageKey
 ) {}
