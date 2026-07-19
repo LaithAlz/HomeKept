@@ -1,0 +1,17 @@
+# Dependencies (both customer/ and tech/)
+**/node_modules/
+
+# Native build outputs. The ios/ and android/ PROJECTS are committed once generated via
+# `npx cap add`; only their build artifacts are ignored. Applies under customer/ and tech/.
+**/ios/App/Pods/
+**/ios/App/build/
+**/ios/App/DerivedData/
+**/android/.gradle/
+**/android/build/
+**/android/app/build/
+**/android/local.properties
+**/android/.idea/
+
+# Misc
+*.log
+.DS_Store
