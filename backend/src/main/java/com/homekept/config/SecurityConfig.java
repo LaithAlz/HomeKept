@@ -116,6 +116,16 @@ public class SecurityConfig {
                         // using the STRIPE_WEBHOOK_SECRET (Stripe-Signature header, HMAC-SHA256).
                         // Auth cookies are never sent for this endpoint (Stripe does not send them).
                         .requestMatchers(HttpMethod.POST, "/api/webhooks/stripe").permitAll()
+                        // Defense-in-depth role backstop. These prefixes are role-exclusive, so
+                        // gate them at the URL level too. Method-level @PreAuthorize on each
+                        // controller remains the primary gate; this ensures a future controller
+                        // that forgets the annotation is not left open to any authenticated user.
+                        // (/api/app/** is deliberately NOT gated here. It is CUSTOMER-only in
+                        // code today, but api-contract.md reserves ADMIN-via-ownership access to
+                        // the owner app; a URL-level hasRole('CUSTOMER') rule would pre-empt that,
+                        // so the app surface stays method-gated where ownership logic can live.)
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/tech/**").hasRole("TECHNICIAN")
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
