@@ -185,6 +185,23 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void customerToken_cannotReachAdminOrTechPrefixes_returns403() throws Exception {
+        // URL-level role backstop (SecurityConfig): the /api/admin/** and /api/tech/** prefixes
+        // are gated by role at the filter, not only by @PreAuthorize on each controller.
+        createTestUser("custrole@example.com", "Secret123", Role.CUSTOMER);
+        var loginResult = mockMvc.perform(post(LOGIN_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"custrole@example.com\",\"password\":\"Secret123\"}"))
+                .andExpect(status().isOk()).andReturn();
+        String access = extractCookieValue(loginResult.getResponse().getHeaders("Set-Cookie"), "hk_access");
+
+        mockMvc.perform(get("/api/admin/subscribers").cookie(new Cookie("hk_access", access)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/tech/visits/today").cookie(new Cookie("hk_access", access)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void login_suspendedUser_returns401_sameMessageAsWrongPassword() throws Exception {
         // A SUSPENDED user with a valid password must receive the same generic 401 —
         // no status enumeration, no hint that the account exists.
