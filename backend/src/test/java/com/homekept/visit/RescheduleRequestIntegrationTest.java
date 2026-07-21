@@ -12,6 +12,7 @@ import com.homekept.subscription.BillingCycle;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
+import com.homekept.visit.exception.RescheduleRequestConflictException;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,7 @@ class RescheduleRequestIntegrationTest {
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
     @Autowired RescheduleRequestRepository rescheduleRequestRepository;
+    @Autowired RescheduleService rescheduleService;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
 
@@ -149,6 +151,48 @@ class RescheduleRequestIntegrationTest {
                         + "JOIN reschedule_request r ON r.id = s.reschedule_request_id "
                         + "WHERE r.subscriber_id = ?", Integer.class, subscriber.getId());
         assertThat(slotCount).isEqualTo(2);
+    }
+
+    @Test
+    void confirm_twoConcurrent_onlyOneSucceeds_singleReplacementVisit() throws Exception {
+        // Seed a PENDING request via the customer endpoint.
+        mockMvc.perform(post(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"preferredDates\":[\"2026-08-01T15:00:00Z\"]}"))
+                .andExpect(status().isCreated());
+        Long requestId = rescheduleRequestRepository
+                .findByVisitIdAndStatus(visit.getId(), RescheduleRequestStatus.PENDING)
+                .orElseThrow().getId();
+
+        // Two admins (or one double-clicked confirm) resolve the SAME request at once. The
+        // PESSIMISTIC_WRITE lock must let exactly one through; the other blocks, re-reads the
+        // now-CONFIRMED status, and is rejected BEFORE it can create a second replacement visit.
+        Instant newSlot = Instant.now().plus(21, ChronoUnit.DAYS);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.CountDownLatch fire = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.Callable<Boolean> confirmTask = () -> {
+            fire.await();
+            try {
+                rescheduleService.confirm(requestId, newSlot, "confirmed");
+                return Boolean.TRUE;   // won
+            } catch (RescheduleRequestConflictException e) {
+                return Boolean.FALSE;  // correctly rejected
+            }
+        };
+        var f1 = pool.submit(confirmTask);
+        var f2 = pool.submit(confirmTask);
+        fire.countDown();
+        boolean a = f1.get();
+        boolean b = f2.get();
+        pool.shutdown();
+
+        assertThat(a ^ b).as("exactly one concurrent confirm should win").isTrue();
+        // The original visit is RESCHEDULED and exactly ONE replacement SCHEDULED visit exists.
+        Integer scheduled = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit WHERE subscriber_id = ? AND status = 'SCHEDULED'",
+                Integer.class, subscriber.getId());
+        assertThat(scheduled).isEqualTo(1);
     }
 
     @Test
