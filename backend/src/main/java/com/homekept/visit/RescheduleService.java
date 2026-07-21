@@ -135,12 +135,22 @@ public class RescheduleService {
                     return new VisitNotFoundException(visitId);
                 });
 
-        RescheduleRequest request = rescheduleRequestRepository
+        RescheduleRequest pending = rescheduleRequestRepository
                 .findByVisitIdAndStatus(visit.getId(), RescheduleRequestStatus.PENDING)
                 .orElseThrow(() -> {
                     log.debug("reschedule_cancel_no_pending_request visitId={} subscriberId={}", visitId, subscriberId);
                     return new RescheduleRequestNotFoundException(visitId);
                 });
+
+        // Re-load under a PESSIMISTIC_WRITE lock and re-assert PENDING before deleting. A
+        // concurrent admin confirm/decline that resolves this request between the read above
+        // and the delete would otherwise be clobbered (deleting a just-CONFIRMED request
+        // destroys its audit / confirmed_visit_id link). The lock blocks until that txn
+        // commits; we then see the non-PENDING status (or a missing row) and 404 — nothing
+        // left to cancel. Also serialises a double-clicked cancel.
+        RescheduleRequest request = rescheduleRequestRepository.findByIdForUpdate(pending.getId())
+                .filter(r -> r.getStatus() == RescheduleRequestStatus.PENDING)
+                .orElseThrow(() -> new RescheduleRequestNotFoundException(visitId));
 
         // Slots first, then the request row — the FK also cascades at the DB level, but we
         // delete explicitly so no orphan slot rows depend on that alone.
@@ -240,8 +250,15 @@ public class RescheduleService {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * Loads a request for the admin confirm/decline path under a PESSIMISTIC_WRITE lock and
+     * asserts it is still PENDING. The lock serialises concurrent resolutions of the same
+     * request: a second caller blocks until the first commits, then sees the resolved status
+     * here and is rejected with a 409 — so a double-clicked confirm can't create two
+     * replacement visits. Callers are {@code @Transactional} (required for the lock to hold).
+     */
     private RescheduleRequest requirePending(Long requestId) {
-        RescheduleRequest request = rescheduleRequestRepository.findById(requestId)
+        RescheduleRequest request = rescheduleRequestRepository.findByIdForUpdate(requestId)
                 .orElseThrow(() -> new RescheduleRequestNotFoundException(requestId));
         if (request.getStatus() != RescheduleRequestStatus.PENDING) {
             throw new RescheduleRequestConflictException(

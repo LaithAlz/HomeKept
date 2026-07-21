@@ -1,6 +1,8 @@
 package com.homekept.visit;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,6 +17,17 @@ public interface RescheduleRequestRepository extends JpaRepository<RescheduleReq
 
     /** Ownership-scoped lookup for the customer (returns empty if not owned → 404). */
     Optional<RescheduleRequest> findByIdAndSubscriberId(Long id, Long subscriberId);
+
+    /**
+     * Pessimistic-write-locked lookup by id, used by the admin confirm/decline path to
+     * serialise concurrent resolutions of the SAME request (e.g. a double-clicked confirm, or
+     * two admins). The second caller blocks until the first commits, then re-reads the
+     * now-resolved status and is rejected — so a request can never be confirmed twice, which
+     * would otherwise create two replacement visits (one orphaned).
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from RescheduleRequest r where r.id = :id")
+    Optional<RescheduleRequest> findByIdForUpdate(@Param("id") Long id);
 
     /**
      * The request for a visit in the given status (e.g. the PENDING one, if any). The visit's
