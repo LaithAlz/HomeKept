@@ -1,6 +1,8 @@
 package com.homekept.visit;
 
+import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberQueryService;
+import com.homekept.visit.exception.SubscriberNotActiveException;
 import com.homekept.visit.dto.AppCreateTodoRequest;
 import com.homekept.visit.dto.TodoResponse;
 import com.homekept.visit.exception.VisitNotFoundException;
@@ -80,7 +82,16 @@ public class TodoAppService {
      */
     @Transactional
     public TodoResponse createTodo(Long userId, AppCreateTodoRequest request) {
-        Long subscriberId = resolveSubscriberId(userId);
+        Subscriber subscriber = subscriberQueryService.findByUserId(userId)
+                // No subscriber → ownership rule → 404, never 403.
+                .orElseThrow(() -> new VisitNotFoundException(-1L));
+        // Don't let a non-paying (paused/cancelled) customer keep queueing to-do items.
+        // Serviceable = ACTIVE or PAYMENT_ISSUE — same policy as visit-start and reschedule.
+        if (!subscriber.getStatus().isServiceable()) {
+            log.info("todo_create_blocked userId={} subscriberStatus={}", userId, subscriber.getStatus());
+            throw new SubscriberNotActiveException(subscriber.getStatus().name());
+        }
+        Long subscriberId = subscriber.getId();
         TodoItem saved = todoItemRepository.save(new TodoItem(subscriberId, request.body()));
 
         // "todo_added" analytics event (arch doc Part 6) — the body is free text and is

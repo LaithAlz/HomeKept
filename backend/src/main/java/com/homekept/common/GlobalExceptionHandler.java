@@ -295,7 +295,7 @@ public class GlobalExceptionHandler {
                         requestId(request)));
     }
 
-    /** Tech tried to start a visit for a non-ACTIVE (paused/cancelled) subscriber — 409. */
+    /** A service action (start visit / reschedule request / to-do) on a non-serviceable subscriber. 409. */
     @ExceptionHandler(SubscriberNotActiveException.class)
     public ResponseEntity<ErrorEnvelope> handleSubscriberNotActive(SubscriberNotActiveException ex,
                                                                    HttpServletRequest request) {

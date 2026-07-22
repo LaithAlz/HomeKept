@@ -1,10 +1,11 @@
 package com.homekept.visit.exception;
 
 /**
- * Thrown when a technician tries to START a visit for a subscriber whose subscription is
- * not in a serviceable state — which would mean performing (free) service for someone who
- * is no longer paying. Guards START only; a visit already IN_PROGRESS is allowed to finish
- * even if billing pauses mid-visit. Maps to HTTP 409 Conflict.
+ * Thrown when a self-serve or service action is attempted for a subscriber whose subscription
+ * is not in a serviceable state ({@code SubscriberStatus.isServiceable()} = ACTIVE or
+ * PAYMENT_ISSUE). Used by three guards: starting a visit, creating a reschedule request, and
+ * adding a to-do item — all of which would otherwise let a paused/cancelled (non-paying)
+ * customer keep pulling on the service. Maps to HTTP 409 Conflict.
  *
  * <p>The client-facing message is intentionally generic (it does not disclose the exact
  * billing status, e.g. that a card failed) — the specific status is written to the server
@@ -16,7 +17,7 @@ public class SubscriberNotActiveException extends RuntimeException {
     private final String subscriberStatus;
 
     public SubscriberNotActiveException(String subscriberStatus) {
-        super("This visit can't be started because the subscription isn't currently active.");
+        super("This isn't available right now because the subscription isn't currently active.");
         this.subscriberStatus = subscriberStatus;
     }
 

@@ -81,13 +81,6 @@ public class TechVisitService {
     /** Follow-up visit scheduled N days from now when a visit is marked INCOMPLETE. */
     private static final int FOLLOW_UP_DAYS_AHEAD = 7;
 
-    /**
-     * Subscriber statuses for which a scheduled visit may be STARTED (see {@link #startVisit}).
-     * PAYMENT_ISSUE is included as dunning grace — see the rationale at the guard.
-     */
-    private static final Set<SubscriberStatus> SERVICEABLE_STATUSES =
-            java.util.EnumSet.of(SubscriberStatus.ACTIVE, SubscriberStatus.PAYMENT_ISSUE);
-
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
     private final VisitPhotoRepository visitPhotoRepository;
@@ -257,7 +250,7 @@ public class TechVisitService {
         SubscriberStatus subStatus = subscriberQueryService.findById(visit.getSubscriberId())
                 .map(Subscriber::getStatus)
                 .orElse(null);
-        if (subStatus == null || !SERVICEABLE_STATUSES.contains(subStatus)) {
+        if (subStatus == null || !subStatus.isServiceable()) {
             log.info("tech_visit_start_blocked visitId={} subscriberId={} subscriberStatus={}",
                     visit.getId(), visit.getSubscriberId(), subStatus);
             throw new SubscriberNotActiveException(String.valueOf(subStatus));

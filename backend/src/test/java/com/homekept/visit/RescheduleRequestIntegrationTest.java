@@ -277,6 +277,20 @@ class RescheduleRequestIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void createRequest_pausedSubscriber_returns409_subscriberNotActive() throws Exception {
+        // A non-serviceable (paused) customer can't queue new reschedule requests.
+        subscriber.setStatus(SubscriberStatus.PAUSED);
+        subscriberRepository.save(subscriber);
+
+        mockMvc.perform(post(rescheduleUrl(visit.getId()))
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"preferredDates\":[\"2026-08-01T15:00:00Z\"]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SUBSCRIBER_NOT_ACTIVE"));
+    }
+
     // ── Customer: cancel ────────────────────────────────────────────────────────
 
     @Test

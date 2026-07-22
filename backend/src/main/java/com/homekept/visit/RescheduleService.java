@@ -1,10 +1,12 @@
 package com.homekept.visit;
 
+import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AdminRescheduleRequestItem;
 import com.homekept.visit.dto.RescheduleRequestResponse;
 import com.homekept.visit.exception.RescheduleRequestConflictException;
 import com.homekept.visit.exception.RescheduleRequestNotFoundException;
+import com.homekept.visit.exception.SubscriberNotActiveException;
 import com.homekept.visit.exception.VisitNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,7 +78,17 @@ public class RescheduleService {
     @Transactional
     public RescheduleRequestResponse createRequest(Long userId, Long visitId,
                                                    List<Instant> preferredSlots) {
-        Long subscriberId = resolveSubscriberId(userId);
+        Subscriber subscriber = subscriberQueryService.findByUserId(userId)
+                // No subscriber → ownership rule → 404, never 403.
+                .orElseThrow(() -> new VisitNotFoundException(-1L));
+        // Don't queue new service actions for a subscriber who isn't paying. Serviceable =
+        // ACTIVE or PAYMENT_ISSUE (dunning grace); PAUSED/CANCELLED are blocked. Single source
+        // of truth: SubscriberStatus.isServiceable(), same policy as the visit-start guard.
+        if (!subscriber.getStatus().isServiceable()) {
+            log.info("reschedule_create_blocked userId={} subscriberStatus={}", userId, subscriber.getStatus());
+            throw new SubscriberNotActiveException(subscriber.getStatus().name());
+        }
+        Long subscriberId = subscriber.getId();
 
         Visit visit = visitRepository.findByIdAndSubscriberId(visitId, subscriberId)
                 .orElseThrow(() -> {

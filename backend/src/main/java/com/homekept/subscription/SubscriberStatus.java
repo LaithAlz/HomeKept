@@ -32,5 +32,19 @@ public enum SubscriberStatus {
      * Terminal. Subscription has ended. A returning customer requires a new subscriber row.
      * From: PENDING_ACTIVATION (token expired / never paid), ACTIVE, PAUSED, PAYMENT_ISSUE.
      */
-    CANCELLED
+    CANCELLED;
+
+    /**
+     * Whether a subscriber in this status may receive or queue service actions — start a
+     * visit, create a reschedule request, or add a to-do item. Serviceable = {@code ACTIVE}
+     * plus {@code PAYMENT_ISSUE} (dunning grace: Stripe is retrying an otherwise-active
+     * subscription, so a transient card decline should not cut off service). {@code PAUSED},
+     * {@code CANCELLED}, and {@code PENDING_ACTIVATION} are not serviceable.
+     *
+     * <p>This is the single source of truth for that policy — change the set here to change
+     * it everywhere it is enforced (visit start, reschedule request, to-do creation).
+     */
+    public boolean isServiceable() {
+        return this == ACTIVE || this == PAYMENT_ISSUE;
+    }
 }
