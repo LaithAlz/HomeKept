@@ -219,6 +219,20 @@ class AppTodoIntegrationTest {
     }
 
     @Test
+    void createTodo_pausedSubscriber_returns409_subscriberNotActive() throws Exception {
+        // A non-serviceable (paused) customer can't keep adding to-do items.
+        customerSubscriber.setStatus(SubscriberStatus.PAUSED);
+        subscriberRepository.save(customerSubscriber);
+
+        mockMvc.perform(post(LIST_CREATE_URL)
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Fix the gate\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("SUBSCRIBER_NOT_ACTIVE"));
+    }
+
+    @Test
     void createTodo_blankBody_returns400() throws Exception {
         mockMvc.perform(post(LIST_CREATE_URL)
                         .cookie(new Cookie("hk_access", customerToken))
