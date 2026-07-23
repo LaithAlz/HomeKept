@@ -535,14 +535,22 @@ public class TechVisitService {
 
         // Analytics (arch doc §5.7) — attributed to the acting technician. IDs/counts only,
         // no PII. Fires after this transaction commits (or no-ops without a PostHog key).
-        Map<String, Object> visitProps = new LinkedHashMap<>();
-        visitProps.put("visit_template", saved.getVisitTemplateId());
-        visitProps.put("duration_actual", saved.getActualDurationMinutes());
-        visitProps.put("services_count",
-                visitServiceRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
-        visitProps.put("photos_count",
-                visitPhotoRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
-        analytics.capture(techUserId, AnalyticsEvent.VISIT_COMPLETED, visitProps);
+        // capture() is itself best-effort, but gathering the enrichment counts costs two
+        // reads on the request thread; wrap the whole block so a query failure here can
+        // never surface into (and roll back) an already-completed visit.
+        try {
+            Map<String, Object> visitProps = new LinkedHashMap<>();
+            visitProps.put("visit_template", saved.getVisitTemplateId());
+            visitProps.put("duration_actual", saved.getActualDurationMinutes());
+            visitProps.put("services_count",
+                    visitServiceRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
+            visitProps.put("photos_count",
+                    visitPhotoRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
+            analytics.capture(techUserId, AnalyticsEvent.VISIT_COMPLETED, visitProps);
+        } catch (RuntimeException e) {
+            log.warn("analytics_visit_completed_enrichment_failed visitId={}: {}",
+                    saved.getId(), e.toString());
+        }
 
         return new TechCompleteVisitResponse(
                 saved.getId(),

@@ -1,9 +1,8 @@
 package com.homekept.analytics;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.homekept.config.AppProperties;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -51,7 +50,7 @@ class PostHogAnalyticsServiceTest {
     }
 
     @Test
-    void buildPayload_hasExpectedShape_distinctIdIsUserIdString() throws Exception {
+    void buildPayload_hasExpectedShape_distinctIdIsUserIdString() {
         PostHogAnalyticsService svc = new PostHogAnalyticsService(
                 propsWith("phc_test_key", "https://us.i.posthog.com"), mapper);
 
@@ -60,30 +59,30 @@ class PostHogAnalyticsServiceTest {
         Instant when = Instant.parse("2026-07-23T12:00:00Z");
 
         String json = svc.buildPayload(42L, AnalyticsEvent.FLAG_CREATED, props, when);
-        JsonNode node = mapper.readTree(json);
 
-        assertThat(node.get("api_key").asText()).isEqualTo("phc_test_key");
-        assertThat(node.get("event").asText()).isEqualTo("flag_created");
-        // distinct_id is the internal user id as a string — never an email or name.
-        assertThat(node.get("distinct_id").asText()).isEqualTo("42");
-        assertThat(node.get("properties").get("severity").asText()).isEqualTo("HIGH");
-        assertThat(node.get("timestamp").asText()).isEqualTo("2026-07-23T12:00:00Z");
+        // buildPayload uses a LinkedHashMap, so key order is deterministic. Asserting the
+        // exact string proves the envelope shape AND that distinct_id is the internal user
+        // id as a string (never an email/name) AND that no extra key sneaks in.
+        assertThat(json).isEqualTo(
+                "{\"api_key\":\"phc_test_key\",\"event\":\"flag_created\","
+                        + "\"distinct_id\":\"42\",\"properties\":{\"severity\":\"HIGH\"},"
+                        + "\"timestamp\":\"2026-07-23T12:00:00Z\"}");
     }
 
     @Test
-    void buildPayload_onlyCarriesTheSuppliedProperties_noHiddenPii() throws Exception {
+    void buildPayload_onlyCarriesTheSuppliedProperties_noHiddenPii() {
         PostHogAnalyticsService svc = new PostHogAnalyticsService(
                 propsWith("phc_test_key", "https://us.i.posthog.com"), mapper);
 
-        // A caller that (correctly) passes an empty property map must produce an empty
-        // properties object — the transport adds nothing of its own beyond the envelope.
+        // A caller that (correctly) passes an empty property map produces an empty properties
+        // object — the transport adds nothing of its own beyond the fixed envelope, so there
+        // is no channel through which PII could leak.
         String json = svc.buildPayload(7L, AnalyticsEvent.TODO_ADDED, Map.of(), Instant.EPOCH);
-        JsonNode node = mapper.readTree(json);
 
-        assertThat(node.get("properties").isEmpty()).isTrue();
-        // The envelope keys are exactly these — nothing that could carry PII.
-        assertThat(node.fieldNames()).toIterable()
-                .containsExactlyInAnyOrder("api_key", "event", "distinct_id", "properties", "timestamp");
+        assertThat(json).isEqualTo(
+                "{\"api_key\":\"phc_test_key\",\"event\":\"todo_added\","
+                        + "\"distinct_id\":\"7\",\"properties\":{},"
+                        + "\"timestamp\":\"1970-01-01T00:00:00Z\"}");
     }
 
     @Test

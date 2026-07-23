@@ -1,7 +1,7 @@
 package com.homekept.analytics;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.homekept.config.AppProperties;
+import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
