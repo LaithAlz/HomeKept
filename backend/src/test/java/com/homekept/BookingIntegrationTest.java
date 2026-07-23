@@ -1,5 +1,7 @@
 package com.homekept;
 
+import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
+import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.booking.BookingRateLimiter;
 import com.homekept.booking.BookingStatus;
 import com.homekept.booking.WalkthroughBooking;
@@ -55,7 +57,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, RecordingAnalyticsConfig.class})
 class BookingIntegrationTest {
 
     @Autowired MockMvc mockMvc;
@@ -63,6 +65,7 @@ class BookingIntegrationTest {
     @Autowired UserRepository userRepository;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired BookingRateLimiter rateLimiter;
+    @Autowired RecordingAnalyticsService recording;
 
     private static final String WALKTHROUGH_URL  = "/api/bookings/walkthrough";
     private static final String ADMIN_BOOKINGS_URL = "/api/admin/bookings";
@@ -92,6 +95,7 @@ class BookingIntegrationTest {
     void setUp() {
         // Reset rate limiter for the test IP (MockMvc uses 127.0.0.1)
         rateLimiter.reset("127.0.0.1");
+        recording.clear();
     }
 
     @AfterEach
@@ -126,6 +130,53 @@ class BookingIntegrationTest {
         assertThat(saved.getStatus()).isEqualTo(BookingStatus.PENDING);
         assertThat(saved.getContactConsentAt()).isNotNull();
         assertThat(saved.getLeadSource().name()).isEqualTo("WEBSITE_DIRECT");
+
+        // Analytics: walkthrough_booked fired as an ANONYMOUS event. No anon id was supplied,
+        // so it falls back to a booking-scoped synthetic id. Props are the lead source, the
+        // city (a bounded form value), and the property type — no name/email/street.
+        assertThat(recording.anonymousEvents()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.WALKTHROUGH_BOOKED);
+            assertThat(e.distinctId()).isEqualTo("booking_" + id);
+            assertThat(e.props()).containsEntry("lead_source", "WEBSITE_DIRECT");
+            assertThat(e.props()).containsEntry("city", "Mississauga");
+            assertThat(e.props()).containsEntry("property_type", "DETACHED");
+        });
+    }
+
+    @Test
+    void submitBooking_withPosthogDistinctId_walkthroughBookedUsesThatAnonId() throws Exception {
+        String body = """
+                {
+                  "fullName": "Ada Lovelace",
+                  "email": "ada@example.com",
+                  "phone": "(905) 555-0199",
+                  "streetAddress": "1 Analytical Way",
+                  "city": "Oakville",
+                  "postalCode": "L6H 1A1",
+                  "propertyType": "SEMI",
+                  "preferredWeek": "2026-07-14",
+                  "timeOfDay": "MORNING",
+                  "dayPreferences": ["MON"],
+                  "contactConsent": true,
+                  "posthogDistinctId": "anon-abc-123"
+                }
+                """;
+        MvcResult result = mockMvc.perform(post(WALKTHROUGH_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$.id")).longValue();
+        createdBookingIds.add(id);
+
+        // With an anon id supplied, walkthrough_booked is attributed to it (so the later
+        // activation alias can stitch this lead to the eventual user).
+        assertThat(recording.anonymousEvents()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.WALKTHROUGH_BOOKED);
+            assertThat(e.distinctId()).isEqualTo("anon-abc-123");
+            assertThat(e.props()).containsEntry("city", "Oakville");
+        });
     }
 
     @Test

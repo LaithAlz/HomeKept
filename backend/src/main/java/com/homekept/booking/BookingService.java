@@ -1,5 +1,7 @@
 package com.homekept.booking;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.booking.dto.AdminBookingDetail;
 import com.homekept.booking.dto.AdminBookingListItem;
 import com.homekept.booking.dto.AdminPatchBookingRequest;
@@ -17,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -46,13 +50,16 @@ public class BookingService {
     private final WalkthroughBookingRepository bookingRepository;
     private final WalkthroughBookingStateMachine stateMachine;
     private final BookingNotifier bookingNotifier;
+    private final AnalyticsService analytics;
 
     public BookingService(WalkthroughBookingRepository bookingRepository,
                           WalkthroughBookingStateMachine stateMachine,
-                          BookingNotifier bookingNotifier) {
+                          BookingNotifier bookingNotifier,
+                          AnalyticsService analytics) {
         this.bookingRepository = bookingRepository;
         this.stateMachine = stateMachine;
         this.bookingNotifier = bookingNotifier;
+        this.analytics = analytics;
     }
 
     // ── Public submission ─────────────────────────────────────────────────────
@@ -116,6 +123,25 @@ public class BookingService {
         bookingNotifier.sendBookingConfirmation(saved);
 
         log.info("Booking created id={} leadSource={}", saved.getId(), saved.getLeadSource());
+
+        // Analytics (arch doc §5.7) — the top of the acquisition funnel. Captured against the
+        // wizard's anonymous distinct id when present (folded into the user at activation via
+        // alias); otherwise a booking-scoped synthetic id so the lead still counts. Props are
+        // the lead source, the city (a bounded form value), and the property type — no PII
+        // (name/email/street are never sent). Best-effort, commit-gated.
+        try {
+            String distinctId = saved.getPosthogDistinctId() != null && !saved.getPosthogDistinctId().isBlank()
+                    ? saved.getPosthogDistinctId()
+                    : "booking_" + saved.getId();
+            Map<String, Object> props = new LinkedHashMap<>();
+            props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
+            props.put("city", saved.getCity());
+            props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
+            analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
+        } catch (RuntimeException e) {
+            log.warn("analytics_walkthrough_booked_failed bookingId={}: {}", saved.getId(), e.toString());
+        }
+
         return new WalkthroughBookingResponse(saved.getId(), saved.getStatus().name());
     }
 
@@ -236,6 +262,11 @@ public class BookingService {
             lastName = fullName.substring(spaceIndex + 1);
         }
 
+        // The walk-through reference date for the acquisition funnel: the performed date if
+        // the walk-through was recorded as performed, otherwise the booking date.
+        Instant walkthroughAt = booking.getPerformedAt() != null
+                ? booking.getPerformedAt() : booking.getCreatedAt();
+
         return new BookingActivationData(
                 booking.getId(),
                 booking.getEmail(),
@@ -246,7 +277,9 @@ public class BookingService {
                 booking.getPostalCode(),
                 booking.getYearBuilt(),
                 booking.getSquareFootageRange(),
-                booking.getPropertyType() != null ? booking.getPropertyType().name() : null
+                booking.getPropertyType() != null ? booking.getPropertyType().name() : null,
+                walkthroughAt,
+                booking.getPosthogDistinctId()
         );
     }
 
@@ -333,6 +366,10 @@ public class BookingService {
      * @param yearBuilt          year the home was built (nullable)
      * @param squareFootageRange square footage range string (nullable)
      * @param propertyType       property type name string (e.g. "DETACHED")
+     * @param walkthroughAt      the walk-through reference instant (performed date, else booking
+     *                           date) — drives the {@code days_since_walkthrough} funnel metric
+     * @param posthogDistinctId  the wizard's anonymous analytics distinct id (nullable) — folded
+     *                           into the new user's identity at activation via an analytics alias
      */
     public record BookingActivationData(
             Long bookingId,
@@ -344,7 +381,9 @@ public class BookingService {
             String postalCode,
             Integer yearBuilt,
             String squareFootageRange,
-            String propertyType
+            String propertyType,
+            Instant walkthroughAt,
+            String posthogDistinctId
     ) {}
 
     /**

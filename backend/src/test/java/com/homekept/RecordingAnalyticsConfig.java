@@ -26,11 +26,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @TestConfiguration(proxyBeanMethods = false)
 public class RecordingAnalyticsConfig {
 
-    /** One captured event. {@code props} is a defensive copy that tolerates null values. */
+    /** A user-attributed event. {@code props} is a defensive copy that tolerates null values. */
     public record Captured(Long distinctId, String event, Map<String, Object> props) {}
+
+    /** An anonymous (pre-signup) event, keyed by a String distinct id. */
+    public record AnonymousCaptured(String distinctId, String event, Map<String, Object> props) {}
+
+    /** An anonymous→user identity merge. */
+    public record Aliased(String anonymousDistinctId, Long userId) {}
 
     public static final class RecordingAnalyticsService implements AnalyticsService {
         private final List<Captured> captured = new CopyOnWriteArrayList<>();
+        private final List<AnonymousCaptured> anonymousCaptured = new CopyOnWriteArrayList<>();
+        private final List<Aliased> aliases = new CopyOnWriteArrayList<>();
 
         @Override
         public void capture(Long distinctUserId, String event, Map<String, Object> properties) {
@@ -40,12 +48,33 @@ public class RecordingAnalyticsConfig {
             captured.add(new Captured(distinctUserId, event, copy));
         }
 
+        @Override
+        public void captureAnonymous(String distinctId, String event, Map<String, Object> properties) {
+            Map<String, Object> copy = properties == null ? Map.of() : new LinkedHashMap<>(properties);
+            anonymousCaptured.add(new AnonymousCaptured(distinctId, event, copy));
+        }
+
+        @Override
+        public void alias(String anonymousDistinctId, Long userId) {
+            aliases.add(new Aliased(anonymousDistinctId, userId));
+        }
+
         public List<Captured> events() {
             return List.copyOf(captured);
         }
 
+        public List<AnonymousCaptured> anonymousEvents() {
+            return List.copyOf(anonymousCaptured);
+        }
+
+        public List<Aliased> aliases() {
+            return List.copyOf(aliases);
+        }
+
         public void clear() {
             captured.clear();
+            anonymousCaptured.clear();
+            aliases.clear();
         }
     }
 

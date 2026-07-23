@@ -24,4 +24,26 @@ public interface AnalyticsService {
      *                       never PII or free text</strong>; may be empty
      */
     void capture(Long distinctUserId, String event, Map<String, Object> properties);
+
+    /**
+     * Records an event attributed to an <em>anonymous</em> distinct id — used for pre-signup
+     * lead events (e.g. {@code walkthrough_booked}) where no internal user exists yet. The
+     * distinct id is typically the booking wizard's PostHog id; {@link #alias} later folds it
+     * into the user's identity so the acquisition funnel stitches across the signup boundary.
+     *
+     * @param distinctId the anonymous distinct id; a {@code null}/blank id is skipped
+     * @param event      an event name from {@link AnalyticsEvent}
+     * @param properties event properties (same no-PII rule as {@link #capture})
+     */
+    void captureAnonymous(String distinctId, String event, Map<String, Object> properties);
+
+    /**
+     * Merges an anonymous distinct id into an internal user's identity so events captured
+     * before signup (against the anonymous id) and after (against the user id) resolve to one
+     * person in PostHog. A no-op if the user id is {@code null} or the anonymous id is blank.
+     *
+     * @param anonymousDistinctId the pre-signup anonymous distinct id
+     * @param userId              the internal user id to merge it into
+     */
+    void alias(String anonymousDistinctId, Long userId);
 }
