@@ -1264,9 +1264,19 @@ function PhotoGrid({ attempts }: { attempts: PhotoAttempt[] }) {
         ))}
       </div>
       {attempts.some((p) => p.status === "error") && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Some photos couldn't be saved. Photo storage isn't turned on yet.
-        </p>
+        <div className="mt-2 space-y-0.5">
+          {Array.from(
+            new Set(
+              attempts
+                .filter((p) => p.status === "error")
+                .map((p) => p.error ?? "Some photos couldn't be saved."),
+            ),
+          ).map((msg) => (
+            <p key={msg} className="text-xs text-muted-foreground">
+              {msg}
+            </p>
+          ))}
+        </div>
       )}
     </div>
   );
