@@ -1,5 +1,7 @@
 package com.homekept.subscription;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.booking.BookingService;
 import com.homekept.booking.BookingService.BookingActivationData;
 import com.homekept.identity.AuthService;
@@ -15,6 +17,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
 
 /**
  * Orchestrates the magic-link activation flow.
@@ -39,19 +45,22 @@ public class ActivationService {
     private final PropertyService propertyService;
     private final SubscriberRepository subscriberRepository;
     private final ActivationNotifier activationNotifier;
+    private final AnalyticsService analytics;
 
     public ActivationService(ActivationTokenService activationTokenService,
                              BookingService bookingService,
                              AuthService authService,
                              PropertyService propertyService,
                              SubscriberRepository subscriberRepository,
-                             ActivationNotifier activationNotifier) {
+                             ActivationNotifier activationNotifier,
+                             AnalyticsService analytics) {
         this.activationTokenService = activationTokenService;
         this.bookingService = bookingService;
         this.authService = authService;
         this.propertyService = propertyService;
         this.subscriberRepository = subscriberRepository;
         this.activationNotifier = activationNotifier;
+        this.analytics = analytics;
     }
 
     /**
@@ -138,6 +147,23 @@ public class ActivationService {
 
         // 8. Mark the booking as converted
         bookingService.markConverted(bookingId, subscriber.getId());
+
+        // 8b. Analytics (arch doc §5.7) — the funnel conversion event, attributed to the new
+        // user, plus an alias that folds the wizard's anonymous distinct id into that user so
+        // the acquisition funnel (walkthrough_booked -> activation_completed) stitches across
+        // the signup boundary. days_since_walkthrough is a count, no PII. Best-effort +
+        // commit-gated, wrapped so analytics can never roll back the activation.
+        try {
+            long daysSinceWalkthrough = d.walkthroughAt() != null
+                    ? Math.max(0L, ChronoUnit.DAYS.between(d.walkthroughAt(), Instant.now()))
+                    : 0L;
+            analytics.capture(user.getId(), AnalyticsEvent.ACTIVATION_COMPLETED,
+                    Map.of("days_since_walkthrough", daysSinceWalkthrough));
+            analytics.alias(d.posthogDistinctId(), user.getId());
+        } catch (RuntimeException e) {
+            log.warn("analytics_activation_completed_failed userId={} bookingId={}: {}",
+                    user.getId(), bookingId, e.toString());
+        }
 
         // 9. Issue auth tokens so the subscriber is immediately signed in
         TokenPair pair = authService.issueTokensFor(user);

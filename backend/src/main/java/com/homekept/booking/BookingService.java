@@ -1,5 +1,7 @@
 package com.homekept.booking;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.booking.dto.AdminBookingDetail;
 import com.homekept.booking.dto.AdminBookingListItem;
 import com.homekept.booking.dto.AdminPatchBookingRequest;
@@ -17,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -41,18 +45,31 @@ public class BookingService {
     private static final Set<String> ALLOWED_SQ_FT_RANGES =
             new HashSet<>(Arrays.asList("<1500", "1500-2500", "2500-4000", ">4000"));
 
+    /**
+     * The service-area cities the booking wizard offers (mirrors the frontend {@code CITIES}
+     * list). Used ONLY to bound the {@code city} analytics property: {@code city} is not
+     * enum-validated on the request (a direct API call could send free text), so anything
+     * outside this set is bucketed to {@code "Other"} before it reaches analytics — never free
+     * text (arch doc §5.7 "no PII in event properties").
+     */
+    private static final Set<String> SERVICE_AREA_CITIES =
+            Set.of("Oakville", "Mississauga", "Milton");
+
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final WalkthroughBookingRepository bookingRepository;
     private final WalkthroughBookingStateMachine stateMachine;
     private final BookingNotifier bookingNotifier;
+    private final AnalyticsService analytics;
 
     public BookingService(WalkthroughBookingRepository bookingRepository,
                           WalkthroughBookingStateMachine stateMachine,
-                          BookingNotifier bookingNotifier) {
+                          BookingNotifier bookingNotifier,
+                          AnalyticsService analytics) {
         this.bookingRepository = bookingRepository;
         this.stateMachine = stateMachine;
         this.bookingNotifier = bookingNotifier;
+        this.analytics = analytics;
     }
 
     // ── Public submission ─────────────────────────────────────────────────────
@@ -116,6 +133,27 @@ public class BookingService {
         bookingNotifier.sendBookingConfirmation(saved);
 
         log.info("Booking created id={} leadSource={}", saved.getId(), saved.getLeadSource());
+
+        // Analytics (arch doc §5.7) — the top of the acquisition funnel. Captured against the
+        // wizard's anonymous distinct id when present (folded into the user at activation via
+        // alias); otherwise a booking-scoped synthetic id so the lead still counts. Props are
+        // the lead source, the city (a bounded form value), and the property type — no PII
+        // (name/email/street are never sent). Best-effort, commit-gated.
+        try {
+            String distinctId = usableClientAnonId(saved.getPosthogDistinctId()) != null
+                    ? saved.getPosthogDistinctId()
+                    : "booking_" + saved.getId();
+            Map<String, Object> props = new LinkedHashMap<>();
+            props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
+            // Bound to the service-area set — a direct API call bypassing the dropdown can't
+            // put free text into analytics; anything else is bucketed to "Other".
+            props.put("city", SERVICE_AREA_CITIES.contains(saved.getCity()) ? saved.getCity() : "Other");
+            props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
+            analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
+        } catch (RuntimeException e) {
+            log.warn("analytics_walkthrough_booked_failed bookingId={}: {}", saved.getId(), e.toString());
+        }
+
         return new WalkthroughBookingResponse(saved.getId(), saved.getStatus().name());
     }
 
@@ -236,6 +274,11 @@ public class BookingService {
             lastName = fullName.substring(spaceIndex + 1);
         }
 
+        // The walk-through reference date for the acquisition funnel: the performed date if
+        // the walk-through was recorded as performed, otherwise the booking date.
+        Instant walkthroughAt = booking.getPerformedAt() != null
+                ? booking.getPerformedAt() : booking.getCreatedAt();
+
         return new BookingActivationData(
                 booking.getId(),
                 booking.getEmail(),
@@ -246,7 +289,11 @@ public class BookingService {
                 booking.getPostalCode(),
                 booking.getYearBuilt(),
                 booking.getSquareFootageRange(),
-                booking.getPropertyType() != null ? booking.getPropertyType().name() : null
+                booking.getPropertyType() != null ? booking.getPropertyType().name() : null,
+                walkthroughAt,
+                // Sanitized: the activation alias must not merge a reserved-looking (synthetic
+                // or numeric) client id into the user's PostHog person.
+                usableClientAnonId(booking.getPosthogDistinctId())
         );
     }
 
@@ -316,6 +363,21 @@ public class BookingService {
         return Math.min(limit, 100);
     }
 
+    /**
+     * Returns the client-supplied analytics distinct id if it is safe to feed into PostHog's
+     * person graph, otherwise {@code null}. Rejects a blank id, our own synthetic
+     * {@code booking_<id>} namespace, and a purely-numeric id (which could collide with an
+     * internal user id) — so an untrusted booking request cannot smuggle a reserved id into
+     * the {@code walkthrough_booked} capture or the activation alias to hijack another
+     * person's PostHog profile. Applied both here and in the activation projection so both the
+     * capture and the alias see a sanitized value.
+     */
+    static String usableClientAnonId(String id) {
+        if (id == null || id.isBlank()) return null;
+        if (id.matches("booking_\\d+") || id.matches("\\d+")) return null;
+        return id;
+    }
+
     // ── Cross-domain data types ───────────────────────────────────────────────
 
     /**
@@ -333,6 +395,10 @@ public class BookingService {
      * @param yearBuilt          year the home was built (nullable)
      * @param squareFootageRange square footage range string (nullable)
      * @param propertyType       property type name string (e.g. "DETACHED")
+     * @param walkthroughAt      the walk-through reference instant (performed date, else booking
+     *                           date) — drives the {@code days_since_walkthrough} funnel metric
+     * @param posthogDistinctId  the wizard's anonymous analytics distinct id (nullable) — folded
+     *                           into the new user's identity at activation via an analytics alias
      */
     public record BookingActivationData(
             Long bookingId,
@@ -344,7 +410,9 @@ public class BookingService {
             String postalCode,
             Integer yearBuilt,
             String squareFootageRange,
-            String propertyType
+            String propertyType,
+            Instant walkthroughAt,
+            String posthogDistinctId
     ) {}
 
     /**

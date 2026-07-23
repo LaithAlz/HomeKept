@@ -104,16 +104,46 @@ public class PostHogAnalyticsService implements AnalyticsService {
 
     @Override
     public void capture(Long distinctUserId, String event, Map<String, Object> properties) {
-        if (!enabled) {
-            log.debug("analytics_noop event={}", event);
-            return;
-        }
         if (distinctUserId == null) {
             // No identity to attribute to — skip rather than send distinct_id="null".
             log.debug("analytics_skip_no_distinct_id event={}", event);
             return;
         }
+        captureInternal(String.valueOf(distinctUserId), event, properties);
+    }
 
+    @Override
+    public void captureAnonymous(String distinctId, String event, Map<String, Object> properties) {
+        if (distinctId == null || distinctId.isBlank()) {
+            log.debug("analytics_skip_blank_distinct_id event={}", event);
+            return;
+        }
+        captureInternal(distinctId, event, properties);
+    }
+
+    @Override
+    public void alias(String anonymousDistinctId, Long userId) {
+        if (userId == null || anonymousDistinctId == null || anonymousDistinctId.isBlank()) {
+            log.debug("analytics_skip_alias userIdPresent={} anonBlank={}",
+                    userId != null, anonymousDistinctId == null || anonymousDistinctId.isBlank());
+            return;
+        }
+        // PostHog server-side person merge: an $identify carrying $anon_distinct_id folds the
+        // pre-signup anonymous person into the identified user. (Verify this is still the
+        // recommended merge event for the PostHog version in use when the key is wired.)
+        captureInternal(String.valueOf(userId), "$identify",
+                Map.of("$anon_distinct_id", anonymousDistinctId));
+    }
+
+    /**
+     * Shared pipeline for all three public methods: no-op when disabled, snapshot the time,
+     * defensively copy props, and dispatch after commit (or immediately outside a transaction).
+     */
+    private void captureInternal(String distinctId, String event, Map<String, Object> properties) {
+        if (!enabled) {
+            log.debug("analytics_noop event={}", event);
+            return;
+        }
         // Snapshot the event time now (not when the async send runs) so a queued event keeps
         // its real timestamp. properties is copied defensively so a caller mutating its map
         // after this call cannot affect the payload.
@@ -127,26 +157,26 @@ public class PostHogAnalyticsService implements AnalyticsService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    dispatch(distinctUserId, event, propsCopy, occurredAt);
+                    dispatch(distinctId, event, propsCopy, occurredAt);
                 }
             });
         } else {
-            dispatch(distinctUserId, event, propsCopy, occurredAt);
+            dispatch(distinctId, event, propsCopy, occurredAt);
         }
     }
 
-    private void dispatch(Long userId, String event, Map<String, Object> props, Instant occurredAt) {
+    private void dispatch(String distinctId, String event, Map<String, Object> props, Instant occurredAt) {
         try {
-            executor.execute(() -> send(userId, event, props, occurredAt));
+            executor.execute(() -> send(distinctId, event, props, occurredAt));
         } catch (RejectedExecutionException e) {
             // DiscardPolicy shouldn't reach here, but guard so a full pool never bubbles up.
             log.debug("analytics_dispatch_rejected event={}", event);
         }
     }
 
-    private void send(Long userId, String event, Map<String, Object> props, Instant occurredAt) {
+    private void send(String distinctId, String event, Map<String, Object> props, Instant occurredAt) {
         try {
-            String body = buildPayload(userId, event, props, occurredAt);
+            String body = buildPayload(distinctId, event, props, occurredAt);
             HttpRequest request = HttpRequest.newBuilder(URI.create(captureUrl))
                     .timeout(HTTP_TIMEOUT)
                     .header("Content-Type", "application/json")
@@ -156,7 +186,7 @@ public class PostHogAnalyticsService implements AnalyticsService {
             if (response.statusCode() / 100 != 2) {
                 log.warn("analytics_capture_non2xx event={} status={}", event, response.statusCode());
             } else {
-                log.debug("analytics_captured event={} userId={}", event, userId);
+                log.debug("analytics_captured event={}", event);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -170,14 +200,15 @@ public class PostHogAnalyticsService implements AnalyticsService {
 
     /**
      * Serializes the PostHog {@code /capture/} payload. Package-private for unit testing —
-     * asserts the shape and that no PII leaks in.
+     * asserts the shape and that no PII leaks in. {@code distinctId} is already a string
+     * (an internal user id or an anonymous id); the transport never sees a raw entity.
      */
-    String buildPayload(Long userId, String event, Map<String, Object> props, Instant occurredAt) {
+    String buildPayload(String distinctId, String event, Map<String, Object> props, Instant occurredAt) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("api_key", apiKey);
             payload.put("event", event);
-            payload.put("distinct_id", String.valueOf(userId));
+            payload.put("distinct_id", distinctId);
             payload.put("properties", props == null ? Map.of() : props);
             payload.put("timestamp", occurredAt.toString());
             return objectMapper.writeValueAsString(payload);

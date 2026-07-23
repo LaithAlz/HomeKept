@@ -58,7 +58,7 @@ class PostHogAnalyticsServiceTest {
         props.put("severity", "HIGH");
         Instant when = Instant.parse("2026-07-23T12:00:00Z");
 
-        String json = svc.buildPayload(42L, AnalyticsEvent.FLAG_CREATED, props, when);
+        String json = svc.buildPayload("42", AnalyticsEvent.FLAG_CREATED, props, when);
 
         // buildPayload uses a LinkedHashMap, so key order is deterministic. Asserting the
         // exact string proves the envelope shape AND that distinct_id is the internal user
@@ -77,11 +77,27 @@ class PostHogAnalyticsServiceTest {
         // A caller that (correctly) passes an empty property map produces an empty properties
         // object — the transport adds nothing of its own beyond the fixed envelope, so there
         // is no channel through which PII could leak.
-        String json = svc.buildPayload(7L, AnalyticsEvent.TODO_ADDED, Map.of(), Instant.EPOCH);
+        String json = svc.buildPayload("7", AnalyticsEvent.TODO_ADDED, Map.of(), Instant.EPOCH);
 
         assertThat(json).isEqualTo(
                 "{\"api_key\":\"phc_test_key\",\"event\":\"todo_added\","
                         + "\"distinct_id\":\"7\",\"properties\":{},"
+                        + "\"timestamp\":\"1970-01-01T00:00:00Z\"}");
+    }
+
+    @Test
+    void buildPayload_anonymousDistinctId_isCarriedVerbatim() {
+        PostHogAnalyticsService svc = new PostHogAnalyticsService(
+                propsWith("phc_test_key", "https://us.i.posthog.com"), mapper);
+
+        // An anonymous (pre-signup) distinct id is a string that is NOT a numeric user id;
+        // it must be carried verbatim as distinct_id.
+        String json = svc.buildPayload("booking_42", AnalyticsEvent.WALKTHROUGH_BOOKED,
+                Map.of("lead_source", "WEBSITE_DIRECT"), Instant.EPOCH);
+
+        assertThat(json).isEqualTo(
+                "{\"api_key\":\"phc_test_key\",\"event\":\"walkthrough_booked\","
+                        + "\"distinct_id\":\"booking_42\",\"properties\":{\"lead_source\":\"WEBSITE_DIRECT\"},"
                         + "\"timestamp\":\"1970-01-01T00:00:00Z\"}");
     }
 

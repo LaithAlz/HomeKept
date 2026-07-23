@@ -12,10 +12,8 @@ package com.homekept.analytics;
  *
  * <p>This class holds the backend-sourced events wired so far. Frontend-sourced events
  * ({@code booking_step_completed}, {@code report_viewed}) are captured by {@code posthog-js}
- * and are not defined here. The acquisition-funnel events still to land
- * ({@code activation_completed} + the anonymous→user alias, {@code walkthrough_booked},
- * {@code pick_selected}, {@code extra_purchased}) arrive with the funnel/identity-stitching
- * wiring in a follow-up and will be added here then.
+ * and are not defined here. The picks events ({@code pick_selected}, {@code extra_purchased})
+ * land with the picks/à-la-carte checkout slice.
  */
 public final class AnalyticsEvent {
 
@@ -32,6 +30,17 @@ public final class AnalyticsEvent {
 
     /** A customer requested a reschedule of a visit. Props: none. */
     public static final String RESCHEDULE_REQUESTED = "reschedule_requested";
+
+    /**
+     * A walk-through was booked (the top of the acquisition funnel). Captured against the
+     * wizard's anonymous distinct id (no user exists yet), then folded into the user at
+     * activation via {@link AnalyticsService#alias}. Props: {@code lead_source},
+     * {@code city} (a bounded form value, not free text), {@code property_type}.
+     */
+    public static final String WALKTHROUGH_BOOKED = "walkthrough_booked";
+
+    /** A prospect completed activation and became a subscriber. Props: {@code days_since_walkthrough}. */
+    public static final String ACTIVATION_COMPLETED = "activation_completed";
 
     /** A customer started a Stripe checkout. Props: {@code plan_code}, {@code billing_cycle}, {@code founding_rate}. */
     public static final String CHECKOUT_STARTED = "checkout_started";

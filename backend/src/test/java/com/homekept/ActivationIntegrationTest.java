@@ -1,5 +1,7 @@
 package com.homekept;
 
+import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
+import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.booking.BookingRateLimiter;
 import com.homekept.booking.WalkthroughBookingRepository;
 import com.homekept.identity.Role;
@@ -49,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, RecordingAnalyticsConfig.class})
 class ActivationIntegrationTest {
 
     private static final String WALKTHROUGH_URL  = "/api/bookings/walkthrough";
@@ -67,6 +69,7 @@ class ActivationIntegrationTest {
     @Autowired ActivationRateLimiter activationRateLimiter;
     @Autowired BookingRateLimiter bookingRateLimiter;
     @Autowired PasswordEncoder passwordEncoder;
+    @Autowired RecordingAnalyticsService recording;
 
     private final List<Long> createdBookingIds    = new ArrayList<>();
     private final List<Long> createdTokenIds      = new ArrayList<>();
@@ -78,6 +81,7 @@ class ActivationIntegrationTest {
     void resetRateLimiters() {
         bookingRateLimiter.reset("127.0.0.1");
         activationRateLimiter.reset("127.0.0.1");
+        recording.clear();
     }
 
     @AfterEach
@@ -195,6 +199,57 @@ class ActivationIntegrationTest {
                 .andReturn();
 
         trackActivationCreatedRows(result, bookingId);
+    }
+
+    @Test
+    void complete_emitsActivationCompletedAndAliasesTheAnonymousLead() throws Exception {
+        // The booking carries the wizard's anonymous distinct id (walkthrough_booked was
+        // captured against it). Activation must emit activation_completed for the new user AND
+        // alias the anonymous id into that user, so the acquisition funnel stitches.
+        String body = """
+                {
+                  "fullName": "Grace Hopper",
+                  "email": "grace-funnel@test.local",
+                  "phone": "(905) 555-0123",
+                  "streetAddress": "14 Maple Ridge Crt",
+                  "city": "Mississauga",
+                  "postalCode": "L5L 1A1",
+                  "propertyType": "DETACHED",
+                  "preferredWeek": "2026-07-07",
+                  "timeOfDay": "AFTERNOON",
+                  "contactConsent": true,
+                  "posthogDistinctId": "anon-funnel-9"
+                }
+                """;
+        MvcResult bookingResult = mockMvc.perform(post(WALKTHROUGH_URL)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isCreated()).andReturn();
+        Long bookingId = ((Number) com.jayway.jsonpath.JsonPath.read(
+                bookingResult.getResponse().getContentAsString(), "$.id")).longValue();
+        createdBookingIds.add(bookingId);
+        // Real flow: the walk-through is performed before the invite is sent.
+        var booking = bookingRepository.findById(bookingId).orElseThrow();
+        booking.setStatus(com.homekept.booking.BookingStatus.PERFORMED);
+        bookingRepository.save(booking);
+
+        ActivationTokenService.MintResult mint = activationTokenService.mint(bookingId);
+        createdTokenIds.add(mint.tokenId());
+
+        MvcResult result = mockMvc.perform(post(COMPLETE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"hunter2pw\"}"))
+                .andExpect(status().isCreated()).andReturn();
+        Long userId = trackActivationCreatedRows(result, bookingId);
+
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.ACTIVATION_COMPLETED);
+            assertThat(e.distinctId()).isEqualTo(userId);
+            assertThat(e.props()).containsKey("days_since_walkthrough");
+        });
+        assertThat(recording.aliases()).anySatisfy(a -> {
+            assertThat(a.anonymousDistinctId()).isEqualTo("anon-funnel-9");
+            assertThat(a.userId()).isEqualTo(userId);
+        });
     }
 
     @Test
