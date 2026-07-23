@@ -45,6 +45,16 @@ public class BookingService {
     private static final Set<String> ALLOWED_SQ_FT_RANGES =
             new HashSet<>(Arrays.asList("<1500", "1500-2500", "2500-4000", ">4000"));
 
+    /**
+     * The service-area cities the booking wizard offers (mirrors the frontend {@code CITIES}
+     * list). Used ONLY to bound the {@code city} analytics property: {@code city} is not
+     * enum-validated on the request (a direct API call could send free text), so anything
+     * outside this set is bucketed to {@code "Other"} before it reaches analytics — never free
+     * text (arch doc §5.7 "no PII in event properties").
+     */
+    private static final Set<String> SERVICE_AREA_CITIES =
+            Set.of("Oakville", "Mississauga", "Milton");
+
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final WalkthroughBookingRepository bookingRepository;
@@ -130,12 +140,14 @@ public class BookingService {
         // the lead source, the city (a bounded form value), and the property type — no PII
         // (name/email/street are never sent). Best-effort, commit-gated.
         try {
-            String distinctId = saved.getPosthogDistinctId() != null && !saved.getPosthogDistinctId().isBlank()
+            String distinctId = usableClientAnonId(saved.getPosthogDistinctId()) != null
                     ? saved.getPosthogDistinctId()
                     : "booking_" + saved.getId();
             Map<String, Object> props = new LinkedHashMap<>();
             props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
-            props.put("city", saved.getCity());
+            // Bound to the service-area set — a direct API call bypassing the dropdown can't
+            // put free text into analytics; anything else is bucketed to "Other".
+            props.put("city", SERVICE_AREA_CITIES.contains(saved.getCity()) ? saved.getCity() : "Other");
             props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
             analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
         } catch (RuntimeException e) {
@@ -279,7 +291,9 @@ public class BookingService {
                 booking.getSquareFootageRange(),
                 booking.getPropertyType() != null ? booking.getPropertyType().name() : null,
                 walkthroughAt,
-                booking.getPosthogDistinctId()
+                // Sanitized: the activation alias must not merge a reserved-looking (synthetic
+                // or numeric) client id into the user's PostHog person.
+                usableClientAnonId(booking.getPosthogDistinctId())
         );
     }
 
@@ -347,6 +361,21 @@ public class BookingService {
             return DEFAULT_PAGE_SIZE;
         }
         return Math.min(limit, 100);
+    }
+
+    /**
+     * Returns the client-supplied analytics distinct id if it is safe to feed into PostHog's
+     * person graph, otherwise {@code null}. Rejects a blank id, our own synthetic
+     * {@code booking_<id>} namespace, and a purely-numeric id (which could collide with an
+     * internal user id) — so an untrusted booking request cannot smuggle a reserved id into
+     * the {@code walkthrough_booked} capture or the activation alias to hijack another
+     * person's PostHog profile. Applied both here and in the activation projection so both the
+     * capture and the alias see a sanitized value.
+     */
+    static String usableClientAnonId(String id) {
+        if (id == null || id.isBlank()) return null;
+        if (id.matches("booking_\\d+") || id.matches("\\d+")) return null;
+        return id;
     }
 
     // ── Cross-domain data types ───────────────────────────────────────────────
