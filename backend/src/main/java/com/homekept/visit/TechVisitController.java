@@ -119,11 +119,12 @@ public class TechVisitController {
      * POST /api/tech/visits/{id}/photos/upload-url
      *
      * <p>Generates a 15-minute signed R2 PUT URL. The storage key is server-generated
-     * ({@code visits/{id}/{uuid}}). Returns 400 if the content type is not an image.
-     * Returns 503 if R2 is not configured.
+     * ({@code visits/{id}/{uuid}}). Returns 400 if the content type is not an image or the
+     * declared {@code contentLength} is missing / not in (0, 25 MB]. Returns 503 if R2 is
+     * not configured.
      *
      * @param id      the visit id
-     * @param request {@code {contentType}}
+     * @param request {@code {contentType, contentLength}}
      * @param auth    JWT principal — Long user id
      */
     @PostMapping("/visits/{id}/photos/upload-url")
@@ -132,7 +133,8 @@ public class TechVisitController {
             @Valid @RequestBody TechPhotoUploadUrlRequest request,
             Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(techVisitService.presignUpload(id, request.contentType(), techUserId));
+        return ResponseEntity.ok(techVisitService.presignUpload(
+                id, request.contentType(), request.contentLength(), techUserId));
     }
 
     /**

@@ -290,7 +290,7 @@ export function useUploadPhoto(): UseMutationResult<
     mutationFn: async ({ visitId, file, caption }: UploadPhotoVariables) => {
       const { uploadUrl, storageKey } = await post<TechPhotoUploadUrlResponse>(
         `/api/tech/visits/${visitId}/photos/upload-url`,
-        { contentType: file.type },
+        { contentType: file.type, contentLength: file.size },
       );
 
       // Direct PUT to the signed R2 URL — deliberately not routed through

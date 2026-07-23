@@ -200,6 +200,10 @@ interface PhotoAttempt {
   error?: string;
 }
 
+// Mirrors the backend cap (TechPhotoUploadUrlRequest.MAX_UPLOAD_BYTES): 25 MB.
+// A client-side check spares an oversized file the round-trip and gives a clear reason.
+const MAX_PHOTO_BYTES = 26_214_400;
+
 function TechShell({ technician }: { technician: Session }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -315,6 +319,25 @@ function TechShell({ technician }: { technician: Session }) {
     const key = crypto.randomUUID();
     const previewUrl = URL.createObjectURL(file);
     previewUrlsRef.current.push(previewUrl);
+
+    // Reject over-cap files up front — the backend would 400 anyway, so skip the
+    // presign round-trip and show the tech exactly why the photo didn't attach.
+    if (file.size > MAX_PHOTO_BYTES) {
+      setPhotosByVisit((prev) => ({
+        ...prev,
+        [visit.id]: [
+          ...(prev[visit.id] ?? []),
+          {
+            key,
+            previewUrl,
+            status: "error",
+            error: "That photo is over the 25 MB limit. Try a smaller one.",
+          },
+        ],
+      }));
+      return;
+    }
+
     setPhotosByVisit((prev) => ({
       ...prev,
       [visit.id]: [...(prev[visit.id] ?? []), { key, previewUrl, status: "uploading" }],

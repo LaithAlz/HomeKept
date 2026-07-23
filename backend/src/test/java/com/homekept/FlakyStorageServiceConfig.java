@@ -35,7 +35,7 @@ public class FlakyStorageServiceConfig {
         return new StorageService() {
 
             @Override
-            public PresignedUpload presignUpload(String storageKey, String contentType) {
+            public PresignedUpload presignUpload(String storageKey, String contentType, long contentLength) {
                 throw new UnsupportedOperationException("not used in this test");
             }
 

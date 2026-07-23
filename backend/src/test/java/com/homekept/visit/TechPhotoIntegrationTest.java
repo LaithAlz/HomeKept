@@ -51,6 +51,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ul>
  *   <li>POST .../photos/upload-url with image/jpeg → 200 with uploadUrl and storageKey.</li>
  *   <li>POST .../photos/upload-url with non-image contentType → 400.</li>
+ *   <li>POST .../photos/upload-url with contentLength over the 25 MB cap → 400.</li>
+ *   <li>POST .../photos/upload-url with a missing / zero contentLength → 400.</li>
  *   <li>POST .../photos/upload-url for a visit not assigned to this tech → 404.</li>
  *   <li>POST .../photos with a valid storageKey under visits/{id}/ → 201 + visit_photo row.</li>
  *   <li>POST .../photos with a storageKey NOT under this visit's prefix → 400.</li>
@@ -169,7 +171,7 @@ class TechPhotoIntegrationTest {
         mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
                         .cookie(new Cookie("hk_access", techToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"contentType\":\"image/jpeg\"}"))
+                        .content("{\"contentType\":\"image/jpeg\",\"contentLength\":1048576}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.uploadUrl").value(FakeStorageServiceConfig.FAKE_UPLOAD_URL))
                 .andExpect(jsonPath("$.storageKey").value(
@@ -181,9 +183,37 @@ class TechPhotoIntegrationTest {
         mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
                         .cookie(new Cookie("hk_access", techToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"contentType\":\"application/pdf\"}"))
+                        .content("{\"contentType\":\"application/pdf\",\"contentLength\":1048576}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    void uploadUrl_contentLengthOverCap_returns400() throws Exception {
+        // 25 MB cap is 26_214_400 bytes; one byte over must be rejected before R2 is touched.
+        mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"contentType\":\"image/jpeg\",\"contentLength\":26214401}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void uploadUrl_missingContentLength_returns400() throws Exception {
+        mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"contentType\":\"image/jpeg\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void uploadUrl_zeroContentLength_returns400() throws Exception {
+        mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"contentType\":\"image/jpeg\",\"contentLength\":0}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -197,7 +227,7 @@ class TechPhotoIntegrationTest {
         mockMvc.perform(post(UPLOAD_URL_PATH, unassigned.getId())
                         .cookie(new Cookie("hk_access", techToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"contentType\":\"image/jpeg\"}"))
+                        .content("{\"contentType\":\"image/jpeg\",\"contentLength\":1048576}"))
                 .andExpect(status().isNotFound());
     }
 
@@ -209,7 +239,7 @@ class TechPhotoIntegrationTest {
         MvcResult uploadResult = mockMvc.perform(post(UPLOAD_URL_PATH, visit.getId())
                         .cookie(new Cookie("hk_access", techToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"contentType\":\"image/jpeg\"}"))
+                        .content("{\"contentType\":\"image/jpeg\",\"contentLength\":1048576}"))
                 .andExpect(status().isOk())
                 .andReturn();
 

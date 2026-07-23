@@ -37,7 +37,7 @@ public class FakeStorageServiceConfig {
              * the photo-endpoint happy path does not need real R2 credentials.
              */
             @Override
-            public PresignedUpload presignUpload(String storageKey, String contentType) {
+            public PresignedUpload presignUpload(String storageKey, String contentType, long contentLength) {
                 return new PresignedUpload(FAKE_UPLOAD_URL, storageKey);
             }
 

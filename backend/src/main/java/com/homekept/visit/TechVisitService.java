@@ -321,14 +321,20 @@ public class TechVisitService {
      * <p>The storage key is server-generated as {@code visits/{visitId}/{uuid}} —
      * the client NEVER supplies arbitrary keys (prevents path traversal / overwrite).
      *
-     * @param visitId     the visit id
-     * @param contentType the MIME type of the image to be uploaded
-     * @param techUserId  the authenticated technician's user id
+     * <p>The size cap is enforced twice: the {@code contentLength} is already bounded by
+     * {@code @Max} on the request DTO (rejects an oversized presign request with 400), and
+     * it is signed into the PUT URL so R2 rejects a body that does not match — a client
+     * cannot upload more bytes than it declared.
+     *
+     * @param visitId       the visit id
+     * @param contentType   the MIME type of the image to be uploaded
+     * @param contentLength the exact byte size of the image (validated + signed)
+     * @param techUserId    the authenticated technician's user id
      * @return the signed upload URL and the storage key
      */
     @Transactional(readOnly = true)
     public TechPhotoUploadUrlResponse presignUpload(Long visitId, String contentType,
-                                                    Long techUserId) {
+                                                    long contentLength, Long techUserId) {
         requireOwnedVisit(visitId, techUserId);
 
         // Validate content type before touching R2.
@@ -341,9 +347,11 @@ public class TechVisitService {
         // Server-generates the key — client cannot choose arbitrary paths.
         String storageKey = "visits/" + visitId + "/" + UUID.randomUUID();
 
-        StorageService.PresignedUpload upload = storageService.presignUpload(storageKey, normalised);
+        StorageService.PresignedUpload upload =
+                storageService.presignUpload(storageKey, normalised, contentLength);
 
-        log.debug("tech_photo_upload_url_generated visitId={} storageKey={}", visitId, storageKey);
+        log.debug("tech_photo_upload_url_generated visitId={} storageKey={} contentLength={}",
+                visitId, storageKey, contentLength);
         return new TechPhotoUploadUrlResponse(upload.uploadUrl(), upload.storageKey());
     }
 
