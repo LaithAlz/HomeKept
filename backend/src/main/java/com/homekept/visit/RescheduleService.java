@@ -1,5 +1,7 @@
 package com.homekept.visit;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AdminRescheduleRequestItem;
@@ -49,17 +51,20 @@ public class RescheduleService {
     private final VisitRepository visitRepository;
     private final VisitAdminService visitAdminService;
     private final SubscriberQueryService subscriberQueryService;
+    private final AnalyticsService analytics;
 
     public RescheduleService(RescheduleRequestRepository rescheduleRequestRepository,
                              RescheduleRequestSlotRepository slotRepository,
                              VisitRepository visitRepository,
                              VisitAdminService visitAdminService,
-                             SubscriberQueryService subscriberQueryService) {
+                             SubscriberQueryService subscriberQueryService,
+                             AnalyticsService analytics) {
         this.rescheduleRequestRepository = rescheduleRequestRepository;
         this.slotRepository = slotRepository;
         this.visitRepository = visitRepository;
         this.visitAdminService = visitAdminService;
         this.subscriberQueryService = subscriberQueryService;
+        this.analytics = analytics;
     }
 
     // ── Customer ────────────────────────────────────────────────────────────────
@@ -117,6 +122,10 @@ public class RescheduleService {
 
         log.info("reschedule_request_created requestId={} visitId={} subscriberId={} slots={}",
                 request.getId(), visitId, subscriberId, preferredSlots.size());
+
+        // Analytics (arch doc §5.7) — attributed to the customer, no properties (no PII).
+        // Fires after this transaction commits.
+        analytics.capture(userId, AnalyticsEvent.RESCHEDULE_REQUESTED, java.util.Map.of());
 
         return new RescheduleRequestResponse(
                 request.getId(),

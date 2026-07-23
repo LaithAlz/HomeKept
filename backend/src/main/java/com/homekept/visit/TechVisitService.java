@@ -1,5 +1,7 @@
 package com.homekept.visit;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.catalog.CatalogService;
 import com.homekept.property.PropertyService;
 import com.homekept.storage.StorageService;
@@ -36,6 +38,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -93,6 +96,7 @@ public class TechVisitService {
     private final VisitReportNotifier visitReportNotifier;
     private final HealthScoreService healthScoreService;
     private final SubscriberQueryService subscriberQueryService;
+    private final AnalyticsService analytics;
     private final ZoneId renderZoneId;
 
     public TechVisitService(VisitRepository visitRepository,
@@ -107,6 +111,7 @@ public class TechVisitService {
                             VisitReportNotifier visitReportNotifier,
                             HealthScoreService healthScoreService,
                             SubscriberQueryService subscriberQueryService,
+                            AnalyticsService analytics,
                             ZoneId renderZoneId) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
@@ -120,6 +125,7 @@ public class TechVisitService {
         this.visitReportNotifier = visitReportNotifier;
         this.healthScoreService = healthScoreService;
         this.subscriberQueryService = subscriberQueryService;
+        this.analytics = analytics;
         this.renderZoneId = renderZoneId;
     }
 
@@ -427,6 +433,12 @@ public class TechVisitService {
 
         log.info("tech_flag_created flagId={} visitId={} severity={} subscriberId={}",
                 saved.getId(), visitId, saved.getSeverity(), saved.getSubscriberId());
+
+        // Analytics (arch doc §5.7) — attributed to the acting technician. Severity is an
+        // enum; no PII (the flag body is never sent). Fires after commit.
+        analytics.capture(techUserId, AnalyticsEvent.FLAG_CREATED,
+                Map.of("severity", saved.getSeverity().name()));
+
         return toFlagResponse(saved);
     }
 
@@ -520,6 +532,25 @@ public class TechVisitService {
         log.info("tech_visit_completed visitId={} subscriberId={} durationMin={} materialsCents={}",
                 saved.getId(), saved.getSubscriberId(),
                 saved.getActualDurationMinutes(), saved.getMaterialsCostCents());
+
+        // Analytics (arch doc §5.7) — attributed to the acting technician. IDs/counts only,
+        // no PII. Fires after this transaction commits (or no-ops without a PostHog key).
+        // capture() is itself best-effort, but gathering the enrichment counts costs two
+        // reads on the request thread; wrap the whole block so a query failure here can
+        // never surface into (and roll back) an already-completed visit.
+        try {
+            Map<String, Object> visitProps = new LinkedHashMap<>();
+            visitProps.put("visit_template", saved.getVisitTemplateId());
+            visitProps.put("duration_actual", saved.getActualDurationMinutes());
+            visitProps.put("services_count",
+                    visitServiceRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
+            visitProps.put("photos_count",
+                    visitPhotoRepository.findByVisitIdOrderByIdAsc(saved.getId()).size());
+            analytics.capture(techUserId, AnalyticsEvent.VISIT_COMPLETED, visitProps);
+        } catch (RuntimeException e) {
+            log.warn("analytics_visit_completed_enrichment_failed visitId={}: {}",
+                    saved.getId(), e.toString());
+        }
 
         return new TechCompleteVisitResponse(
                 saved.getId(),

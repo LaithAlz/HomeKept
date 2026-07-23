@@ -47,6 +47,7 @@ class SendGridEmailSenderTest {
                 new AppProperties.Stripe("", "", "", "", ""),
                 new AppProperties.R2("", "", "", "", ""),
                 "http://localhost:8080",
-                new AppProperties.SendGrid(apiKey, fromEmail, "HomeKept"));
+                new AppProperties.SendGrid(apiKey, fromEmail, "HomeKept"),
+                new AppProperties.Analytics("", "https://us.i.posthog.com"));
     }
 }

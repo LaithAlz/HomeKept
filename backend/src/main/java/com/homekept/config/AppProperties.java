@@ -43,7 +43,11 @@ public record AppProperties(
         // @DefaultValue for the same reason as r2: SendGrid degrades gracefully (blank
         // api-key/from-email → log-and-skip), so a missing app.sendgrid block must bind
         // to defaults rather than null the component and NPE on startup.
-        @DefaultValue SendGrid sendGrid
+        @DefaultValue SendGrid sendGrid,
+        // @DefaultValue for the same reason as r2/sendgrid: PostHog analytics degrades
+        // gracefully (blank api-key → capture is a no-op), so a missing app.analytics block
+        // must bind to defaults rather than null the component and NPE on startup.
+        @DefaultValue Analytics analytics
 ) {
 
     public record Cors(
@@ -138,5 +142,29 @@ public record AppProperties(
             @DefaultValue("") String apiKey,
             @DefaultValue("") String fromEmail,
             @DefaultValue("HomeKept") String fromName
+    ) {}
+
+    /**
+     * PostHog product-analytics config for the {@code analytics} domain (arch doc §5.7).
+     *
+     * <p>In production set:
+     * <ul>
+     *   <li>{@code POSTHOG_API_KEY} — PostHog <em>project</em> API key. This is a publishable
+     *       key (safe in a client bundle), not a secret, but is still env-config, never
+     *       hardcoded (arch doc §5.7). Blank → analytics capture is a silent no-op.</li>
+     *   <li>{@code POSTHOG_HOST} — capture endpoint host. Defaults to the PostHog US Cloud
+     *       ingestion host. PIPEDA requires protection, not residency (note it in the
+     *       privacy policy).</li>
+     * </ul>
+     *
+     * <p>If {@code apiKey} is blank, {@link com.homekept.analytics.PostHogAnalyticsService}
+     * treats every {@code capture}/{@code alias} as a no-op (logged at debug) — dev, test,
+     * and CI run without a real key and must not emit network calls. Analytics is strictly
+     * best-effort: a capture failure is swallowed and never propagates into the business
+     * transaction that triggered it.
+     */
+    public record Analytics(
+            @DefaultValue("") String apiKey,
+            @DefaultValue("https://us.i.posthog.com") String host
     ) {}
 }
