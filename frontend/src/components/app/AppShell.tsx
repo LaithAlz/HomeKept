@@ -17,7 +17,7 @@ import {
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
-import { subscriber } from "@/lib/mock-account";
+import { useAccount, useSubscription } from "@/lib/account";
 import { cn } from "@/lib/utils";
 import { getSession, logout } from "@/lib/auth";
 
@@ -46,11 +46,8 @@ type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "error";
 export function AppShell() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const queryClient = useQueryClient();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [guard, setGuard] = useState<GuardStatus>("checking");
   const [attempt, setAttempt] = useState(0);
-  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,15 +70,6 @@ export function AppShell() {
     navigate({ to: "/signin", search: { next: pathname }, replace: true });
   }, [guard, navigate, pathname]);
 
-  async function handleSignOut() {
-    setSigningOut(true);
-    await logout();
-    // Drop every cached query (subscriber PII, booking contact info, visit
-    // data) so nothing lingers in memory for the next person on this device.
-    queryClient.clear();
-    navigate({ to: "/signin", replace: true });
-  }
-
   if (guard === "checking") {
     return <SessionLoading />;
   }
@@ -96,10 +84,40 @@ export function AppShell() {
     return <SessionLoading />;
   }
 
+  return <AuthedShell />;
+}
+
+/**
+ * The authenticated nav shell. Only ever mounted once `AppShell` has
+ * confirmed a session exists, so it's safe to fire the account/subscription
+ * queries unconditionally here.
+ */
+function AuthedShell() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const queryClient = useQueryClient();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const account = useAccount();
+  const subscription = useSubscription();
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await logout();
+    // Drop every cached query (subscriber PII, booking contact info, visit
+    // data) so nothing lingers in memory for the next person on this device.
+    queryClient.clear();
+    navigate({ to: "/signin", replace: true });
+  }
+
   const isActive = (to: string, exact: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
 
-  const initials = `${subscriber.firstName[0] ?? ""}${subscriber.lastName[0] ?? ""}`.toUpperCase();
+  const firstName = account.data?.firstName;
+  const lastName = account.data?.lastName;
+  const initials = `${firstName?.[0] ?? ""}${lastName?.[0] ?? ""}`.toUpperCase();
+  const planDisplayName = subscription.data?.planDisplayName;
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -146,12 +164,18 @@ export function AppShell() {
             <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-3">
               <Avatar initials={initials} />
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {subscriber.firstName} {subscriber.lastName}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {subscriber.planName} plan
-                </div>
+                {account.data ? (
+                  <div className="truncate text-sm font-semibold">
+                    {firstName} {lastName}
+                  </div>
+                ) : (
+                  <div aria-hidden="true" className="h-3.5 w-24 rounded bg-foreground/10" />
+                )}
+                {planDisplayName && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {planDisplayName} plan
+                  </div>
+                )}
               </div>
             </div>
             <button
@@ -209,12 +233,18 @@ export function AppShell() {
             <div className="flex items-center gap-3 rounded-2xl px-2 py-2">
               <Avatar initials={initials} />
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold">
-                  {subscriber.firstName} {subscriber.lastName}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {subscriber.planName} plan
-                </div>
+                {account.data ? (
+                  <div className="truncate text-sm font-semibold">
+                    {firstName} {lastName}
+                  </div>
+                ) : (
+                  <div aria-hidden="true" className="h-3.5 w-24 rounded bg-foreground/10" />
+                )}
+                {planDisplayName && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {planDisplayName} plan
+                  </div>
+                )}
               </div>
             </div>
             <button
