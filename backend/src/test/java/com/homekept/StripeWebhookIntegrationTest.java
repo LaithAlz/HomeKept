@@ -171,6 +171,27 @@ class StripeWebhookIntegrationTest {
     }
 
     @Test
+    void checkoutSessionCompleted_annualCycle_activatedEventReportsBilledCycleNotEntityDefault() throws Exception {
+        // Regression guard: the subscriber row holds its MONTHLY default until the later
+        // customer.subscription.updated sync, so the activation event must read the billed
+        // cycle from THIS session's metadata. An ANNUAL checkout must report ANNUAL, not the
+        // stale default.
+        Subscriber sub = seedPendingSubscriber("checkout-annual@test.local");
+
+        String eventId = "evt_checkout_annual_1";
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false", "ANNUAL");
+
+        postSignedWebhook(payload);
+
+        assertThat(subscriberRepository.findById(sub.getId()).orElseThrow().getStatus())
+                .isEqualTo(SubscriberStatus.ACTIVE);
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_ACTIVATED);
+            assertThat(e.props()).containsEntry("billing_cycle", "ANNUAL");
+        });
+    }
+
+    @Test
     void checkoutSessionCompleted_idempotency_secondPostIsNoOp() throws Exception {
         Subscriber sub = seedPendingSubscriber("checkout-idempotent@test.local");
 
@@ -441,12 +462,22 @@ class StripeWebhookIntegrationTest {
      */
     private String checkoutSessionPayload(String eventId, String subscriberId,
                                           String planTierId, String foundingRate) {
+        return checkoutSessionPayload(eventId, subscriberId, planTierId, foundingRate, "MONTHLY");
+    }
+
+    /**
+     * Overload that also stamps the chosen {@code billingCycle} into the session metadata,
+     * mirroring what {@code StripeServiceImpl} now writes at checkout — so the activation
+     * analytics event can read the billed cycle rather than the subscriber row's default.
+     */
+    private String checkoutSessionPayload(String eventId, String subscriberId,
+                                          String planTierId, String foundingRate, String billingCycle) {
         return """
                 {"id":"%s","object":"event","type":"checkout.session.completed",\
 "data":{"object":{"id":"cs_test","object":"checkout.session","mode":"subscription",\
 "customer":"cus_test","subscription":"sub_test",\
-"metadata":{"subscriberId":"%s","planTierId":"%s","foundingRate":"%s"}}}}"""
-                .formatted(eventId, subscriberId, planTierId, foundingRate);
+"metadata":{"subscriberId":"%s","planTierId":"%s","foundingRate":"%s","billingCycle":"%s"}}}}"""
+                .formatted(eventId, subscriberId, planTierId, foundingRate, billingCycle);
     }
 
     /**

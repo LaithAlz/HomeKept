@@ -267,14 +267,17 @@ public class StripeWebhookService {
 
         // Analytics (arch doc §5.7) — the revenue truth event, captured here on the webhook
         // (never trusting the client). Attributed to the subscriber's user; enum/flag props
-        // only. Reuses the planCode already resolved above (no extra query). Best-effort +
-        // commit-gated, wrapped so it can never roll back the activation.
+        // only. Reuses the planCode already resolved above (no extra query). The billed cycle
+        // comes from THIS session's metadata, not subscriber.getBillingCycle(): the subscriber
+        // row still holds its default (MONTHLY) until the later customer.subscription.updated
+        // syncs it, so reading the entity here would misreport every ANNUAL checkout.
+        // Best-effort + commit-gated, wrapped so it can never roll back the activation.
         final String activatedPlanCode = planCode;
+        final String billedCycle = session.getMetadata().get("billingCycle");
         captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_ACTIVATED, () -> {
             Map<String, Object> props = new LinkedHashMap<>();
             props.put("plan_code", activatedPlanCode);
-            props.put("billing_cycle",
-                    subscriber.getBillingCycle() != null ? subscriber.getBillingCycle().name() : null);
+            props.put("billing_cycle", billedCycle);
             props.put("founding_rate", subscriber.isFoundingRate());
             return props;
         });
@@ -508,11 +511,22 @@ public class StripeWebhookService {
 
     /**
      * Emits a subscription analytics event (arch doc §5.7), attributed to the subscriber's
-     * user id. STRICTLY best-effort on the money path: both the property-gathering
-     * ({@code propsSupplier}, which may run a plan-code lookup) and the capture itself are
-     * wrapped, so nothing analytics-related can ever surface into — and roll back — a
-     * subscription state change. {@code capture} is itself commit-gated, so a rolled-back
-     * webhook transaction emits no event.
+     * user id. Best-effort: both the property-gathering ({@code propsSupplier}, which for the
+     * cancelled event runs a plan-code {@code SELECT}) and the {@code capture} are wrapped, so
+     * an analytics failure is logged and swallowed rather than returned to the caller.
+     * {@code capture} is itself commit-gated, so a rolled-back webhook transaction emits no
+     * event.
+     *
+     * <p>Caveat on the one supplier that reads the DB (cancelled): the read runs inside the
+     * webhook transaction, so if it faulted, Spring could mark the transaction rollback-only
+     * and the swallowed exception would not clear that flag — the outer commit would then throw
+     * {@code UnexpectedRollbackException} and the state change would be undone. This is the same
+     * risk the pre-existing activation path already carries (it too resolves the plan code
+     * in-transaction), it only fires when the connection is already faulted (a primary-key
+     * lookup otherwise cannot throw), and it self-heals: the controller lets the 500 through,
+     * Stripe retries, and the idempotency ledger rolled back with the state change so the
+     * retry re-processes cleanly. The suppliers that read no DB (activated reuses a local,
+     * paused/resumed have none) cannot roll anything back.
      */
     private void captureSubscriptionEvent(Subscriber subscriber, String event,
                                           java.util.function.Supplier<Map<String, Object>> propsSupplier) {
