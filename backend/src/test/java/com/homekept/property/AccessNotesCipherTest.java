@@ -224,7 +224,8 @@ class AccessNotesCipherTest {
                 new AppProperties.Encryption(keyBase64),
                 new AppProperties.AdminSeed("", ""),
                 new AppProperties.Stripe("", "", "", "", ""),
-                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept")
+                new AppProperties.R2("", "", "", "", ""), "http://localhost:8080", new AppProperties.SendGrid("", "", "HomeKept"),
+                new AppProperties.Analytics("", "https://us.i.posthog.com")
         );
         return new AccessNotesCipher(props);
     }

@@ -105,3 +105,11 @@ app:
     api-key: ${SENDGRID_API_KEY:}
     from-email: ${SENDGRID_FROM_EMAIL:}
     from-name: ${SENDGRID_FROM_NAME:HomeKept}
+  # PostHog product analytics (analytics domain, arch doc §5.7). POSTHOG_API_KEY is the
+  # publishable project key (not a secret, but still env-config, never hardcoded). If it
+  # is blank, AnalyticsService.capture is a silent no-op, so dev, test, and CI run without
+  # a key and emit no network calls. Analytics is best-effort: failures never break the
+  # business transaction that triggered them.
+  analytics:
+    api-key: ${POSTHOG_API_KEY:}
+    host: ${POSTHOG_HOST:https://us.i.posthog.com}

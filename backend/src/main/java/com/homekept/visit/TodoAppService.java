@@ -1,5 +1,7 @@
 package com.homekept.visit;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.exception.SubscriberNotActiveException;
@@ -12,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Customer-facing "your list" (to-do) endpoints (the app-side of the visit domain).
@@ -52,11 +55,14 @@ public class TodoAppService {
 
     private final TodoItemRepository todoItemRepository;
     private final SubscriberQueryService subscriberQueryService;
+    private final AnalyticsService analytics;
 
     public TodoAppService(TodoItemRepository todoItemRepository,
-                          SubscriberQueryService subscriberQueryService) {
+                          SubscriberQueryService subscriberQueryService,
+                          AnalyticsService analytics) {
         this.todoItemRepository = todoItemRepository;
         this.subscriberQueryService = subscriberQueryService;
+        this.analytics = analytics;
     }
 
     /**
@@ -94,9 +100,11 @@ public class TodoAppService {
         Long subscriberId = subscriber.getId();
         TodoItem saved = todoItemRepository.save(new TodoItem(subscriberId, request.body()));
 
-        // "todo_added" analytics event (arch doc Part 6) — the body is free text and is
-        // intentionally never logged or sent to analytics.
+        // "todo_added" analytics event (arch doc §5.7) — the body is free text and is
+        // intentionally never logged or sent to analytics, so the event carries no
+        // properties. Attributed to the customer; fires after this transaction commits.
         log.info("todo_added todoId={} subscriberId={}", saved.getId(), subscriberId);
+        analytics.capture(userId, AnalyticsEvent.TODO_ADDED, Map.of());
 
         return toResponse(saved);
     }
