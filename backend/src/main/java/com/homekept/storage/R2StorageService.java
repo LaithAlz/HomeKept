@@ -107,19 +107,24 @@ public class R2StorageService implements StorageService {
     /**
      * Generates a 15-minute signed PUT URL.
      *
-     * @param storageKey  server-generated R2 key (e.g. {@code visits/42/uuid})
-     * @param contentType MIME type of the upload (validated by the caller)
+     * @param storageKey    server-generated R2 key (e.g. {@code visits/42/uuid})
+     * @param contentType   MIME type of the upload (validated by the caller)
+     * @param contentLength exact byte size, signed into the URL so R2 rejects a mismatch
      * @return presigned upload details
      * @throws StorageUnavailableException if R2 is not configured
      */
     @Override
-    public PresignedUpload presignUpload(String storageKey, String contentType) {
+    public PresignedUpload presignUpload(String storageKey, String contentType, long contentLength) {
         requirePresigner();
 
+        // contentLength is part of the signed request: R2 enforces that the uploaded body
+        // is exactly this many bytes, so a client cannot exceed the size cap the caller
+        // validated even if it forges the request or streams extra bytes.
         PutObjectRequest putRequest = PutObjectRequest.builder()
                 .bucket(r2Config.bucket())
                 .key(storageKey)
                 .contentType(contentType)
+                .contentLength(contentLength)
                 .build();
 
         PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()

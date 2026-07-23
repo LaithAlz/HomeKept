@@ -20,12 +20,18 @@ public interface StorageService {
     /**
      * Generates a 15-minute signed PUT URL for direct client upload to R2.
      *
-     * @param storageKey  the server-generated R2 object key (e.g. {@code visits/42/uuid-v4})
-     * @param contentType the MIME type of the object being uploaded (e.g. {@code image/jpeg})
+     * <p>The {@code contentLength} is bound into the signature, so R2 rejects any upload
+     * whose body size does not match exactly. The caller must have already validated it
+     * against the size cap — signing it here is defense-in-depth against a client that
+     * lies about, or overshoots, its declared size.
+     *
+     * @param storageKey    the server-generated R2 object key (e.g. {@code visits/42/uuid-v4})
+     * @param contentType   the MIME type of the object being uploaded (e.g. {@code image/jpeg})
+     * @param contentLength the exact byte size of the object, signed into the PUT URL
      * @return a {@link PresignedUpload} containing the upload URL and the storage key
      * @throws StorageUnavailableException if R2 is not configured (dev/test without credentials)
      */
-    PresignedUpload presignUpload(String storageKey, String contentType);
+    PresignedUpload presignUpload(String storageKey, String contentType, long contentLength);
 
     /**
      * Generates a 15-minute signed GET URL for a stored object.
