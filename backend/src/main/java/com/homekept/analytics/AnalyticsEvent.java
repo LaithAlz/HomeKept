@@ -12,11 +12,10 @@ package com.homekept.analytics;
  *
  * <p>This class holds the backend-sourced events wired so far. Frontend-sourced events
  * ({@code booking_step_completed}, {@code report_viewed}) are captured by {@code posthog-js}
- * and are not defined here. The revenue and acquisition-funnel events
- * ({@code checkout_started}, {@code subscription_activated}, {@code subscription_cancelled},
- * {@code subscription_paused}, {@code subscription_resumed}, {@code activation_completed},
- * {@code walkthrough_booked}, {@code pick_selected}, {@code extra_purchased}) land with the
- * checkout/webhook wiring in a follow-up and will be added here then.
+ * and are not defined here. The acquisition-funnel events still to land
+ * ({@code activation_completed} + the anonymous→user alias, {@code walkthrough_booked},
+ * {@code pick_selected}, {@code extra_purchased}) arrive with the funnel/identity-stitching
+ * wiring in a follow-up and will be added here then.
  */
 public final class AnalyticsEvent {
 
@@ -33,4 +32,24 @@ public final class AnalyticsEvent {
 
     /** A customer requested a reschedule of a visit. Props: none. */
     public static final String RESCHEDULE_REQUESTED = "reschedule_requested";
+
+    /** A customer started a Stripe checkout. Props: {@code plan_code}, {@code billing_cycle}, {@code founding_rate}. */
+    public static final String CHECKOUT_STARTED = "checkout_started";
+
+    /** A subscription went live (checkout.session.completed webhook). Props: {@code plan_code}, {@code billing_cycle}, {@code founding_rate}. */
+    public static final String SUBSCRIPTION_ACTIVATED = "subscription_activated";
+
+    /**
+     * A subscription was cancelled (customer.subscription.deleted webhook). Props:
+     * {@code plan_code}, {@code months_subscribed}. The {@code reason} enum from the §5.7
+     * table is deferred until a cancel-reason is persisted (the cancel form's free-text
+     * detail stays in the DB and never reaches analytics regardless).
+     */
+    public static final String SUBSCRIPTION_CANCELLED = "subscription_cancelled";
+
+    /** A subscription was paused (customer.subscription.paused webhook). Props: none. */
+    public static final String SUBSCRIPTION_PAUSED = "subscription_paused";
+
+    /** A subscription was resumed (customer.subscription.resumed webhook). Props: none. */
+    public static final String SUBSCRIPTION_RESUMED = "subscription_resumed";
 }

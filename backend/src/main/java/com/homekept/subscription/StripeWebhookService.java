@@ -1,5 +1,7 @@
 package com.homekept.subscription;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.catalog.CatalogService;
 import com.homekept.catalog.PlanTier;
 import com.stripe.model.Event;
@@ -14,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -73,6 +78,7 @@ public class StripeWebhookService {
     private final PaymentFailedNotifier paymentFailedNotifier;
     private final SubscriptionCancelledNotifier subscriptionCancelledNotifier;
     private final ApplicationEventPublisher eventPublisher;
+    private final AnalyticsService analytics;
 
     public StripeWebhookService(SubscriberRepository subscriberRepository,
                                 SubscriptionEventRepository subscriptionEventRepository,
@@ -81,7 +87,8 @@ public class StripeWebhookService {
                                 SubscriptionStartedNotifier subscriptionStartedNotifier,
                                 PaymentFailedNotifier paymentFailedNotifier,
                                 SubscriptionCancelledNotifier subscriptionCancelledNotifier,
-                                ApplicationEventPublisher eventPublisher) {
+                                ApplicationEventPublisher eventPublisher,
+                                AnalyticsService analytics) {
         this.subscriberRepository = subscriberRepository;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.stateMachine = stateMachine;
@@ -90,6 +97,7 @@ public class StripeWebhookService {
         this.paymentFailedNotifier = paymentFailedNotifier;
         this.subscriptionCancelledNotifier = subscriptionCancelledNotifier;
         this.eventPublisher = eventPublisher;
+        this.analytics = analytics;
     }
 
     /**
@@ -256,6 +264,20 @@ public class StripeWebhookService {
 
         log.info("subscription_activated subscriberId={} planCode={} foundingRate={}",
                 subscriber.getId(), planCode, subscriber.isFoundingRate());
+
+        // Analytics (arch doc §5.7) — the revenue truth event, captured here on the webhook
+        // (never trusting the client). Attributed to the subscriber's user; enum/flag props
+        // only. Reuses the planCode already resolved above (no extra query). Best-effort +
+        // commit-gated, wrapped so it can never roll back the activation.
+        final String activatedPlanCode = planCode;
+        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_ACTIVATED, () -> {
+            Map<String, Object> props = new LinkedHashMap<>();
+            props.put("plan_code", activatedPlanCode);
+            props.put("billing_cycle",
+                    subscriber.getBillingCycle() != null ? subscriber.getBillingCycle().name() : null);
+            props.put("founding_rate", subscriber.isFoundingRate());
+            return props;
+        });
     }
 
     /**
@@ -337,6 +359,19 @@ public class StripeWebhookService {
         // Best-effort email — never throws, so it can't roll back the cancellation.
         subscriptionCancelledNotifier.onSubscriptionCancelled(subscriber.getId());
         log.info("subscription_cancelled subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
+
+        // Analytics (arch doc §5.7) — plan_code + months_subscribed only (the reason enum is
+        // deferred until a cancel-reason is persisted; the free-text detail never leaves the
+        // DB). Prop-gathering (incl. the plan-code lookup) runs inside the guarded helper so
+        // it can never roll back the cancellation.
+        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_CANCELLED, () -> {
+            Map<String, Object> props = new LinkedHashMap<>();
+            props.put("plan_code", subscriber.getPlanTierId() != null
+                    ? catalogService.getPlanCode(subscriber.getPlanTierId()) : null);
+            props.put("months_subscribed",
+                    monthsBetween(subscriber.getStartedAt(), subscriber.getCancelledAt()));
+            return props;
+        });
     }
 
     /**
@@ -430,6 +465,9 @@ public class StripeWebhookService {
         subscriberRepository.save(subscriber);
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         log.info("subscription_paused subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
+
+        // Analytics (arch doc §5.7) — no props. Best-effort + commit-gated.
+        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_PAUSED, () -> Map.of());
     }
 
     /**
@@ -461,9 +499,41 @@ public class StripeWebhookService {
         subscriberRepository.save(subscriber);
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         log.info("subscription_resumed subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
+
+        // Analytics (arch doc §5.7) — no props. Best-effort + commit-gated.
+        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_RESUMED, () -> Map.of());
     }
 
     // ── Utilities ─────────────────────────────────────────────────────────────
+
+    /**
+     * Emits a subscription analytics event (arch doc §5.7), attributed to the subscriber's
+     * user id. STRICTLY best-effort on the money path: both the property-gathering
+     * ({@code propsSupplier}, which may run a plan-code lookup) and the capture itself are
+     * wrapped, so nothing analytics-related can ever surface into — and roll back — a
+     * subscription state change. {@code capture} is itself commit-gated, so a rolled-back
+     * webhook transaction emits no event.
+     */
+    private void captureSubscriptionEvent(Subscriber subscriber, String event,
+                                          java.util.function.Supplier<Map<String, Object>> propsSupplier) {
+        try {
+            analytics.capture(subscriber.getUserId(), event, propsSupplier.get());
+        } catch (RuntimeException e) {
+            log.warn("analytics_capture_failed event={} subscriberId={}: {}",
+                    event, subscriber.getId(), e.toString());
+        }
+    }
+
+    /**
+     * Whole months between two instants (floored, never negative). Returns 0 if either bound
+     * is null. Used for the {@code months_subscribed} analytics property.
+     */
+    private static long monthsBetween(Instant from, Instant to) {
+        if (from == null || to == null) return 0L;
+        long months = ChronoUnit.MONTHS.between(
+                from.atZone(java.time.ZoneOffset.UTC), to.atZone(java.time.ZoneOffset.UTC));
+        return Math.max(0L, months);
+    }
 
     /**
      * Deserializes the event's data object into the given type using the Stripe SDK.
