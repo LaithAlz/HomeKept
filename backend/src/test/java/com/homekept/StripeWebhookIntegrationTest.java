@@ -1,5 +1,7 @@
 package com.homekept;
 
+import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
+import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
 import com.homekept.identity.UserRepository;
@@ -13,6 +15,7 @@ import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import com.stripe.net.Webhook;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -47,7 +50,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, RecordingAnalyticsConfig.class})
 class StripeWebhookIntegrationTest {
 
     /**
@@ -64,6 +67,12 @@ class StripeWebhookIntegrationTest {
     @Autowired UserRepository userRepository;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
+    @Autowired RecordingAnalyticsService recording;
+
+    @BeforeEach
+    void clearRecorder() {
+        recording.clear();
+    }
 
     // Track row ids in creation order for FK-safe teardown.
     private final List<Long> createdSubscriberIds = new ArrayList<>();
@@ -149,6 +158,37 @@ class StripeWebhookIntegrationTest {
                 "SELECT COUNT(*) FROM visit WHERE subscriber_id = ? AND status = 'SCHEDULED'",
                 Integer.class, sub.getId());
         assertThat(visitCount).isGreaterThan(0);
+
+        // Analytics: the revenue-truth activation event fired on the webhook, attributed to
+        // the subscriber's user, with enum/flag props only (no PII).
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_ACTIVATED);
+            assertThat(e.distinctId()).isEqualTo(sub.getUserId());
+            assertThat(e.props().get("plan_code")).isNotNull();
+            assertThat(e.props()).containsEntry("billing_cycle", "MONTHLY");
+            assertThat(e.props()).containsEntry("founding_rate", false);
+        });
+    }
+
+    @Test
+    void checkoutSessionCompleted_annualCycle_activatedEventReportsBilledCycleNotEntityDefault() throws Exception {
+        // Regression guard: the subscriber row holds its MONTHLY default until the later
+        // customer.subscription.updated sync, so the activation event must read the billed
+        // cycle from THIS session's metadata. An ANNUAL checkout must report ANNUAL, not the
+        // stale default.
+        Subscriber sub = seedPendingSubscriber("checkout-annual@test.local");
+
+        String eventId = "evt_checkout_annual_1";
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false", "ANNUAL");
+
+        postSignedWebhook(payload);
+
+        assertThat(subscriberRepository.findById(sub.getId()).orElseThrow().getStatus())
+                .isEqualTo(SubscriberStatus.ACTIVE);
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_ACTIVATED);
+            assertThat(e.props()).containsEntry("billing_cycle", "ANNUAL");
+        });
     }
 
     @Test
@@ -227,6 +267,14 @@ class StripeWebhookIntegrationTest {
         Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.CANCELLED);
         assertThat(updated.getCancelledAt()).isNotNull();
+
+        // Analytics: subscription_cancelled fired with months_subscribed only (plus plan_code
+        // when resolvable) — the free-text cancel reason never reaches analytics.
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_CANCELLED);
+            assertThat(e.distinctId()).isEqualTo(sub.getUserId());
+            assertThat(e.props()).containsKey("months_subscribed");
+        });
     }
 
     // ── customer.subscription.paused → PAUSED ────────────────────────────────
@@ -244,6 +292,12 @@ class StripeWebhookIntegrationTest {
         Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.PAUSED);
         assertThat(updated.getPausedAt()).isNotNull();
+
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_PAUSED);
+            assertThat(e.distinctId()).isEqualTo(sub.getUserId());
+            assertThat(e.props()).isEmpty();
+        });
     }
 
     // ── customer.subscription.resumed → ACTIVE ────────────────────────────────
@@ -262,6 +316,12 @@ class StripeWebhookIntegrationTest {
         Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
         assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.ACTIVE);
         assertThat(updated.getPausedAt()).isNull();
+
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_RESUMED);
+            assertThat(e.distinctId()).isEqualTo(sub.getUserId());
+            assertThat(e.props()).isEmpty();
+        });
     }
 
     // ── Ignored event ─────────────────────────────────────────────────────────
@@ -402,12 +462,22 @@ class StripeWebhookIntegrationTest {
      */
     private String checkoutSessionPayload(String eventId, String subscriberId,
                                           String planTierId, String foundingRate) {
+        return checkoutSessionPayload(eventId, subscriberId, planTierId, foundingRate, "MONTHLY");
+    }
+
+    /**
+     * Overload that also stamps the chosen {@code billingCycle} into the session metadata,
+     * mirroring what {@code StripeServiceImpl} now writes at checkout — so the activation
+     * analytics event can read the billed cycle rather than the subscriber row's default.
+     */
+    private String checkoutSessionPayload(String eventId, String subscriberId,
+                                          String planTierId, String foundingRate, String billingCycle) {
         return """
                 {"id":"%s","object":"event","type":"checkout.session.completed",\
 "data":{"object":{"id":"cs_test","object":"checkout.session","mode":"subscription",\
 "customer":"cus_test","subscription":"sub_test",\
-"metadata":{"subscriberId":"%s","planTierId":"%s","foundingRate":"%s"}}}}"""
-                .formatted(eventId, subscriberId, planTierId, foundingRate);
+"metadata":{"subscriberId":"%s","planTierId":"%s","foundingRate":"%s","billingCycle":"%s"}}}}"""
+                .formatted(eventId, subscriberId, planTierId, foundingRate, billingCycle);
     }
 
     /**

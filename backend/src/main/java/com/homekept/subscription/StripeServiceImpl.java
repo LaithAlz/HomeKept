@@ -60,6 +60,10 @@ public class StripeServiceImpl implements StripeService {
                 .putMetadata("subscriberId", String.valueOf(subscriber.getId()))
                 .putMetadata("planTierId", String.valueOf(plan.getId()))
                 .putMetadata("foundingRate", String.valueOf(foundingRate))
+                // Chosen billing cycle, echoed back on checkout.session.completed so the
+                // activation analytics event reports the billed cycle (the subscriber row
+                // still holds its default until the later customer.subscription.updated sync).
+                .putMetadata("billingCycle", cycle.name())
                 .setSuccessUrl(appProperties.stripe().successUrl())
                 .setCancelUrl(appProperties.stripe().cancelUrl())
                 .addLineItem(

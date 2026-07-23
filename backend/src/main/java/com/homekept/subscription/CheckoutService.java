@@ -1,5 +1,7 @@
 package com.homekept.subscription;
 
+import com.homekept.analytics.AnalyticsEvent;
+import com.homekept.analytics.AnalyticsService;
 import com.homekept.catalog.CatalogService;
 import com.homekept.catalog.PlanCode;
 import com.homekept.catalog.PlanTier;
@@ -9,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Orchestrates Stripe checkout and billing-portal session creation for the
@@ -28,13 +33,16 @@ public class CheckoutService {
     private final SubscriberRepository subscriberRepository;
     private final CatalogService catalogService;
     private final StripeService stripeService;
+    private final AnalyticsService analytics;
 
     public CheckoutService(SubscriberRepository subscriberRepository,
                            CatalogService catalogService,
-                           StripeService stripeService) {
+                           StripeService stripeService,
+                           AnalyticsService analytics) {
         this.subscriberRepository = subscriberRepository;
         this.catalogService = catalogService;
         this.stripeService = stripeService;
+        this.analytics = analytics;
     }
 
     /**
@@ -121,6 +129,18 @@ public class CheckoutService {
 
         log.info("checkout_started subscriberId={} planCode={} cycle={} foundingRate={}",
                 subscriber.getId(), planCode, billingCycle, grantFounding);
+
+        // Analytics (arch doc §5.7) — attributed to the customer, enum/flag props only, no
+        // PII. capture is commit-gated + best-effort; wrap so it can never break checkout.
+        try {
+            Map<String, Object> props = new LinkedHashMap<>();
+            props.put("plan_code", planCode.name());
+            props.put("billing_cycle", billingCycle.name());
+            props.put("founding_rate", grantFounding);
+            analytics.capture(userId, AnalyticsEvent.CHECKOUT_STARTED, props);
+        } catch (RuntimeException e) {
+            log.warn("analytics_checkout_started_failed subscriberId={}: {}", subscriber.getId(), e.toString());
+        }
 
         String checkoutUrl = stripeService.createCheckoutSession(
                 subscriber, plan, billingCycle, grantFounding, idempotencyKey);

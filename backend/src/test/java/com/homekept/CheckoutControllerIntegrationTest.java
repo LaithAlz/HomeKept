@@ -1,5 +1,7 @@
 package com.homekept;
 
+import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
+import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
@@ -51,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, FakeStripeServiceConfig.class})
+@Import({TestcontainersConfiguration.class, FakeStripeServiceConfig.class, RecordingAnalyticsConfig.class})
 class CheckoutControllerIntegrationTest {
 
     private static final String CHECKOUT_SESSION_URL = "/api/checkout/session";
@@ -65,6 +67,7 @@ class CheckoutControllerIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
     @Autowired CheckoutService checkoutService;
+    @Autowired RecordingAnalyticsService recording;
 
     private final List<Long> createdSubscriberIds = new ArrayList<>();
     private final List<Long> createdPropertyIds   = new ArrayList<>();
@@ -77,6 +80,7 @@ class CheckoutControllerIntegrationTest {
 
     @BeforeEach
     void seedCustomer() throws Exception {
+        recording.clear();
         long nano = System.nanoTime();
 
         // ACTIVE so loginAs (/api/auth/login) can authenticate. The checkout endpoint gates
@@ -137,6 +141,15 @@ class CheckoutControllerIntegrationTest {
                         .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkoutUrl").value(FakeStripeServiceConfig.FAKE_CHECKOUT_URL));
+
+        // Analytics: checkout_started fired, attributed to the customer, enum/flag props only.
+        assertThat(recording.events()).anySatisfy(e -> {
+            assertThat(e.event()).isEqualTo(AnalyticsEvent.CHECKOUT_STARTED);
+            assertThat(e.distinctId()).isEqualTo(customerUser.getId());
+            assertThat(e.props()).containsEntry("plan_code", "COMPLETE");
+            assertThat(e.props()).containsEntry("billing_cycle", "MONTHLY");
+            assertThat(e.props()).containsEntry("founding_rate", false);
+        });
     }
 
     // ── POST /api/checkout/session — role gating ──────────────────────────────
