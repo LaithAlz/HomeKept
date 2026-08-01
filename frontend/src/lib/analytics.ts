@@ -51,6 +51,74 @@ export const ANALYTICS_EVENTS = {
   REPORT_VIEWED: "report_viewed",
 } as const;
 
+/**
+ * The authenticated surfaces whose page TEXT is PII — the customer app renders
+ * the home address, the tech app renders addresses AND access notes (how to get
+ * into someone's house). Autocapture records the clicked element's text and
+ * attributes, so on these paths that content must be scrubbed before send
+ * (arch doc §5.7: input-masking does not cover page text). Session replay is
+ * already banned here; this closes the same leak via autocapture.
+ */
+function isSensitivePath(path: string | undefined): boolean {
+  return !!path && (path.startsWith("/app") || path.startsWith("/tech"));
+}
+
+/** Drops the query string + hash from a URL (activation / password-reset tokens live there). */
+function stripUrlSecrets(url: unknown): unknown {
+  if (typeof url !== "string") return url;
+  const cut = Math.min(
+    ...[url.indexOf("?"), url.indexOf("#")].filter((i) => i >= 0).concat(url.length),
+  );
+  return url.slice(0, cut);
+}
+
+/**
+ * Runs on every event before it leaves the browser. Two PII guards:
+ *  1. Strip the query string from `$current_url` / `$referrer` on ALL events, so
+ *     single-use activation and password-reset tokens (`/activate?token=…`,
+ *     `/reset-password?token=…`) never reach PostHog via `$pageview` or autocapture.
+ *  2. On the authenticated `/app` and `/tech` surfaces, remove autocapture element
+ *     text + attributes (addresses, access notes render as page text there), so
+ *     autocapture records the interaction shape, not the content.
+ */
+function sanitizeProperties(properties: Record<string, unknown>): Record<string, unknown> {
+  if (!properties) return properties;
+
+  properties.$current_url = stripUrlSecrets(properties.$current_url);
+  if ("$referrer" in properties) properties.$referrer = stripUrlSecrets(properties.$referrer);
+
+  let path: string | undefined;
+  if (typeof properties.$pathname === "string") {
+    path = properties.$pathname;
+  } else if (typeof properties.$current_url === "string") {
+    try {
+      path = new URL(properties.$current_url).pathname;
+    } catch {
+      path = undefined;
+    }
+  }
+
+  if (isSensitivePath(path)) {
+    for (const key of Object.keys(properties)) {
+      if (key === "$el_text" || key === "$elements_chain" || key.includes("attr__")) {
+        delete properties[key];
+      }
+    }
+    if (Array.isArray(properties.$elements)) {
+      properties.$elements = (properties.$elements as Array<Record<string, unknown>>).map((el) => {
+        const clean: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(el)) {
+          if (k === "$el_text" || k === "text" || k.includes("attr__")) continue;
+          clean[k] = v;
+        }
+        return clean;
+      });
+    }
+  }
+
+  return properties;
+}
+
 let initialized = false;
 
 /**
@@ -80,6 +148,10 @@ function ensureReady(): boolean {
     persistence: "memory",
     autocapture: true,
     capture_pageview: true,
+    // Scrub PII out of every event before it is sent: query-string tokens from
+    // all URLs, and autocapture element text/attributes on the /app + /tech
+    // surfaces (addresses, access notes). See sanitizeProperties.
+    sanitize_properties: sanitizeProperties,
     // Recording stays off until `startBookingReplay()` is called — booking
     // route only. Masking config applies whenever it does run.
     disable_session_recording: true,
