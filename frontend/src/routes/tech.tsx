@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
 import { getSession, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
+import { identify, resetIdentity } from "@/lib/analytics";
 import { formatFullDate, formatTime, getCalendarParts } from "@/lib/format";
 import {
   useCompleteVisit,
@@ -111,6 +112,8 @@ function TechGuard() {
         } else if (s.role !== "TECHNICIAN") {
           setStatus("wrong-role");
         } else {
+          // Internal user id only — never email/name (§5.7).
+          identify(s.id);
           setSession(s);
           setStatus("authorized");
         }
@@ -367,6 +370,7 @@ function TechShell({ technician }: { technician: Session }) {
 
   async function handleSignOut() {
     await logout();
+    resetIdentity();
     // Drop every cached query (day sheet, visit/service data, photos) so
     // nothing lingers in memory for the next technician on this device.
     queryClient.clear();
