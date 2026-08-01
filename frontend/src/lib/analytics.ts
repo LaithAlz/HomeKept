@@ -36,7 +36,7 @@
  * email or name. Event `props` must stay IDs/enums/counts only.
  */
 
-import posthog from "posthog-js";
+import posthog, { type CaptureResult } from "posthog-js";
 
 const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as string | undefined;
 const POSTHOG_HOST =
@@ -73,50 +73,90 @@ function stripUrlSecrets(url: unknown): unknown {
 }
 
 /**
- * Runs on every event before it leaves the browser. Two PII guards:
- *  1. Strip the query string from `$current_url` / `$referrer` on ALL events, so
- *     single-use activation and password-reset tokens (`/activate?token=…`,
- *     `/reset-password?token=…`) never reach PostHog via `$pageview` or autocapture.
- *  2. On the authenticated `/app` and `/tech` surfaces, remove autocapture element
- *     text + attributes (addresses, access notes render as page text there), so
- *     autocapture records the interaction shape, not the content.
+ * Strips query/hash secrets from EVERY url/referrer-style property in place —
+ * `$current_url`, `$referrer`, and critically the set-once `$initial_current_url`
+ * / `$initial_referrer` that capture the session's first URL. Matching by
+ * substring covers current and future variants. `*_referring_domain` (host only,
+ * no query) and `$*_pathname` do not match and are left untouched.
  */
-function sanitizeProperties(properties: Record<string, unknown>): Record<string, unknown> {
-  if (!properties) return properties;
-
-  properties.$current_url = stripUrlSecrets(properties.$current_url);
-  if ("$referrer" in properties) properties.$referrer = stripUrlSecrets(properties.$referrer);
-
-  let path: string | undefined;
-  if (typeof properties.$pathname === "string") {
-    path = properties.$pathname;
-  } else if (typeof properties.$current_url === "string") {
-    try {
-      path = new URL(properties.$current_url).pathname;
-    } catch {
-      path = undefined;
+function scrubUrlSecretsInPlace(obj: Record<string, unknown>): void {
+  for (const key of Object.keys(obj)) {
+    if (key.includes("current_url") || key.includes("referrer")) {
+      obj[key] = stripUrlSecrets(obj[key]);
     }
   }
+}
 
-  if (isSensitivePath(path)) {
-    for (const key of Object.keys(properties)) {
-      if (key === "$el_text" || key === "$elements_chain" || key.includes("attr__")) {
-        delete properties[key];
+/**
+ * Removes autocapture element text + attributes from event properties in place —
+ * `$el_text`, `$elements_chain`, `$selected_content` (copied text, if ever
+ * enabled), any `attr__*`, and the same fields inside every `$elements` entry.
+ * Called only on the authenticated surfaces (see {@link isSensitivePath}).
+ */
+function scrubAutocaptureTextInPlace(props: Record<string, unknown>): void {
+  for (const key of Object.keys(props)) {
+    if (
+      key === "$el_text" ||
+      key === "$elements_chain" ||
+      key === "$selected_content" ||
+      key.includes("attr__")
+    ) {
+      delete props[key];
+    }
+  }
+  if (Array.isArray(props.$elements)) {
+    props.$elements = (props.$elements as Array<Record<string, unknown>>).map((el) => {
+      const clean: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(el)) {
+        if (k === "$el_text" || k === "text" || k.includes("attr__")) continue;
+        clean[k] = v;
+      }
+      return clean;
+    });
+  }
+}
+
+/**
+ * Runs on every event (and its `$set_once` person properties) before it leaves
+ * the browser. Two PII guards, per arch doc §5.7:
+ *  1. Strip the query string + hash from every url/referrer property — including
+ *     the set-once `$initial_current_url` — so single-use activation and
+ *     password-reset tokens (`/activate?token=…`, `/reset-password?token=…`,
+ *     which are cold-load entry points, hence the session's first URL) never
+ *     reach PostHog via `$pageview`, autocapture, or the person profile.
+ *  2. On the authenticated `/app` and `/tech` surfaces, remove autocapture
+ *     element text + attributes (home addresses, access notes render as page
+ *     text there), so autocapture records the interaction shape, not the content.
+ *
+ * Uses `before_send` (not the deprecated `sanitize_properties`) so it also sees
+ * `$set_once` and won't emit a per-event deprecation warning.
+ */
+function beforeSend(event: CaptureResult | null): CaptureResult | null {
+  if (!event) return event;
+
+  const props = event.properties as Record<string, unknown> | undefined;
+  if (props) {
+    scrubUrlSecretsInPlace(props);
+
+    let path: string | undefined;
+    if (typeof props.$pathname === "string") {
+      path = props.$pathname;
+    } else if (typeof props.$current_url === "string") {
+      try {
+        path = new URL(props.$current_url).pathname;
+      } catch {
+        path = undefined;
       }
     }
-    if (Array.isArray(properties.$elements)) {
-      properties.$elements = (properties.$elements as Array<Record<string, unknown>>).map((el) => {
-        const clean: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(el)) {
-          if (k === "$el_text" || k === "text" || k.includes("attr__")) continue;
-          clean[k] = v;
-        }
-        return clean;
-      });
-    }
+    if (isSensitivePath(path)) scrubAutocaptureTextInPlace(props);
   }
 
-  return properties;
+  // $set_once carries $initial_current_url — the token URL on a cold activation /
+  // reset load (the very first event of a memory-persisted session).
+  const setOnce = event.$set_once as Record<string, unknown> | undefined;
+  if (setOnce) scrubUrlSecretsInPlace(setOnce);
+
+  return event;
 }
 
 let initialized = false;
@@ -149,9 +189,9 @@ function ensureReady(): boolean {
     autocapture: true,
     capture_pageview: true,
     // Scrub PII out of every event before it is sent: query-string tokens from
-    // all URLs, and autocapture element text/attributes on the /app + /tech
-    // surfaces (addresses, access notes). See sanitizeProperties.
-    sanitize_properties: sanitizeProperties,
+    // all URLs (incl. the set-once initial URL), and autocapture element
+    // text/attributes on the /app + /tech surfaces (addresses, access notes).
+    before_send: beforeSend,
     // Recording stays off until `startBookingReplay()` is called — booking
     // route only. Masking config applies whenever it does run.
     disable_session_recording: true,
