@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/format";
 import { useVisit, type AppVisitDetail } from "@/lib/visits";
 import { cn } from "@/lib/utils";
+import { ANALYTICS_EVENTS, capture } from "@/lib/analytics";
 
 export const Route = createFileRoute("/app/visits/$id")({
   head: () => ({
@@ -51,6 +52,17 @@ function VisitDetailPage() {
 
   const query = useVisit(visitId);
   useSessionExpiredRedirect(query.error);
+
+  // A COMPLETED visit's detail page IS the report (§5.7). Fires once per
+  // load of a completed visit; the id/status dependencies keep it from
+  // re-firing on every render without duplicating on an unrelated refetch.
+  const visitStatus = query.data?.status;
+  const loadedVisitId = query.data?.id;
+  useEffect(() => {
+    if (loadedVisitId !== undefined && visitStatus === "COMPLETED") {
+      capture(ANALYTICS_EVENTS.REPORT_VIEWED, { visit_id: loadedVisitId });
+    }
+  }, [loadedVisitId, visitStatus]);
 
   const is404 = query.isError && query.error instanceof ApiError && query.error.status === 404;
 

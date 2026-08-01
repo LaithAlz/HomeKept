@@ -20,6 +20,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useAccount, useSubscription } from "@/lib/account";
 import { cn } from "@/lib/utils";
 import { getSession, logout } from "@/lib/auth";
+import { identify, resetIdentity } from "@/lib/analytics";
 
 const navItems = [
   { to: "/app", label: "Home", icon: Home, exact: true },
@@ -55,6 +56,8 @@ export function AppShell() {
     getSession()
       .then((session) => {
         if (cancelled) return;
+        // Internal user id only — never email/name (§5.7).
+        if (session) identify(session.id);
         setGuard(session ? "authenticated" : "unauthenticated");
       })
       .catch(() => {
@@ -105,6 +108,7 @@ function AuthedShell() {
   async function handleSignOut() {
     setSigningOut(true);
     await logout();
+    resetIdentity();
     // Drop every cached query (subscriber PII, booking contact info, visit
     // data) so nothing lingers in memory for the next person on this device.
     queryClient.clear();

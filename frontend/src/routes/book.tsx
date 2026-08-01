@@ -9,6 +9,13 @@ import {
   submitWalkthroughBooking,
   type WalkthroughBookingRequest as BookingRequest,
 } from "@/lib/booking";
+import {
+  ANALYTICS_EVENTS,
+  capture,
+  getDistinctId,
+  startBookingReplay,
+  stopBookingReplay,
+} from "@/lib/analytics";
 
 export const Route = createFileRoute("/book")({
   head: () => ({
@@ -306,6 +313,13 @@ function BookFlow() {
     setData(loadDraft());
   }, []);
 
+  // Session replay is booking-wizard-only (§5.7): start it for this route,
+  // stop it the moment the route unmounts. No-op without a configured key.
+  useEffect(() => {
+    startBookingReplay();
+    return () => stopBookingReplay();
+  }, []);
+
   // Persist draft
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -343,6 +357,7 @@ function BookFlow() {
       return;
     }
     setErrors({});
+    capture(ANALYTICS_EVENTS.BOOKING_STEP_COMPLETED, { step });
     setStep((s) => (s < 3 ? ((s + 1) as 1 | 2 | 3) : s));
     cardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -372,6 +387,11 @@ function BookFlow() {
       ">4000": ">4000",
     };
 
+    // Identity stitching (§5.7): the wizard's anonymous distinct id rides along
+    // so the backend can alias it to the new user at activation. Undefined
+    // (never sent) when analytics is off or hasn't initialized yet.
+    const distinctId = getDistinctId();
+
     const payload: BookingRequest = {
       fullName: data.fullName.trim(),
       email: data.email.trim(),
@@ -388,10 +408,12 @@ function BookFlow() {
       contactConsent: true,
       ...(data.yearBuilt.trim() ? { yearBuilt: parseInt(data.yearBuilt, 10) } : {}),
       ...(data.sqft ? { squareFootageRange: sqftMap[data.sqft] } : {}),
+      ...(distinctId ? { posthogDistinctId: distinctId } : {}),
     };
 
     try {
       await submitBooking(payload);
+      capture(ANALYTICS_EVENTS.BOOKING_STEP_COMPLETED, { step: 3 });
       const weekObj = weeks.find((w) => w.iso === data.preferredWeek);
       setSubmitted({
         firstName: data.fullName.trim().split(" ")[0],
