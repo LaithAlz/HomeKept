@@ -75,7 +75,7 @@ public class TodoAppService {
         Long subscriberId = resolveSubscriberId(userId);
         return todoItemRepository.findBySubscriberIdOrderByCreatedAtDesc(subscriberId)
                 .stream()
-                .map(this::toResponse)
+                .map(TodoResponse::from)
                 .toList();
     }
 
@@ -106,7 +106,7 @@ public class TodoAppService {
         log.info("todo_added todoId={} subscriberId={}", saved.getId(), subscriberId);
         analytics.capture(userId, AnalyticsEvent.TODO_ADDED, Map.of());
 
-        return toResponse(saved);
+        return TodoResponse.from(saved);
     }
 
     /**
@@ -140,18 +140,5 @@ public class TodoAppService {
                 .map(s -> s.getId())
                 // No subscriber → treat as not-found (ownership rule → 404, never 403).
                 .orElseThrow(() -> new VisitNotFoundException(-1L));
-    }
-
-    private TodoResponse toResponse(TodoItem t) {
-        return new TodoResponse(
-                t.getId(),
-                t.getSubscriberId(),
-                t.getBody(),
-                t.getStatus().name(),
-                t.getVisitId(),
-                t.getDeclineNote(),
-                t.getCreatedAt(),
-                t.getUpdatedAt()
-        );
     }
 }

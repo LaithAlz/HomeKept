@@ -66,12 +66,13 @@ public class HealthScoreService {
                 .map(s -> s.getId())
                 .orElseThrow(() -> new VisitNotFoundException(-1L));
 
-        int score = computeScore(subscriberId);
+        List<Flag> flags = openFlags(subscriberId);
+        int score = computeScore(subscriberId, flags);
         int delta = snapshotRepository.findFirstBySubscriberIdOrderByComputedAtDesc(subscriberId)
                 .map(prior -> score - prior.getScore())
                 .orElse(0);
 
-        List<HealthScoreFlaggedItem> flagged = openFlags(subscriberId).stream()
+        List<HealthScoreFlaggedItem> flagged = flags.stream()
                 .map(f -> new HealthScoreFlaggedItem(
                         f.getId(), f.getBody(), f.getSeverity().name(), f.getCreatedAt()))
                 .toList();
@@ -85,13 +86,19 @@ public class HealthScoreService {
      */
     @Transactional
     public HealthScoreSnapshot snapshotOnCompletion(Long subscriberId) {
-        return snapshotRepository.save(new HealthScoreSnapshot(subscriberId, computeScore(subscriberId)));
+        return snapshotRepository.save(
+                new HealthScoreSnapshot(subscriberId, computeScore(subscriberId, openFlags(subscriberId))));
     }
 
     // ── Rubric ──────────────────────────────────────────────────────────────────
 
-    int computeScore(Long subscriberId) {
-        int flagPenalty = openFlags(subscriberId).stream()
+    /**
+     * @param flags the subscriber's OPEN flags, pre-loaded by the caller (a single query
+     *              shared between the score and the flagged-items list in
+     *              {@link #getHealthScore} — avoids querying open flags twice per request).
+     */
+    private int computeScore(Long subscriberId, List<Flag> flags) {
+        int flagPenalty = flags.stream()
                 .mapToInt(f -> severityWeight(f.getSeverity()))
                 .sum();
         int checklistDeduction = checklistDeduction(subscriberId);

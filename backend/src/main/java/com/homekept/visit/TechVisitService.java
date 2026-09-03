@@ -37,7 +37,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,6 +88,7 @@ public class TechVisitService {
     private final VisitPhotoRepository visitPhotoRepository;
     private final FlagRepository flagRepository;
     private final TodoItemRepository todoItemRepository;
+    private final VisitTemplateRepository visitTemplateRepository;
     private final VisitStateMachine stateMachine;
     private final PropertyService propertyService;
     private final CatalogService catalogService;
@@ -104,6 +104,7 @@ public class TechVisitService {
                             VisitPhotoRepository visitPhotoRepository,
                             FlagRepository flagRepository,
                             TodoItemRepository todoItemRepository,
+                            VisitTemplateRepository visitTemplateRepository,
                             VisitStateMachine stateMachine,
                             PropertyService propertyService,
                             CatalogService catalogService,
@@ -118,6 +119,7 @@ public class TechVisitService {
         this.visitPhotoRepository = visitPhotoRepository;
         this.flagRepository = flagRepository;
         this.todoItemRepository = todoItemRepository;
+        this.visitTemplateRepository = visitTemplateRepository;
         this.stateMachine = stateMachine;
         this.propertyService = propertyService;
         this.catalogService = catalogService;
@@ -171,6 +173,11 @@ public class TechVisitService {
                 ? Map.of()
                 : catalogService.getServiceNamesByIds(allServiceIds);
 
+        // Batch-load template names for Visit#resolveDisplayName — same helper the customer
+        // app uses, so the tech sees the identical seasonal template name (e.g. "Fall
+        // winterization") instead of a generic fallback.
+        Map<Long, String> templateNames = loadTemplateNames(visits);
+
         List<TechVisitListItem> result = new ArrayList<>();
         for (Visit visit : visits) {
             var property = propertyService.findById(visit.getPropertyId());
@@ -190,7 +197,7 @@ public class TechVisitService {
             // Todos folded into THIS visit (TodoItem.visitId == visit.id) — includes items
             // already marked DONE/DECLINED so the tech can see what was already handled.
             List<TodoResponse> todos = todoItemRepository.findByVisitId(visit.getId()).stream()
-                    .map(this::toTodoResponse)
+                    .map(TodoResponse::from)
                     .collect(Collectors.toList());
 
             // OPEN flags on this visit's subscriber — prior observations shown for context
@@ -203,7 +210,7 @@ public class TechVisitService {
 
             result.add(new TechVisitListItem(
                     visit.getId(),
-                    resolveVisitName(visit),
+                    visit.resolveDisplayName(templateNames),
                     visit.getScheduledFor(),
                     visit.getDurationMinutes(),
                     visit.getStatus().name(),
@@ -308,14 +315,7 @@ public class TechVisitService {
 
         // Resolve service name for the response.
         Map<Long, String> names = catalogService.getServiceNamesByIds(List.of(saved.getServiceId()));
-        return new VisitServiceItem(
-                saved.getId(),
-                saved.getServiceId(),
-                names.getOrDefault(saved.getServiceId(), "Unknown service"),
-                saved.getSource().name(),
-                saved.isCompleted(),
-                saved.getTechnicianNotes()
-        );
+        return VisitServiceItem.from(saved, names);
     }
 
     // ── POST /api/tech/visits/{id}/photos/upload-url ─────────────────────────
@@ -486,7 +486,7 @@ public class TechVisitService {
 
         log.info("tech_todo_patched todoId={} status={} techUserId={}",
                 saved.getId(), newStatus, techUserId);
-        return toTodoResponse(saved);
+        return TodoResponse.from(saved);
     }
 
     // ── POST /api/tech/visits/{id}/complete ──────────────────────────────────
@@ -650,35 +650,35 @@ public class TechVisitService {
      * Single query — avoids N+1 on the day-sheet.
      */
     private Map<Long, List<VisitService>> loadServicesByVisitIds(List<Long> visitIds) {
-        // Use per-visit queries at MVP scale; at 500+ visits/year, consider a JPQL IN query.
-        Map<Long, List<VisitService>> result = new HashMap<>();
-        for (Long id : visitIds) {
-            result.put(id, visitServiceRepository.findByVisitIdOrderByIdAsc(id));
+        return visitServiceRepository.findByVisitIdInOrderByIdAsc(visitIds).stream()
+                .collect(Collectors.groupingBy(VisitService::getVisitId, LinkedHashMap::new, Collectors.toList()));
+    }
+
+    /**
+     * Batch-loads template names for {@link Visit#resolveDisplayName}, for the given list of
+     * visits. Mirrors {@code VisitAppService#loadTemplateNames} — kept local per-service since
+     * it is a one-line {@code findAllById} query, not shared state.
+     */
+    private Map<Long, String> loadTemplateNames(List<Visit> visits) {
+        List<Long> templateIds = visits.stream()
+                .map(Visit::getVisitTemplateId)
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+        if (templateIds.isEmpty()) {
+            return Map.of();
         }
+        Map<Long, String> result = new LinkedHashMap<>();
+        visitTemplateRepository.findAllById(templateIds)
+                .forEach(t -> result.put(t.getId(), t.getName()));
         return result;
     }
 
     private List<VisitServiceItem> toServiceItems(List<VisitService> rows,
                                                    Map<Long, String> nameById) {
         return rows.stream()
-                .map(vs -> new VisitServiceItem(
-                        vs.getId(),
-                        vs.getServiceId(),
-                        nameById.getOrDefault(vs.getServiceId(), "Unknown service"),
-                        vs.getSource().name(),
-                        vs.isCompleted(),
-                        vs.getTechnicianNotes()
-                ))
+                .map(vs -> VisitServiceItem.from(vs, nameById))
                 .collect(Collectors.toList());
-    }
-
-    private String resolveVisitName(Visit v) {
-        return switch (v.getType()) {
-            case EXTRA -> "Extra visit";
-            case WALKTHROUGH -> "Walk-through";
-            case WARRANTY -> "Warranty visit";
-            case ROUTINE -> "Routine visit";
-        };
     }
 
     private TechPhotoResponse toPhotoResponse(VisitPhoto p) {
@@ -702,19 +702,6 @@ public class TechVisitService {
                 f.getStatus().name(),
                 f.getPhotoStorageKey(),
                 f.getCreatedAt()
-        );
-    }
-
-    private TodoResponse toTodoResponse(TodoItem t) {
-        return new TodoResponse(
-                t.getId(),
-                t.getSubscriberId(),
-                t.getBody(),
-                t.getStatus().name(),
-                t.getVisitId(),
-                t.getDeclineNote(),
-                t.getCreatedAt(),
-                t.getUpdatedAt()
         );
     }
 }

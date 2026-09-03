@@ -238,6 +238,25 @@ class TechVisitIntegrationTest {
     }
 
     @Test
+    void daySheet_showsTemplateNameForTemplatedVisit() throws Exception {
+        // Regression test: the tech day sheet must resolve the same display name as the
+        // customer app (Visit#resolveDisplayName) — it used to fall back to the generic
+        // "Routine visit" for every ROUTINE visit, ignoring visitTemplateId entirely.
+        Long templateId = fallWinterizationTemplateId();
+        Visit templatedVisit = visitRepository.save(new Visit(
+                subscriber.getId(), property.getId(), templateId,
+                todayVisit.getScheduledFor(), 120, VisitType.ROUTINE));
+        templatedVisit.setTechnicianId(techUser.getId());
+        templatedVisit = visitRepository.save(templatedVisit);
+
+        mockMvc.perform(get(TODAY_URL)
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + templatedVisit.getId() + ")].name")
+                        .value(hasItem("Fall winterization")));
+    }
+
+    @Test
     void daySheet_checkslistIsPresent() throws Exception {
         mockMvc.perform(get(TODAY_URL)
                         .cookie(new Cookie("hk_access", techToken)))
@@ -793,6 +812,17 @@ class TechVisitIntegrationTest {
                 Long.class);
         if (id == null) {
             throw new IllegalStateException("No services found in catalog seed data");
+        }
+        return id;
+    }
+
+    /** The "Fall winterization" template (month 10, ESSENTIAL) — seeded by V6__visit.sql. */
+    private Long fallWinterizationTemplateId() {
+        Long id = jdbc.queryForObject(
+                "SELECT id FROM visit_template WHERE name = 'Fall winterization'",
+                Long.class);
+        if (id == null) {
+            throw new IllegalStateException("Fall winterization template not found in seed data");
         }
         return id;
     }
