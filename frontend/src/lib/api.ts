@@ -55,8 +55,8 @@ async function parseErrorBody(res: Response): Promise<ErrorEnvelope["error"]> {
   return undefined;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+function doFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${BASE_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
@@ -65,6 +65,45 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+const NO_REFRESH_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+  "/api/auth/forgot",
+  "/api/auth/reset",
+]);
+
+/**
+ * Silently rotates the access cookie via the refresh cookie (15-min access
+ * token, 7-day refresh token — see api-contract.md). Concurrent callers
+ * (e.g. several dashboard queries 401ing at once) share one in-flight
+ * request rather than each firing their own refresh.
+ */
+function refreshAccessToken(): Promise<boolean> {
+  refreshInFlight ??= doFetch("/api/auth/refresh", { method: "POST" })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let res = await doFetch(path, init);
+
+  // A 401 usually just means the short-lived access cookie expired while the
+  // refresh cookie is still valid: try one silent refresh + retry before
+  // surfacing the error. /api/auth/me is included (every page load's session
+  // check goes through it); the endpoints that issue, rotate or revoke
+  // tokens are not, so a wrong password is never silently retried.
+  if (res.status === 401 && !NO_REFRESH_PATHS.has(path) && (await refreshAccessToken())) {
+    res = await doFetch(path, init);
+  }
 
   if (!res.ok) {
     const envelopeError = await parseErrorBody(res);

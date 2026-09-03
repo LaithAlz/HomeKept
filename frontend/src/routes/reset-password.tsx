@@ -7,6 +7,7 @@ import { AuthPageShell } from "@/components/auth/AuthPageShell";
 import { Button } from "@/components/ui/button";
 import { fieldCls, FieldWrap, FieldError } from "@/components/forms/Field";
 import { ApiError, post } from "@/lib/api";
+import { getSession, homeFor } from "@/lib/auth";
 
 const searchSchema = z.object({
   token: z.string().optional(),
@@ -105,7 +106,8 @@ function ResetPasswordForm({ token, onDeadEnd }: { token: string; onDeadEnd: () 
       // router's client-side navigate) is intentional: it's the simplest
       // way to let /app's session guard pick up the cookie this response
       // just set (see AppShell and signin.tsx's sanitizeNext comment).
-      window.location.assign("/app");
+      const session = await getSession().catch(() => null);
+      window.location.assign(session ? homeFor(session.role) : "/app");
     } catch (err) {
       setSubmitting(false);
 
