@@ -23,6 +23,7 @@ import {
   ImageOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SessionError, SessionLoading } from "@/components/app/SessionScreens";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
 import { getSession, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
@@ -86,7 +87,7 @@ type GuardStatus = "checking" | "authorized" | "unauthenticated" | "wrong-role" 
  * check has nothing to send `GET /api/auth/me` with — it would always look
  * signed out. Checking from an effect guarantees the request only ever
  * happens in the browser, where the cookie is present. SSR (and the first
- * client render, before the effect resolves) renders only `GuardLoading` —
+ * client render, before the effect resolves) renders only `SessionLoading` —
  * the real day sheet (decrypted access notes + customer PII) never mounts,
  * and its data query never fires, until the guard has confirmed both
  * "signed in" and "role === TECHNICIAN".
@@ -135,7 +136,7 @@ function TechGuard() {
   }, [status, navigate, pathname]);
 
   if (status === "error") {
-    return <GuardError onRetry={() => setAttempt((n) => n + 1)} />;
+    return <SessionError onRetry={() => setAttempt((n) => n + 1)} compact />;
   }
 
   if (status === "authorized" && session) {
@@ -145,36 +146,7 @@ function TechGuard() {
   // "checking" | "unauthenticated" | "wrong-role" — a redirect is in flight
   // for the latter two. Render only a loading placeholder so nothing from
   // the day sheet ever flashes for a signed-out or non-technician visitor.
-  return <GuardLoading />;
-}
-
-function GuardLoading() {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex min-h-dvh items-center justify-center bg-background"
-    >
-      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
-      <span className="sr-only">Loading today's visits.</span>
-    </div>
-  );
-}
-
-function GuardError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-background px-6 text-center">
-      <div>
-        <h1 className="font-display text-xl font-bold tracking-tight">
-          We couldn't check your session.
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
-        <div className="mt-6">
-          <Button onClick={onRetry}>Try again</Button>
-        </div>
-      </div>
-    </div>
-  );
+  return <SessionLoading label="Loading today's visits." />;
 }
 
 function messageFor(err: unknown): string {

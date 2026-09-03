@@ -69,9 +69,11 @@ export function greetingFor(date: Date = new Date()): "morning" | "afternoon" | 
 /**
  * Formats integer cents as whole-dollar CAD, e.g. `14900` -> `"$149"`.
  * Money is always integer cents on the wire (never floats) — divide by 100 only for
- * display. Mirrors the `formatCentsCAD` convention in `@/lib/admin`.
+ * display. Returns "—" for null/undefined (fields that are nullable pre-checkout
+ * or before a value is recorded).
  */
-export function formatCentsCad(cents: number): string {
+export function formatCentsCad(cents: number | null | undefined): string {
+  if (cents === undefined || cents === null) return "—";
   return new Intl.NumberFormat("en-CA", {
     style: "currency",
     currency: "CAD",

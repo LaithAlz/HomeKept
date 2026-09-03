@@ -49,7 +49,6 @@ export const Route = createFileRoute("/book")({
 /* sheet — see @/lib/booking, which mirrors POST /api/bookings/walkthrough    */
 /* field-for-field (backend/api-contract.md).                                 */
 /* -------------------------------------------------------------------------- */
-const submitBooking = submitWalkthroughBooking;
 
 /**
  * Maps a backend validation field name (the request payload key, per
@@ -95,13 +94,14 @@ const FORM_FIELD_STEP: Partial<Record<keyof FormData, 1 | 2 | 3>> = {
 const CITIES = ["Oakville", "Mississauga", "Milton", "Other"] as const;
 type City = (typeof CITIES)[number];
 
-const SQFT_LABELS: Record<string, string> = {
+type SqftRange = NonNullable<BookingRequest["squareFootageRange"]>;
+const SQFT_LABELS: Record<SqftRange, string> = {
   "<1500": "< 1,500 sq ft",
   "1500-2500": "1,500 – 2,500",
   "2500-4000": "2,500 – 4,000",
   ">4000": "4,000+",
 };
-const SQFT_KEYS = Object.keys(SQFT_LABELS) as (keyof typeof SQFT_LABELS)[];
+const SQFT_KEYS = Object.keys(SQFT_LABELS) as SqftRange[];
 
 type PropertyType = "DETACHED" | "SEMI" | "TOWNHOUSE";
 const PROPERTY_CARDS: { type: PropertyType; emoji: string; label: string; sub: string }[] = [
@@ -142,7 +142,7 @@ interface FormData {
   city: City | "";
   postalCode: string;
   yearBuilt: string;
-  sqft: string;
+  sqft: SqftRange | "";
   propertyType: PropertyType | "";
   // Step 2
   preferredWeek: string; // ISO Monday
@@ -379,14 +379,6 @@ function BookFlow() {
     setSubmitting(true);
     setSubmitError(null);
 
-    // Build the contract-accurate payload
-    const sqftMap: Record<string, BookingRequest["squareFootageRange"]> = {
-      "<1500": "<1500",
-      "1500-2500": "1500-2500",
-      "2500-4000": "2500-4000",
-      ">4000": ">4000",
-    };
-
     // Identity stitching (§5.7): the wizard's anonymous distinct id rides along
     // so the backend can alias it to the new user at activation. Undefined
     // (never sent) when analytics is off or hasn't initialized yet.
@@ -407,12 +399,12 @@ function BookFlow() {
       leadSource: "WEBSITE_ORGANIC",
       contactConsent: true,
       ...(data.yearBuilt.trim() ? { yearBuilt: parseInt(data.yearBuilt, 10) } : {}),
-      ...(data.sqft ? { squareFootageRange: sqftMap[data.sqft] } : {}),
+      ...(data.sqft ? { squareFootageRange: data.sqft } : {}),
       ...(distinctId ? { posthogDistinctId: distinctId } : {}),
     };
 
     try {
-      await submitBooking(payload);
+      await submitWalkthroughBooking(payload);
       capture(ANALYTICS_EVENTS.BOOKING_STEP_COMPLETED, { step: 3 });
       const weekObj = weeks.find((w) => w.iso === data.preferredWeek);
       setSubmitted({

@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAdminTechnicians, formatCentsCAD, type AdminTechnicianListItem } from "@/lib/admin";
+import { useAdminTechnicians, type AdminTechnicianListItem } from "@/lib/admin";
+import { formatCentsCad } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/technicians")({
@@ -145,7 +146,7 @@ function TechnicianRow({ technician: t }: { technician: AdminTechnicianListItem 
       <td className="px-2 py-3">{formatHireDate(t.hireDate)}</td>
       <td className="px-2 py-3 text-right tabular-nums">
         {t.fullyLoadedHourlyCostCents != null
-          ? `${formatCentsCAD(t.fullyLoadedHourlyCostCents)}/hr`
+          ? `${formatCentsCad(t.fullyLoadedHourlyCostCents)}/hr`
           : "—"}
       </td>
     </tr>

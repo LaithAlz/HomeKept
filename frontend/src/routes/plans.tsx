@@ -8,7 +8,13 @@ import { Button, type ButtonProps } from "@/components/ui/button";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { cn } from "@/lib/utils";
-import { PLANS, formatCad, annualMonthlyEquivalent, type Plan, type PlanId } from "@/lib/plans";
+import {
+  PLANS,
+  formatDollarsCad,
+  annualMonthlyEquivalent,
+  type Plan,
+  type PlanId,
+} from "@/lib/plans";
 import { getSession } from "@/lib/auth";
 import { ApiError, post } from "@/lib/api";
 
@@ -581,14 +587,14 @@ function PlanCard({
 
       <div className="mt-4 flex items-baseline gap-1">
         <span className="font-display text-5xl font-extrabold tracking-tight text-foreground">
-          {formatCad(price)}
+          {formatDollarsCad(price)}
         </span>
         <span className="text-sm text-muted-foreground">/mo</span>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         {billing === "monthly"
-          ? `Billed monthly · ${formatCad(tier.monthlyPriceCad * 12)}/yr`
-          : `Billed annually · ${formatCad(tier.annualPriceCad)}/yr`}
+          ? `Billed monthly · ${formatDollarsCad(tier.monthlyPriceCad * 12)}/yr`
+          : `Billed annually · ${formatDollarsCad(tier.annualPriceCad)}/yr`}
       </p>
 
       <PlanCtaButton
@@ -644,7 +650,7 @@ function ComparisonTable({
                       {t.name}
                     </span>
                     <span className="mt-1 text-sm text-muted-foreground">
-                      <span className="font-bold text-foreground">{formatCad(price)}</span>
+                      <span className="font-bold text-foreground">{formatDollarsCad(price)}</span>
                       /mo
                     </span>
                   </div>
@@ -731,7 +737,7 @@ function MobileTierBreakdown({
       <div className="flex items-baseline justify-between">
         <h3 className="font-display text-2xl font-extrabold tracking-tight">{tier.name}</h3>
         <div className="text-right">
-          <div className="font-display text-2xl font-extrabold">{formatCad(price)}</div>
+          <div className="font-display text-2xl font-extrabold">{formatDollarsCad(price)}</div>
           <div className="text-xs text-muted-foreground">/mo</div>
         </div>
       </div>

@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAdminDashboard, formatCentsCAD } from "@/lib/admin";
+import { useAdminDashboard } from "@/lib/admin";
+import { formatCentsCad } from "@/lib/format";
+import { FOUNDING_RATE_CAP } from "@/lib/plans";
 
 export const Route = createFileRoute("/admin/metrics")({
   head: () => ({
@@ -9,9 +11,6 @@ export const Route = createFileRoute("/admin/metrics")({
   }),
   component: MetricsPage,
 });
-
-/** The founding-rate cap from docs/pricing-and-visits.md: first 15 subscribers. */
-const FOUNDING_RATE_CAP = 15;
 
 /**
  * This page renders only what `GET /api/admin/dashboard` actually returns
@@ -68,7 +67,7 @@ function MetricsPage() {
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <Stat label="Active subscribers" value={String(dashboard.activeSubscribers)} />
-            <Stat label="MRR" value={formatCentsCAD(dashboard.mrrCents)} />
+            <Stat label="MRR" value={formatCentsCad(dashboard.mrrCents)} />
             <Stat label="Pending walk-throughs" value={String(dashboard.pendingWalkthroughs)} />
             <Stat label="Upcoming visits" value={String(dashboard.upcomingVisits)} />
             <Stat

@@ -19,13 +19,12 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { formatDateShort } from "@/lib/format";
+import { formatCentsCad, formatDateShort } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import {
   useAdminSubscriber,
   useAdminSubscribers,
   useUpdatePropertySku,
-  formatCentsCAD,
   type AdminSubscriberPropertySummary,
   type AdminUpdateSkuRequest,
 } from "@/lib/admin";
@@ -195,7 +194,7 @@ function SubscribersPage() {
                     </span>
                   </td>
                   <td className="px-2 py-3 text-right tabular-nums">
-                    {formatCentsCAD(s.mrrCents)}
+                    {formatCentsCad(s.mrrCents)}
                   </td>
                   <td className="px-2 py-3 text-muted-foreground">
                     {s.foundingRate ? "Yes" : "—"}
@@ -275,7 +274,7 @@ function SubscriberDetailSheet({
                   ? (PLAN_LABEL[detail.planCode] ?? detail.planCode)
                   : "Not chosen yet"}
               </DetailTile>
-              <DetailTile label="MRR">{formatCentsCAD(detail.mrrCents)}</DetailTile>
+              <DetailTile label="MRR">{formatCentsCad(detail.mrrCents)}</DetailTile>
               <DetailTile label="Status">{STATUS_LABEL[detail.status] ?? detail.status}</DetailTile>
               <DetailTile label="Billing cycle">
                 {detail.billingCycle === "ANNUAL" ? "Annual" : "Monthly"}

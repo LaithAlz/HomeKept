@@ -20,7 +20,13 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
-import { formatDateShort, formatDateTime, formatTime, formatTodayLong } from "@/lib/format";
+import {
+  formatCentsCad,
+  formatDateShort,
+  formatDateTime,
+  formatTime,
+  formatTodayLong,
+} from "@/lib/format";
 import type { WalkthroughBookingRequest } from "@/lib/booking";
 import {
   useAdminDashboard,
@@ -28,7 +34,6 @@ import {
   useAdminBookings,
   useAdminRescheduleRequests,
   useCreateWalkthroughBooking,
-  formatCentsCAD,
 } from "@/lib/admin";
 
 export const Route = createFileRoute("/admin/")({
@@ -158,7 +163,7 @@ function AdminDashboard() {
           aria-label="Key metrics"
           className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
         >
-          <MetricCard label="MRR" value={dashboard ? formatCentsCAD(dashboard.mrrCents) : "—"} />
+          <MetricCard label="MRR" value={dashboard ? formatCentsCad(dashboard.mrrCents) : "—"} />
           <MetricCard
             label="Active subscribers"
             value={dashboard ? String(dashboard.activeSubscribers) : "—"}
@@ -315,7 +320,7 @@ function RecentSubscribersPanel() {
                   {STATUS_LABEL[s.status] ?? s.status}
                 </span>
                 <span className="text-sm font-semibold tabular-nums">
-                  {formatCentsCAD(s.mrrCents)}
+                  {formatCentsCad(s.mrrCents)}
                 </span>
               </div>
             </li>
@@ -471,7 +476,7 @@ function NeedsAttentionPanel() {
                 <p className="font-semibold text-foreground">Subscriber #{s.id}: payment issue</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {s.planCode ? `${PLAN_LABEL[s.planCode] ?? s.planCode} plan` : "No plan on file"}{" "}
-                  · {formatCentsCAD(s.mrrCents)} MRR
+                  · {formatCentsCad(s.mrrCents)} MRR
                 </p>
               </div>
               <Button size="sm" variant="outline" className="shrink-0" asChild>

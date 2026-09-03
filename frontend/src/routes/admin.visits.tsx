@@ -10,8 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatDateTime } from "@/lib/format";
-import { useAdminVisits, formatCentsCAD, type AdminVisitListItem } from "@/lib/admin";
+import { formatCentsCad, formatDateTime } from "@/lib/format";
+import { useAdminVisits, type AdminVisitListItem } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/visits")({
@@ -201,7 +201,7 @@ function VisitRow({ visit: v }: { visit: AdminVisitListItem }) {
           <span className="text-amber-700">Unassigned</span>
         )}
       </td>
-      <td className="px-2 py-3 text-right tabular-nums">{formatCentsCAD(v.materialsCostCents)}</td>
+      <td className="px-2 py-3 text-right tabular-nums">{formatCentsCad(v.materialsCostCents)}</td>
     </tr>
   );
 }

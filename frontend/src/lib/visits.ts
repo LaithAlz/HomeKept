@@ -14,7 +14,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { ApiError, del, get, post } from "@/lib/api";
+import { ApiError, del, get, post, qs } from "@/lib/api";
 
 export type VisitStatus =
   | "SCHEDULED"
@@ -84,16 +84,11 @@ interface ListVisitsParams {
 }
 
 function visitsPath({ status, limit, cursor }: ListVisitsParams): string {
-  const params = new URLSearchParams();
-  if (status) params.set("status", status);
-  if (limit) params.set("limit", String(limit));
-  if (cursor) params.set("cursor", String(cursor));
-  const qs = params.toString();
-  return qs ? `/api/app/visits?${qs}` : "/api/app/visits";
+  return `/api/app/visits${qs({ status, limit, cursor })}`;
 }
 
 /** GET /api/app/visits — cursor-paginated, newest/soonest first. */
-export function useVisits(params: ListVisitsParams = {}): UseQueryResult<AppVisitListItem[]> {
+function useVisits(params: ListVisitsParams = {}): UseQueryResult<AppVisitListItem[]> {
   return useQuery({
     queryKey: ["app-visits", params],
     queryFn: () => get<AppVisitListItem[]>(visitsPath(params)),

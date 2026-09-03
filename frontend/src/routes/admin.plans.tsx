@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Check } from "lucide-react";
-import { PLANS, formatCad } from "@/lib/plans";
+import { PLANS, formatDollarsCad } from "@/lib/plans";
 
 export const Route = createFileRoute("/admin/plans")({
   head: () => ({
@@ -37,13 +37,13 @@ function PlansAdminPage() {
               <div className="rounded-xl border border-border p-3">
                 <div className="text-xs text-muted-foreground">Monthly</div>
                 <div className="mt-0.5 font-display text-xl font-extrabold tabular-nums">
-                  {formatCad(p.monthlyPriceCad)}
+                  {formatDollarsCad(p.monthlyPriceCad)}
                 </div>
               </div>
               <div className="rounded-xl border border-border p-3">
                 <div className="text-xs text-muted-foreground">Annual</div>
                 <div className="mt-0.5 font-display text-xl font-extrabold tabular-nums">
-                  {formatCad(p.annualPriceCad)}
+                  {formatDollarsCad(p.annualPriceCad)}
                 </div>
               </div>
             </div>
