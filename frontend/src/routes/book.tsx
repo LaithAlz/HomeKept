@@ -2,11 +2,16 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { fieldCls, FieldWrap, FieldError } from "@/components/forms/Field";
 import { cn } from "@/lib/utils";
 import { BASE_URL, OG_IMAGE_DEFAULT, canonicalUrl } from "@/lib/seo";
 import { ApiError } from "@/lib/api";
 import {
   submitWalkthroughBooking,
+  CITIES,
+  EMAIL_RE,
+  getNextMonday,
+  type City,
   type WalkthroughBookingRequest as BookingRequest,
 } from "@/lib/booking";
 import {
@@ -91,9 +96,6 @@ const FORM_FIELD_STEP: Partial<Record<keyof FormData, 1 | 2 | 3>> = {
 /* Constants                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const CITIES = ["Oakville", "Mississauga", "Milton", "Other"] as const;
-type City = (typeof CITIES)[number];
-
 type SqftRange = NonNullable<BookingRequest["squareFootageRange"]>;
 const SQFT_LABELS: Record<SqftRange, string> = {
   "<1500": "< 1,500 sq ft",
@@ -129,7 +131,7 @@ const DAYS: { key: DayKey; label: string }[] = [
 ];
 
 const postalRe = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
-const emailRe = /^\S+@\S+\.\S+$/;
+const emailRe = EMAIL_RE;
 const phoneRe = /^[\d\s()+\-.]{10,}$/;
 
 /* -------------------------------------------------------------------------- */
@@ -189,15 +191,6 @@ function loadDraft(): FormData {
 /* -------------------------------------------------------------------------- */
 /* Week helpers                                                                */
 /* -------------------------------------------------------------------------- */
-
-function getNextMonday(): Date {
-  const d = new Date();
-  const day = d.getDay(); // 0=Sun
-  const daysUntilMon = day === 0 ? 1 : 8 - day;
-  d.setDate(d.getDate() + daysUntilMon);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 function getWeekChips(count = 4): { iso: string; label: string }[] {
   const mon = getNextMonday();
@@ -1275,32 +1268,5 @@ function SuccessScreen({
         </Button>
       </div>
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Field helpers                                                               */
-/* -------------------------------------------------------------------------- */
-
-function fieldCls(invalid: boolean) {
-  return cn(
-    "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
-    "placeholder:text-muted-foreground/60",
-    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(92,125,112,0.15)]",
-    invalid && "border-destructive bg-destructive/5 focus:border-destructive",
-    !invalid && "border-transparent",
-  );
-}
-
-function FieldWrap({ children, error }: { children: React.ReactNode; error?: string }) {
-  return <div className={cn("space-y-1.5", error && "has-error")}>{children}</div>;
-}
-
-function FieldError({ id, msg }: { id: string; msg?: string }) {
-  if (!msg) return null;
-  return (
-    <p id={id} role="alert" className="text-[12.5px] font-semibold text-destructive">
-      {msg}
-    </p>
   );
 }

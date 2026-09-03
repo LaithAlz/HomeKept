@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { formatTime } from "@/lib/format";
 import { useAdminVisits, useAdminTechnicians, type AdminVisitListItem } from "@/lib/admin";
 
@@ -140,34 +141,17 @@ function RoutesPage() {
         </div>
       </div>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading scheduled visits.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading scheduled visits." className="mt-6" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load the day's visits.</span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void refetchVisits();
-              void refetchTechs();
-            }}
-          >
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load the day's visits."
+          onRetry={() => {
+            void refetchVisits();
+            void refetchTechs();
+          }}
+          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {!isLoading && !isError && dayVisits.length === 0 && (

@@ -127,3 +127,9 @@ export function qs(params: Record<string, string | number | undefined>): string 
   const s = search.toString();
   return s ? `?${s}` : "";
 }
+
+/** The `ApiError`'s message when there is one, otherwise a generic fallback. */
+export function messageFor(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  return "Something went wrong. Try again.";
+}

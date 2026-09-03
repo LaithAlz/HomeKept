@@ -57,3 +57,23 @@ export function submitWalkthroughBooking(
 ): Promise<WalkthroughBookingResponse> {
   return post<WalkthroughBookingResponse>("/api/bookings/walkthrough", payload);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Shared form constants — both the customer booking wizard (`routes/book.tsx`) */
+/* and the admin "New booking" sheet build a form around the same fields.     */
+/* -------------------------------------------------------------------------- */
+
+export const CITIES = ["Oakville", "Mississauga", "Milton", "Other"] as const;
+export type City = (typeof CITIES)[number];
+
+export const EMAIL_RE = /^\S+@\S+\.\S+$/;
+
+/** The next upcoming Monday, at local midnight — the first pickable walk-through week. */
+export function getNextMonday(): Date {
+  const d = new Date();
+  const day = d.getDay(); // 0 = Sunday
+  const daysUntilMon = day === 0 ? 1 : 8 - day;
+  d.setDate(d.getDate() + daysUntilMon);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}

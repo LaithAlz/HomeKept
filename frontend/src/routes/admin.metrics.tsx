@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { useAdminDashboard } from "@/lib/admin";
 import { formatCentsCad } from "@/lib/format";
 import { FOUNDING_RATE_CAP } from "@/lib/plans";
@@ -36,27 +35,14 @@ function MetricsPage() {
         An operational snapshot: the numbers we currently track, updated live.
       </p>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading metrics.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading metrics." className="mt-6" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load metrics.</span>
-          <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load metrics."
+          onRetry={() => void refetch()}
+          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {!isLoading && !isError && !dashboard && (

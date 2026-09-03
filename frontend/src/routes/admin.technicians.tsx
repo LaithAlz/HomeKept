@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { useAdminTechnicians, type AdminTechnicianListItem } from "@/lib/admin";
 import { formatCentsCad } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -64,27 +64,14 @@ function TechniciansPage() {
         <Button size="sm">Add technician</Button>
       </div>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading technicians.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading technicians." className="mt-6" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load the technician roster.</span>
-          <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load the technician roster."
+          onRetry={() => void refetch()}
+          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {technicians && (

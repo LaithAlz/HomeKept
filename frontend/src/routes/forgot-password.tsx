@@ -1,10 +1,10 @@
 import { useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Loader2, Mail } from "lucide-react";
-import { Wordmark } from "@/components/brand/Wordmark";
+import { AuthPageShell } from "@/components/auth/AuthPageShell";
 import { Button } from "@/components/ui/button";
+import { fieldCls, FieldWrap, FieldError } from "@/components/forms/Field";
 import { ApiError, post } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/forgot-password")({
   head: () => ({
@@ -27,35 +27,21 @@ export const Route = createFileRoute("/forgot-password")({
 
 function ForgotPasswordPage() {
   return (
-    <main
-      id="main"
-      className="relative flex min-h-dvh items-center justify-center overflow-x-clip bg-background px-4 py-10"
-    >
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute -right-36 -top-44 size-[460px] animate-drift rounded-full bg-sage/35 blur-[90px]" />
-        <div className="absolute -left-52 bottom-[-120px] size-[400px] animate-drift rounded-full bg-honey-soft/45 blur-[90px] [animation-direction:alternate-reverse]" />
+    <AuthPageShell outer="flex" glow="compact" maxWidthClassName="max-w-[420px]">
+      <div className="rounded-[30px] border border-border bg-card p-8 shadow-[0_28px_56px_-28px_rgba(9,45,33,0.35)]">
+        <ForgotPasswordFlow />
       </div>
 
-      <div className="animate-reveal relative z-10 w-full max-w-[420px]">
-        <Link to="/" className="mb-6 flex items-center justify-center" aria-label="HomeKept home">
-          <Wordmark size="md" />
+      <p className="mt-6 text-center text-sm text-muted-foreground">
+        Remembered it?{" "}
+        <Link
+          to="/signin"
+          className="font-semibold text-primary underline decoration-accent decoration-2 underline-offset-4 hover:decoration-primary"
+        >
+          Back to sign in
         </Link>
-
-        <div className="rounded-[30px] border border-border bg-card p-8 shadow-[0_28px_56px_-28px_rgba(9,45,33,0.35)]">
-          <ForgotPasswordFlow />
-        </div>
-
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Remembered it?{" "}
-          <Link
-            to="/signin"
-            className="font-semibold text-primary underline decoration-accent decoration-2 underline-offset-4 hover:decoration-primary"
-          >
-            Back to sign in
-          </Link>
-        </p>
-      </div>
-    </main>
+      </p>
+    </AuthPageShell>
   );
 }
 
@@ -208,32 +194,5 @@ function SentCard() {
         works for 30 minutes.
       </p>
     </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Field helpers — mirrors the convention in routes/signin.tsx                */
-/* -------------------------------------------------------------------------- */
-
-function fieldCls(invalid: boolean) {
-  return cn(
-    "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
-    "placeholder:text-muted-foreground/60",
-    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(92,125,112,0.15)]",
-    invalid && "border-destructive bg-destructive/5 focus:border-destructive",
-    !invalid && "border-transparent",
-  );
-}
-
-function FieldWrap({ children, error }: { children: React.ReactNode; error?: string }) {
-  return <div className={cn("space-y-1.5", error && "has-error")}>{children}</div>;
-}
-
-function FieldError({ id, msg }: { id: string; msg?: string }) {
-  if (!msg) return null;
-  return (
-    <p id={id} role="alert" className="text-[12.5px] font-semibold text-destructive">
-      {msg}
-    </p>
   );
 }

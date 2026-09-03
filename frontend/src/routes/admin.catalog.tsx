@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2, Wrench } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Wrench } from "lucide-react";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { formatCentsCad } from "@/lib/format";
 import {
   useCatalogPlans,
@@ -68,34 +68,17 @@ function CatalogPage() {
         </p>
       </div>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading the catalog.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading the catalog." className="mt-6" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load the catalog.</span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void plans.refetch();
-              void picks.refetch();
-            }}
-          >
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load the catalog."
+          onRetry={() => {
+            void plans.refetch();
+            void picks.refetch();
+          }}
+          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {orderedPlans && (

@@ -19,12 +19,16 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { formatCentsCad, formatDateShort } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import {
   useAdminSubscriber,
   useAdminSubscribers,
   useUpdatePropertySku,
+  STATUS_LABEL,
+  STATUS_TONE,
+  PLAN_LABEL,
   type AdminSubscriberPropertySummary,
   type AdminUpdateSkuRequest,
 } from "@/lib/admin";
@@ -36,28 +40,6 @@ export const Route = createFileRoute("/admin/subscribers")({
   }),
   component: SubscribersPage,
 });
-
-const STATUS_LABEL: Record<string, string> = {
-  PENDING_ACTIVATION: "Pending activation",
-  ACTIVE: "Active",
-  PAUSED: "Paused",
-  PAYMENT_ISSUE: "Payment issue",
-  CANCELLED: "Cancelled",
-};
-
-const STATUS_TONE: Record<string, string> = {
-  PENDING_ACTIVATION: "bg-sky-500/10 text-sky-700",
-  ACTIVE: "bg-emerald-500/10 text-emerald-700",
-  PAUSED: "bg-muted text-muted-foreground",
-  PAYMENT_ISSUE: "bg-rose-500/10 text-rose-700",
-  CANCELLED: "bg-muted text-muted-foreground",
-};
-
-const PLAN_LABEL: Record<string, string> = {
-  ESSENTIAL: "Essential",
-  COMPLETE: "Complete",
-  PREMIER: "Premier",
-};
 
 function SubscribersPage() {
   const { data: subscribers, isLoading, isError, refetch } = useAdminSubscribers({ limit: 100 });
@@ -134,27 +116,14 @@ function SubscribersPage() {
         </Select>
       </div>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading subscribers.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading subscribers." className="mt-6" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load subscribers.</span>
-          <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load subscribers."
+          onRetry={() => void refetch()}
+          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {subscribers && (
@@ -243,16 +212,7 @@ function SubscriberDetailSheet({
           </SheetDescription>
         </SheetHeader>
 
-        {isLoading && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"
-          >
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            Loading subscriber.
-          </div>
-        )}
+        {isLoading && <PanelLoading label="Loading subscriber." className="mt-6" />}
 
         {isError && !isLoading && (
           <div

@@ -354,3 +354,43 @@ export function useAdminDashboard() {
     queryFn: () => get<AdminDashboardResponse>("/api/admin/dashboard"),
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* Display maps — subscriber status/plan, shared by the dashboard, the        */
+/* subscribers list, and the subscriber detail sheet.                         */
+/* -------------------------------------------------------------------------- */
+
+export const STATUS_LABEL: Record<string, string> = {
+  PENDING_ACTIVATION: "Pending activation",
+  ACTIVE: "Active",
+  PAUSED: "Paused",
+  PAYMENT_ISSUE: "Payment issue",
+  CANCELLED: "Cancelled",
+};
+
+export const STATUS_TONE: Record<string, string> = {
+  PENDING_ACTIVATION: "bg-sky-500/10 text-sky-700",
+  ACTIVE: "bg-emerald-500/10 text-emerald-700",
+  PAUSED: "bg-muted text-muted-foreground",
+  PAYMENT_ISSUE: "bg-rose-500/10 text-rose-700",
+  CANCELLED: "bg-muted text-muted-foreground",
+};
+
+export const PLAN_LABEL: Record<string, string> = {
+  ESSENTIAL: "Essential",
+  COMPLETE: "Complete",
+  PREMIER: "Premier",
+};
+
+/**
+ * `preferredWeek` is a LocalDate ("YYYY-MM-DD") with no time-of-day meaning.
+ * Anchoring it to UTC noon before formatting with an explicit UTC timeZone
+ * avoids an off-by-one day depending on the viewer's local timezone.
+ */
+export function formatWeekOf(dateStr: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${dateStr}T12:00:00Z`));
+}

@@ -3,8 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { zodValidator } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
-import { Wordmark } from "@/components/brand/Wordmark";
+import { AuthPageShell } from "@/components/auth/AuthPageShell";
 import { Button } from "@/components/ui/button";
+import { fieldCls, FieldWrap, FieldError } from "@/components/forms/Field";
 import { ApiError, post } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { canonicalUrl } from "@/lib/seo";
@@ -75,21 +76,9 @@ type ScreenState =
 function ActivatePage() {
   const { token } = Route.useSearch();
   return (
-    <div className="grid min-h-dvh place-items-center overflow-x-clip bg-background px-4 py-10">
-      {/* Ambient glows — decorative */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute -right-28 -top-36 size-[480px] animate-drift rounded-full bg-sage/35 blur-[90px]" />
-        <div className="absolute -left-40 bottom-[-130px] size-[420px] animate-drift rounded-full bg-honey-soft/45 blur-[90px] [animation-direction:alternate-reverse]" />
-      </div>
-
-      <main id="main" className="relative z-10 w-full max-w-[460px] animate-reveal">
-        <Link to="/" className="mb-6 flex items-center justify-center" aria-label="HomeKept home">
-          <Wordmark size="md" />
-        </Link>
-
-        <ActivateFlow token={token} />
-      </main>
-    </div>
+    <AuthPageShell outer="grid" glow="wide" maxWidthClassName="max-w-[460px]">
+      <ActivateFlow token={token} />
+    </AuthPageShell>
   );
 }
 
@@ -504,32 +493,5 @@ function SecondaryLink({ href, label }: { href: string; label: string }) {
           in __root.tsx's ErrorComponent). */}
       <a href={href}>{label}</a>
     </Button>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Field helpers — mirrors the convention in routes/book.tsx                  */
-/* -------------------------------------------------------------------------- */
-
-function fieldCls(invalid: boolean) {
-  return cn(
-    "w-full rounded-2xl border-[1.5px] bg-background px-4 py-3 text-[15px] text-foreground outline-none transition-all duration-200",
-    "placeholder:text-muted-foreground/60",
-    "focus:border-moss focus:bg-white focus:shadow-[0_0_0_4px_rgba(92,125,112,0.15)]",
-    invalid && "border-destructive bg-destructive/5 focus:border-destructive",
-    !invalid && "border-transparent",
-  );
-}
-
-function FieldWrap({ children, error }: { children: React.ReactNode; error?: string }) {
-  return <div className={cn("space-y-1.5", error && "has-error")}>{children}</div>;
-}
-
-function FieldError({ id, msg }: { id: string; msg?: string }) {
-  if (!msg) return null;
-  return (
-    <p id={id} role="alert" className="text-[12.5px] font-semibold text-destructive">
-      {msg}
-    </p>
   );
 }
