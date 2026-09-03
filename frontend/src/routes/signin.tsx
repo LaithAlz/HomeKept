@@ -8,6 +8,7 @@ import { AuthPageShell } from "@/components/auth/AuthPageShell";
 import { fieldCls, FieldWrap, FieldError } from "@/components/forms/Field";
 import { cn } from "@/lib/utils";
 import { ApiError, post } from "@/lib/api";
+import { getSession, homeFor } from "@/lib/auth";
 
 const searchSchema = z.object({
   next: z.string().optional(),
@@ -30,6 +31,14 @@ export const Route = createFileRoute("/signin")({
 
 const DEFAULT_REDIRECT = "/app";
 
+// A `next` that points back into the auth flow itself is never a useful
+// destination: it either bounces the visitor right back to sign-in (the
+// `/signin?next=/signin` loop a guard redirect can produce mid-transition,
+// see AppShell/AdminShell/TechGuard) or drops them on a page that expects a
+// one-time token, not a signed-in session. Treated the same as "no next" so
+// the caller falls through to the role-based landing.
+const AUTH_FLOW_PATHS = new Set(["/signin", "/forgot-password", "/reset-password", "/activate"]);
+
 /**
  * A "next" destination is only honoured when the WHATWG URL parser resolves
  * it to the current origin. A prefix check like `startsWith("/")` is not
@@ -39,6 +48,8 @@ const DEFAULT_REDIRECT = "/app";
  * off-site origin once parsed. Parsing with `URL` and comparing origins
  * closes that gap, and also rejects absolute URLs (`https://evil.com`) and
  * non-http(s) schemes (`javascript:...`), whose origin can never match.
+ * A same-origin `next` that lands back in the auth flow itself
+ * (`AUTH_FLOW_PATHS`) is rejected the same way.
  *
  * Deliberately called client-side only (from the submit handler, after a
  * user gesture) rather than at render time: this component is
@@ -48,9 +59,9 @@ function sanitizeNext(raw: string | undefined): string {
   if (!raw) return DEFAULT_REDIRECT;
   try {
     const url = new URL(raw, window.location.origin);
-    return url.origin === window.location.origin
-      ? `${url.pathname}${url.search}${url.hash}`
-      : DEFAULT_REDIRECT;
+    if (url.origin !== window.location.origin) return DEFAULT_REDIRECT;
+    if (AUTH_FLOW_PATHS.has(url.pathname)) return DEFAULT_REDIRECT;
+    return `${url.pathname}${url.search}${url.hash}`;
   } catch {
     return DEFAULT_REDIRECT;
   }
@@ -100,11 +111,22 @@ function SignInPage() {
 
     try {
       await post<void>("/api/auth/login", { email: email.trim(), password });
+      const target = sanitizeNext(next);
+      // No explicit (or valid) `next` was given: send the freshly-signed-in
+      // user to the shell for their role, not always the customer app — an
+      // admin or technician landing on `/app` has no subscriber row there
+      // and every card fails.
+      const destination =
+        target === DEFAULT_REDIRECT
+          ? await getSession()
+              .then((session) => (session ? homeFor(session.role) : DEFAULT_REDIRECT))
+              .catch(() => DEFAULT_REDIRECT)
+          : target;
       // Full navigation: the redirect target may be an arbitrary same-origin
       // path (see sanitizeNext), and a fresh load is the simplest way to let
       // the app layout's session guard pick up the cookie the login response
       // just set.
-      window.location.assign(sanitizeNext(next));
+      window.location.assign(destination);
     } catch (err) {
       setSubmitting(false);
 

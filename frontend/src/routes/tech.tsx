@@ -30,7 +30,7 @@ import { FlagSheet } from "@/components/tech/FlagSheet";
 import { MenuSheet } from "@/components/tech/MenuSheet";
 import { cn } from "@/lib/utils";
 import { messageFor } from "@/lib/api";
-import { getSession, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
+import { getSession, homeFor, logout, useSessionExpiredRedirect, type Session } from "@/lib/auth";
 import { identify, resetIdentity } from "@/lib/analytics";
 import { formatFullDate, formatTime, getCalendarParts } from "@/lib/format";
 import {
@@ -95,13 +95,14 @@ type GuardStatus = "checking" | "authorized" | "unauthenticated" | "wrong-role" 
  * "signed in" and "role === TECHNICIAN".
  *
  * Rules: signed out → `/signin?next=<current path>`; signed in but wrong
- * role → `/app` (mirrors `AppShell`'s destination for a rejected session).
+ * role → that role's own shell (`homeFor`), so e.g. an admin who hits
+ * `/tech` lands on `/admin`, not the customer app.
  */
 function TechGuard() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [status, setStatus] = useState<GuardStatus>("checking");
   const [session, setSession] = useState<Session | null>(null);
+  const [wrongRoleSession, setWrongRoleSession] = useState<Session | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -113,6 +114,7 @@ function TechGuard() {
         if (!s) {
           setStatus("unauthenticated");
         } else if (s.role !== "TECHNICIAN") {
+          setWrongRoleSession(s);
           setStatus("wrong-role");
         } else {
           // Internal user id only — never email/name (§5.7).
@@ -131,11 +133,16 @@ function TechGuard() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      navigate({ to: "/signin", search: { next: pathname }, replace: true });
-    } else if (status === "wrong-role") {
-      navigate({ to: "/app", replace: true });
+      // Read the path directly rather than depending on the router's
+      // reactive pathname: this effect must fire exactly once per
+      // unauthenticated guard resolution. If pathname were a dep, the
+      // effect re-runs once the navigate below lands on `/signin` (still
+      // mounted mid-transition) and re-navigates with `next=/signin`.
+      navigate({ to: "/signin", search: { next: window.location.pathname }, replace: true });
+    } else if (status === "wrong-role" && wrongRoleSession) {
+      navigate({ to: homeFor(wrongRoleSession.role), replace: true });
     }
-  }, [status, navigate, pathname]);
+  }, [status, navigate, wrongRoleSession]);
 
   if (status === "error") {
     return <SessionError onRetry={() => setAttempt((n) => n + 1)} compact />;

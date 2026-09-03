@@ -18,7 +18,7 @@ import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { getSession } from "@/lib/auth";
+import { getSession, homeFor, type Role } from "@/lib/auth";
 import { useAdminDashboard } from "@/lib/admin";
 
 type Item = {
@@ -55,16 +55,17 @@ type GuardStatus = "checking" | "authorized" | "unauthenticated" | "forbidden" |
  * Two failure modes, two destinations:
  *   - no session at all → `/signin?next=<current path>` (so a customer or a
  *     signed-out visitor lands back here after signing in, if they're admin).
- *   - a session that isn't role ADMIN → `/app`. A customer or technician must
- *     never see the admin console, not even a flash of the sidebar while the
- *     redirect is in flight — every non-"authorized" state below renders only
- *     a loading placeholder, never `<Outlet />` or the nav.
+ *   - a session that isn't role ADMIN → that role's own shell (`homeFor`).
+ *     A customer or technician must never see the admin console, not even a
+ *     flash of the sidebar while the redirect is in flight — every
+ *     non-"authorized" state below renders only a loading placeholder, never
+ *     `<Outlet />` or the nav.
  */
 export function AdminShell() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [guard, setGuard] = useState<GuardStatus>("checking");
   const [attempt, setAttempt] = useState(0);
+  const [forbiddenRole, setForbiddenRole] = useState<Role | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +76,7 @@ export function AdminShell() {
         if (!session) {
           setGuard("unauthenticated");
         } else if (session.role !== "ADMIN") {
+          setForbiddenRole(session.role);
           setGuard("forbidden");
         } else {
           setGuard("authorized");
@@ -90,11 +92,16 @@ export function AdminShell() {
 
   useEffect(() => {
     if (guard === "unauthenticated") {
-      navigate({ to: "/signin", search: { next: pathname }, replace: true });
-    } else if (guard === "forbidden") {
-      navigate({ to: "/app", replace: true });
+      // Read the path directly rather than depending on the router's
+      // reactive pathname: this effect must fire exactly once per
+      // unauthenticated guard resolution. If pathname were a dep, the
+      // effect re-runs once the navigate below lands on `/signin` (still
+      // mounted mid-transition) and re-navigates with `next=/signin`.
+      navigate({ to: "/signin", search: { next: window.location.pathname }, replace: true });
+    } else if (guard === "forbidden" && forbiddenRole) {
+      navigate({ to: homeFor(forbiddenRole), replace: true });
     }
-  }, [guard, navigate, pathname]);
+  }, [guard, navigate, forbiddenRole]);
 
   if (guard === "checking") {
     return <SessionLoading />;

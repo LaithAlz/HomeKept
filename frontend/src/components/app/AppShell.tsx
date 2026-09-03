@@ -18,7 +18,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SessionError, SessionLoading } from "@/components/app/SessionScreens";
 import { useAccount, useSubscription } from "@/lib/account";
 import { cn } from "@/lib/utils";
-import { getSession, logout } from "@/lib/auth";
+import { getSession, homeFor, logout, type Role } from "@/lib/auth";
 import { identify, resetIdentity } from "@/lib/analytics";
 
 const navItems = [
@@ -31,7 +31,7 @@ const navItems = [
   { to: "/app/settings", label: "Settings", icon: Settings, exact: false },
 ] as const;
 
-type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "error";
+type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "wrong-role" | "error";
 
 /**
  * Client-side auth guard for every `/app/*` route.
@@ -45,9 +45,9 @@ type GuardStatus = "checking" | "authenticated" | "unauthenticated" | "error";
  */
 export function AppShell() {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [guard, setGuard] = useState<GuardStatus>("checking");
   const [attempt, setAttempt] = useState(0);
+  const [role, setRole] = useState<Role | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,7 +57,16 @@ export function AppShell() {
         if (cancelled) return;
         // Internal user id only — never email/name (§5.7).
         if (session) identify(session.id);
-        setGuard(session ? "authenticated" : "unauthenticated");
+        if (!session) {
+          setGuard("unauthenticated");
+        } else if (session.role !== "CUSTOMER") {
+          // An admin or technician has no subscriber row, so every card here
+          // would fail — send them to their own shell instead.
+          setRole(session.role);
+          setGuard("wrong-role");
+        } else {
+          setGuard("authenticated");
+        }
       })
       .catch(() => {
         if (!cancelled) setGuard("error");
@@ -69,8 +78,18 @@ export function AppShell() {
 
   useEffect(() => {
     if (guard !== "unauthenticated") return;
-    navigate({ to: "/signin", search: { next: pathname }, replace: true });
-  }, [guard, navigate, pathname]);
+    // Read the path directly rather than depending on the router's reactive
+    // `pathname`: this effect must fire exactly once per unauthenticated
+    // guard resolution. If `pathname` were a dep, the effect re-runs when
+    // the navigate below lands on `/signin` (still mounted mid-transition)
+    // and re-navigates with `next=/signin`.
+    navigate({ to: "/signin", search: { next: window.location.pathname }, replace: true });
+  }, [guard, navigate]);
+
+  useEffect(() => {
+    if (guard !== "wrong-role" || !role) return;
+    navigate({ to: homeFor(role), replace: true });
+  }, [guard, role, navigate]);
 
   if (guard === "checking") {
     return <SessionLoading label="Loading your account." />;
@@ -83,6 +102,12 @@ export function AppShell() {
   if (guard === "unauthenticated") {
     // Redirect is in flight (see effect above) — render nothing so the
     // dashboard's mock content never flashes for a signed-out visitor.
+    return <SessionLoading label="Loading your account." />;
+  }
+
+  if (guard === "wrong-role") {
+    // Redirect is in flight (see effect above) — render nothing so the
+    // dashboard's mock content never flashes for a non-customer session.
     return <SessionLoading label="Loading your account." />;
   }
 

@@ -39,6 +39,18 @@ export async function getSession(): Promise<Session | null> {
   }
 }
 
+/**
+ * The app shell a given role lands in. Used both after sign-in (when there's
+ * no explicit `next`) and by each shell's role guard when it rejects a
+ * session that's signed in but holds the wrong role, so every entry point
+ * sends a role to the same home consistently.
+ */
+export function homeFor(role: Role): "/app" | "/tech" | "/admin" {
+  if (role === "ADMIN") return "/admin";
+  if (role === "TECHNICIAN") return "/tech";
+  return "/app";
+}
+
 /** Revokes the session (clears cookies server-side). Always resolves. */
 export async function logout(): Promise<void> {
   try {
@@ -61,11 +73,12 @@ export async function logout(): Promise<void> {
  */
 export function useSessionExpiredRedirect(error: unknown): void {
   const navigate = useNavigate();
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) {
-      navigate({ to: "/signin", search: { next: pathname }, replace: true });
+      // Read the path once here rather than depending on the router's reactive
+      // pathname, which changes mid-transition and would re-fire with next=/signin.
+      navigate({ to: "/signin", search: { next: window.location.pathname }, replace: true });
     }
-  }, [error, navigate, pathname]);
+  }, [error, navigate]);
 }
