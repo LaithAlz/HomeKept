@@ -268,7 +268,7 @@ function ManageSection({ subscription }: { subscription: AppSubscription }) {
   // ACTIVE), but a customer with a payment problem still needs a way out, so Cancel
   // (not Pause) is offered there alongside the always-available portal link.
   const canPause = status === "ACTIVE";
-  const canCancel = status === "ACTIVE" || status === "PAYMENT_ISSUE";
+  const canCancel = status === "ACTIVE" || status === "PAUSED" || status === "PAYMENT_ISSUE";
   const canResume = status === "PAUSED";
   const showsEndDate =
     status === "CANCELLED" &&

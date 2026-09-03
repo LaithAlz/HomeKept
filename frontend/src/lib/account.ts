@@ -124,7 +124,6 @@ export function usePortalSession(): UseMutationResult<void, unknown, void> {
  * POST /api/app/subscription/pause — requires ACTIVE, else `409
  * ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409
  * NO_BILLING_ACCOUNT`. Invalidates the subscription query on success so the
- * status pill and controls update from the response's `status` without
  * waiting for the async Stripe webhook.
  */
 export function usePauseSubscription(): UseMutationResult<

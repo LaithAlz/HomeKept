@@ -110,7 +110,8 @@ function useVisits<T = AppVisitListItem[]>(
  * client-side; falls back to an empty array (no next visit) if none remain.
  */
 export function useNextVisit(): UseQueryResult<AppVisitListItem[]> {
-  return useVisits({ status: "SCHEDULED" }, (visits) => {
+  // limit 100 is the API maximum; a subscriber has at most a year of scheduled visits.
+  return useVisits({ status: "SCHEDULED", limit: 100 }, (visits) => {
     const now = Date.now();
     const upcoming = visits.filter(
       (v) => v.status === "SCHEDULED" && new Date(v.scheduledFor).getTime() >= now,
