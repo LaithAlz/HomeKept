@@ -68,8 +68,8 @@ function sanitizeNext(raw: string | undefined): string {
     // inputs like "/..//evil.com", which location.assign would then treat as
     // protocol-relative. Only a single leading slash is a same-origin path.
     if (!/^\/(?![/\\])/.test(dest)) return DEFAULT_REDIRECT;
-    if (AUTH_FLOW_PATHS.has(url.pathname.replace(/\/+$/, "").toLowerCase()))
-      return DEFAULT_REDIRECT;
+    const page = decodeURIComponent(url.pathname).replace(/\/+$/, "").toLowerCase();
+    if (page === "" || AUTH_FLOW_PATHS.has(page)) return DEFAULT_REDIRECT;
     return dest;
   } catch {
     return DEFAULT_REDIRECT;
