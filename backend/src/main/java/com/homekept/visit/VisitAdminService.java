@@ -336,13 +336,7 @@ public class VisitAdminService {
         List<Long> ids = rows.stream().map(VisitService::getServiceId).distinct().collect(Collectors.toList());
         Map<Long, String> nameById = catalogService.getServiceNamesByIds(ids);
         return rows.stream()
-                .map(vs -> new VisitServiceItem(
-                        vs.getId(),
-                        vs.getServiceId(),
-                        nameById.getOrDefault(vs.getServiceId(), "Unknown service"),
-                        vs.getSource().name(),
-                        vs.isCompleted(),
-                        vs.getTechnicianNotes()))
+                .map(vs -> VisitServiceItem.from(vs, nameById))
                 .collect(Collectors.toList());
     }
 }

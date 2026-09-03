@@ -12,6 +12,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
+import java.util.Map;
 
 /**
  * A scheduled or historical maintenance visit for a subscriber's property.
@@ -151,4 +152,39 @@ public class Visit {
     public void setCompletedAt(Instant completedAt) { this.completedAt = completedAt; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    /**
+     * Resolves the human-readable name shown to both the customer (app) and the
+     * technician (day sheet) — the single source of truth for "what this visit is called"
+     * so the two views can never drift.
+     *
+     * <ul>
+     *   <li>Template-driven visits (ROUTINE with {@code visitTemplateId} set): the
+     *       template's {@code name} (e.g. "Fall winterization" — see the visit calendar
+     *       in docs/pricing-and-visits.md).</li>
+     *   <li>EXTRA visits (à-la-carte add-ons): "Extra visit".</li>
+     *   <li>WALKTHROUGH visits: "Walk-through".</li>
+     *   <li>WARRANTY visits: "Warranty visit".</li>
+     *   <li>Any other ROUTINE with no template: "Routine visit" (admin-created).</li>
+     * </ul>
+     *
+     * @param templateNames a pre-loaded map of {@code visitTemplateId} → template name.
+     *                      Callers batch-load this for a page of visits to avoid an N+1
+     *                      query per visit; a visit with no matching entry falls back to
+     *                      the type-based name below.
+     */
+    public String resolveDisplayName(Map<Long, String> templateNames) {
+        if (visitTemplateId != null) {
+            String name = templateNames.get(visitTemplateId);
+            if (name != null) {
+                return name;
+            }
+        }
+        return switch (type) {
+            case EXTRA -> "Extra visit";
+            case WALKTHROUGH -> "Walk-through";
+            case WARRANTY -> "Warranty visit";
+            case ROUTINE -> "Routine visit";
+        };
+    }
 }

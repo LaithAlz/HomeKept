@@ -118,11 +118,13 @@ public class VisitAppService {
                             subscriberId, pageable);
         }
 
+        List<Long> visitIds = visits.stream().map(Visit::getId).collect(Collectors.toList());
         Map<Long, String> templateNames = loadTemplateNames(visits);
-        Set<Long> pendingVisitIds = rescheduleService.pendingRequestVisitIds(
-                visits.stream().map(Visit::getId).collect(Collectors.toList()));
+        Set<Long> pendingVisitIds = rescheduleService.pendingRequestVisitIds(visitIds);
+        Map<Long, List<VisitServiceItem>> servicesByVisitId = loadServiceItemsByVisitIds(visitIds);
         return visits.stream()
-                .map(v -> toListItem(v, loadServiceItems(v.getId()), templateNames, pendingVisitIds))
+                .map(v -> toListItem(v, servicesByVisitId.getOrDefault(v.getId(), List.of()),
+                        templateNames, pendingVisitIds))
                 .collect(Collectors.toList());
     }
 
@@ -156,7 +158,7 @@ public class VisitAppService {
                                         Map<Long, String> templateNames, Set<Long> pendingVisitIds) {
         return new AppVisitListItem(
                 v.getId(),
-                resolveVisitName(v, templateNames),
+                v.resolveDisplayName(templateNames),
                 v.getScheduledFor(),
                 v.getDurationMinutes(),
                 v.getStatus().name(),
@@ -173,7 +175,7 @@ public class VisitAppService {
                                     boolean hasPendingRescheduleRequest) {
         return new AppVisitDetail(
                 v.getId(),
-                resolveVisitName(v, templateNames),
+                v.resolveDisplayName(templateNames),
                 v.getScheduledFor(),
                 v.getDurationMinutes(),
                 v.getActualDurationMinutes(),
@@ -189,39 +191,13 @@ public class VisitAppService {
         );
     }
 
-    /**
-     * Resolves the human-readable visit name.
-     *
-     * <ul>
-     *   <li>Template-driven visits (ROUTINE with {@code visitTemplateId} set): use the
-     *       template's {@code name} field (e.g. "Fall winterization").</li>
-     *   <li>EXTRA visits (à-la-carte add-ons): "Extra visit".</li>
-     *   <li>WALKTHROUGH visits: "Walk-through".</li>
-     *   <li>WARRANTY visits: "Warranty visit".</li>
-     *   <li>Any other ROUTINE with no template: "Routine visit" (admin-created).</li>
-     * </ul>
-     */
-    private String resolveVisitName(Visit v, Map<Long, String> templateNames) {
-        if (v.getVisitTemplateId() != null) {
-            String name = templateNames.get(v.getVisitTemplateId());
-            if (name != null) {
-                return name;
-            }
-        }
-        return switch (v.getType()) {
-            case EXTRA -> "Extra visit";
-            case WALKTHROUGH -> "Walk-through";
-            case WARRANTY -> "Warranty visit";
-            case ROUTINE -> "Routine visit";
-        };
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Batch-loads template names for the given list of visits.
-     * Returns a map of templateId → template name. Visits with no template id are skipped.
-     * Uses a single {@code findAllById} call to avoid N+1 queries.
+     * Batch-loads template names for the given list of visits, for
+     * {@link Visit#resolveDisplayName}. Returns a map of templateId → template name.
+     * Visits with no template id are skipped. Uses a single {@code findAllById} call to
+     * avoid N+1 queries.
      */
     private Map<Long, String> loadTemplateNames(List<Visit> visits) {
         List<Long> templateIds = visits.stream()
@@ -249,7 +225,7 @@ public class VisitAppService {
     }
 
     /**
-     * Loads the checklist items for a visit, resolving service names via CatalogService.
+     * Loads the checklist items for a single visit, resolving service names via CatalogService.
      */
     private List<VisitServiceItem> loadServiceItems(Long visitId) {
         List<VisitService> rows = visitServiceRepository.findByVisitIdOrderByIdAsc(visitId);
@@ -260,15 +236,29 @@ public class VisitAppService {
         Map<Long, String> nameById = catalogService.getServiceNamesByIds(serviceIds);
 
         return rows.stream()
-                .map(vs -> new VisitServiceItem(
-                        vs.getId(),
-                        vs.getServiceId(),
-                        nameById.getOrDefault(vs.getServiceId(), "Unknown service"),
-                        vs.getSource().name(),
-                        vs.isCompleted(),
-                        vs.getTechnicianNotes()
-                ))
+                .map(vs -> VisitServiceItem.from(vs, nameById))
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Batch equivalent of {@link #loadServiceItems} for a page of visits: one query for all
+     * checklist rows plus one query for all service names, instead of two queries per visit
+     * (avoids the N+1 that {@link #listVisits} previously had).
+     */
+    private Map<Long, List<VisitServiceItem>> loadServiceItemsByVisitIds(List<Long> visitIds) {
+        if (visitIds.isEmpty()) {
+            return Map.of();
+        }
+        List<VisitService> rows = visitServiceRepository.findByVisitIdInOrderByIdAsc(visitIds);
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> serviceIds = rows.stream().map(VisitService::getServiceId).distinct().collect(Collectors.toList());
+        Map<Long, String> nameById = catalogService.getServiceNamesByIds(serviceIds);
+
+        return rows.stream()
+                .collect(Collectors.groupingBy(VisitService::getVisitId,
+                        Collectors.mapping(vs -> VisitServiceItem.from(vs, nameById), Collectors.toList())));
     }
 
     /**
