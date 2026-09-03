@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Calendar, MapPin, Check, X, Send, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { NewBookingSheet } from "@/components/admin/NewBookingSheet";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
@@ -26,6 +27,7 @@ const NON_TERMINAL: BookingStatus[] = ["PENDING", "CONFIRMED", "PERFORMED"];
 
 function WalkthroughsPage() {
   const { data: bookings, isLoading, isError, refetch } = useAdminBookings({ limit: 100 });
+  const [newBookingOpen, setNewBookingOpen] = useState(false);
 
   return (
     <div className="px-6 py-8">
@@ -36,8 +38,12 @@ function WalkthroughsPage() {
             Free 90-minute in-home visits across Mississauga, Oakville, and Milton.
           </p>
         </div>
-        <Button size="sm">Schedule walk-through</Button>
+        <Button size="sm" onClick={() => setNewBookingOpen(true)}>
+          Schedule walk-through
+        </Button>
       </div>
+
+      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} />
 
       {isLoading && <PanelLoading label="Loading the pipeline." className="mt-8" />}
 
