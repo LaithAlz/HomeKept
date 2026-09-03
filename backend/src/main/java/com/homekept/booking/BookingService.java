@@ -147,7 +147,8 @@ public class BookingService {
         props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
         // Bound to the service-area set — a direct API call bypassing the dropdown can't
         // put free text into analytics; anything else is bucketed to "Other".
-        props.put("city", SERVICE_AREA_CITIES.contains(saved.getCity()) ? saved.getCity() : "Other");
+        String city = saved.getCity();
+        props.put("city", city != null && SERVICE_AREA_CITIES.contains(city) ? city : "Other");
         props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
         analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
 

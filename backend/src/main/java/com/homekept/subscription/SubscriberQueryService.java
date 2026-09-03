@@ -61,7 +61,6 @@ public class SubscriberQueryService {
      * @return the subscriber
      * @throws SubscriberNotFoundException if the user has no subscriber row (404)
      */
-    @Transactional(readOnly = true)
     Subscriber requireByUserId(Long userId) {
         return subscriberRepository.findByUserId(userId)
                 .orElseThrow(() -> new SubscriberNotFoundException(
