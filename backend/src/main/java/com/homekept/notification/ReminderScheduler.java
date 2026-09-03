@@ -116,7 +116,7 @@ public class ReminderScheduler {
                 continue;
             }
             // A missing recipient (subscriber/user not found) is logged and skipped inside
-            // the notifier itself — mirrors DefaultVisitReportNotifier.
+            // the notifier itself — mirrors VisitReportNotifier.
             visitReminderNotifier.sendVisitReminder(target.visitId(), target.subscriberId(), target.scheduledFor());
         }
     }

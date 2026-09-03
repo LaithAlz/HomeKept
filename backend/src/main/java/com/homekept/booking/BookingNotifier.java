@@ -1,14 +1,63 @@
 package com.homekept.booking;
 
+import com.homekept.notification.EmailSender;
+import com.homekept.notification.EmailTemplates;
+import com.homekept.notification.RenderedEmail;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * Notification seam for booking-related emails.
+ * Sends the booking-confirmation email when a walk-through booking is submitted, and the
+ * 24h-before walk-through reminder (#89), via {@link EmailSender} (SendGrid).
  *
- * <p>{@link DefaultBookingNotifier} sends the real booking-confirmation email via the
- * notification domain's {@code EmailSender} (SendGrid) — see #11.
+ * <p>Unlike the subscriber-facing notifiers, no recipient-resolver lookup is needed here —
+ * the prospective subscriber's name and email live directly on the {@link WalkthroughBooking}
+ * (no account exists yet at this stage).
+ *
+ * <p>No PII is logged — only the booking ID (internal) is referenced, per CLAUDE.md.
  */
-public interface BookingNotifier {
+@Component
+public class BookingNotifier {
+
+    private static final Logger log = LoggerFactory.getLogger(BookingNotifier.class);
+
+    private static final DateTimeFormatter WEEK_FORMAT =
+            DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.ENGLISH);
+
+    /** Renders a reminder's scheduled time, e.g. "Tuesday, July 14 at 2:00 PM". */
+    private static final DateTimeFormatter REMINDER_WHEN_FORMAT =
+            DateTimeFormatter.ofPattern("EEEE, MMMM d 'at' h:mm a", Locale.ENGLISH);
+
+    private static final Map<BookingDayOfWeek, String> DAY_NAMES = new EnumMap<>(BookingDayOfWeek.class);
+
+    static {
+        DAY_NAMES.put(BookingDayOfWeek.MON, "Monday");
+        DAY_NAMES.put(BookingDayOfWeek.TUE, "Tuesday");
+        DAY_NAMES.put(BookingDayOfWeek.WED, "Wednesday");
+        DAY_NAMES.put(BookingDayOfWeek.THU, "Thursday");
+        DAY_NAMES.put(BookingDayOfWeek.FRI, "Friday");
+        DAY_NAMES.put(BookingDayOfWeek.SAT, "Saturday");
+        DAY_NAMES.put(BookingDayOfWeek.SUN, "Sunday");
+    }
+
+    private final EmailSender emailSender;
+    private final ZoneId renderZoneId;
+
+    public BookingNotifier(EmailSender emailSender, ZoneId renderZoneId) {
+        this.emailSender = emailSender;
+        this.renderZoneId = renderZoneId;
+    }
 
     /**
      * Called after a new walk-through booking is persisted.
@@ -16,7 +65,22 @@ public interface BookingNotifier {
      *
      * @param booking the newly created booking
      */
-    void sendBookingConfirmation(WalkthroughBooking booking);
+    public void sendBookingConfirmation(WalkthroughBooking booking) {
+        String firstName = firstNameOf(booking.getFullName());
+        String weekLabel = booking.getPreferredWeek() != null
+                ? booking.getPreferredWeek().format(WEEK_FORMAT)
+                : "";
+        String timeOfDayLabel = booking.getTimeOfDay() != null
+                ? booking.getTimeOfDay().name().toLowerCase(Locale.ENGLISH)
+                : "";
+        String dayPreferencesLabel = formatDayPreferences(booking.getDayPreferences());
+        String addressLabel = formatAddress(booking.getStreetAddress(), booking.getCity());
+
+        RenderedEmail rendered = EmailTemplates.bookingConfirmation(
+                firstName, weekLabel, timeOfDayLabel, dayPreferencesLabel, addressLabel);
+        emailSender.send(booking.getEmail(), firstName, rendered.subject(), rendered.htmlBody());
+        log.info("booking_confirmation_email_dispatched bookingId={}", booking.getId());
+    }
 
     /**
      * Sends the 24h-before walk-through reminder (#89), triggered by
@@ -34,6 +98,51 @@ public interface BookingNotifier {
      * @param city          property city
      * @param scheduledFor  the walk-through's scheduled time (UTC; rendered in the display zone)
      */
-    void sendBookingReminder(Long bookingId, String email, String fullName,
-            String streetAddress, String city, Instant scheduledFor);
+    public void sendBookingReminder(Long bookingId, String email, String fullName,
+            String streetAddress, String city, Instant scheduledFor) {
+        String firstName = firstNameOf(fullName);
+        String whenLabel = REMINDER_WHEN_FORMAT.format(scheduledFor.atZone(renderZoneId));
+        String addressLabel = formatAddress(streetAddress, city);
+
+        RenderedEmail rendered = EmailTemplates.walkthroughReminder(firstName, whenLabel, addressLabel);
+        emailSender.send(email, firstName, rendered.subject(), rendered.htmlBody());
+        log.info("walkthrough_reminder_email_dispatched bookingId={}", bookingId);
+    }
+
+    /** Splits the stored full name on the first space, mirroring BookingService's activation split. */
+    private static String firstNameOf(String fullName) {
+        if (fullName == null || fullName.isBlank()) {
+            return null;
+        }
+        String trimmed = fullName.trim();
+        int spaceIndex = trimmed.indexOf(' ');
+        return spaceIndex < 0 ? trimmed : trimmed.substring(0, spaceIndex);
+    }
+
+    private static String formatAddress(String streetAddress, String city) {
+        boolean hasStreet = streetAddress != null && !streetAddress.isBlank();
+        boolean hasCity = city != null && !city.isBlank();
+        if (hasStreet && hasCity) {
+            return streetAddress + ", " + city;
+        }
+        return hasStreet ? streetAddress : (hasCity ? city : "");
+    }
+
+    /** Renders day-of-week preferences in Mon-Sun order, e.g. "Wednesday and Thursday". */
+    private static String formatDayPreferences(Set<BookingDayOfWeek> days) {
+        if (days == null || days.isEmpty()) {
+            return null;
+        }
+        List<String> ordered = new ArrayList<>();
+        for (BookingDayOfWeek day : BookingDayOfWeek.values()) {
+            if (days.contains(day)) {
+                ordered.add(DAY_NAMES.get(day));
+            }
+        }
+        if (ordered.size() == 1) {
+            return ordered.get(0);
+        }
+        String allButLast = String.join(", ", ordered.subList(0, ordered.size() - 1));
+        return allButLast + " and " + ordered.get(ordered.size() - 1);
+    }
 }
