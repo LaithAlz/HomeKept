@@ -547,7 +547,7 @@ the first ADMIN is created by seed migration.
 - `@PreAuthorize("hasRole('ADMIN') or @subscriberSecurity.isOwner(#id, authentication)")` for resources a customer can only see if they own them
 
 **Rate limiting:**
-- *MVP:* none on most endpoints. Add to `/api/auth/login` (5 attempts per email per 15 minutes) and `/api/bookings/walkthrough` (3 submissions per IP per hour).
+- *MVP:* none on most endpoints. Add to `/api/auth/login` (5 attempts per email per 15 minutes) and `/api/bookings/walkthrough` (10 submissions per IP per hour).
 - *Post-MVP:* Bucket4j with Redis backing.
 - *Scale:* Cloudflare or a dedicated WAF in front of the API.
 

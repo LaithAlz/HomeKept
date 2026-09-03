@@ -235,7 +235,7 @@ removing any endpoint requires updating `api-contract.md` in the same PR.
 
 | Method | Path | Purpose | Controller |
 |---|---|---|---|
-| POST | `/api/bookings/walkthrough` | Submit walk-through booking (rate-limited 3/IP/hr) | `booking/BookingController` |
+| POST | `/api/bookings/walkthrough` | Submit walk-through booking (rate-limited 10/IP/hr) | `booking/BookingController` |
 | GET | `/api/catalog/plans` | Plan tiers and pricing | `catalog/CatalogController` |
 | GET | `/api/catalog/picks` | À-la-carte picks menu | `catalog/CatalogController` |
 | GET | `/api/health` | Liveness (`{status:UP}`), UptimeRobot target | `common/HealthController` |
@@ -409,7 +409,7 @@ role mismatches, produced automatically by `@PreAuthorize` failures
 
 Four in-memory, per-instance `ConcurrentHashMap` limiters (each documented as MVP, to be
 replaced by Bucket4j + Redis at Stage 3). Values match the spec exactly: login 5/email/15min
-(`LoginRateLimiter`), walkthrough 3/IP/hr (`BookingRateLimiter`), activation 10/IP/hr shared
+(`LoginRateLimiter`), walkthrough 10/IP/hr (`BookingRateLimiter`), activation 10/IP/hr shared
 across validate+complete (`ActivationRateLimiter`), forgot-password 5/IP/hr
 (`ForgotPasswordRateLimiter`). Each is a plain injected `@Component` whose `tryConsume(key)`
 is called at the top of the relevant flow, throwing `RateLimitExceededException` (mapped to

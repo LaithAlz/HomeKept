@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Missing required fields → 400</li>
  *   <li>Invalid squareFootageRange → 400</li>
  *   <li>leadSource defaults to WEBSITE_DIRECT when absent</li>
- *   <li>Rate limit 3/IP → 4th request returns 429</li>
+ *   <li>Rate limit 10/IP → 11th request returns 429</li>
  *   <li>GET /api/admin/bookings — 401 without auth, 403 as CUSTOMER, 200 as ADMIN</li>
  *   <li>GET /api/admin/bookings — paginates and filters by status</li>
  *   <li>PATCH /api/admin/bookings/{id} — happy path transition</li>

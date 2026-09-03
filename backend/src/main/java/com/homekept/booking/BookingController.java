@@ -16,7 +16,7 @@ import java.net.URI;
 
 /**
  * Public booking endpoint — no auth required (added to SecurityConfig allowlist).
- * Rate limited: 3 submissions per IP per hour.
+ * Rate limited: 10 submissions per IP per hour.
  *
  * <p>IP is resolved via {@link ClientIpResolver#resolve(HttpServletRequest)}, which
  * prefers the {@code CF-Connecting-IP} header (set by Cloudflare, not spoofable by
@@ -38,7 +38,7 @@ public class BookingController {
     /**
      * POST /api/bookings/walkthrough
      * Public — added to SecurityConfig allowlist.
-     * Rate limit: 3/IP/hour (per api-contract.md).
+     * Rate limit: 10/IP/hour (per api-contract.md).
      * On success: 201 { id, status: "PENDING" }.
      */
     @PostMapping("/walkthrough")

@@ -49,7 +49,7 @@ Walk-through booking form submission (frontend `book` wizard).
   "posthogDistinctId": "0190..."      // optional — anonymous analytics ID for funnel stitching (arch §5.7)
 }
 ```
-→ `201 { "id": 123, "status": "PENDING" }` · Rate limit: 3/IP/hour. Triggers
+→ `201 { "id": 123, "status": "PENDING" }` · Rate limit: 10/IP/hour. Triggers
 booking-confirmation email.
 
 ### `GET /api/catalog/plans`
