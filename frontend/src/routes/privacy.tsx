@@ -176,15 +176,12 @@ function PrivacyPage() {
                   protection regardless of where data is hosted, not that it be stored in Canada.
                 </li>
                 <li>
-                  <strong>Vercel</strong>: website hosting and edge delivery for homekept.ca.
+                  <strong>Cloudflare</strong> (United States): website hosting and edge delivery for
+                  homekept.ca.
                 </li>
                 <li>
                   <strong>SendGrid</strong> (United States): transactional email (visit
                   confirmations, reports, account notifications).
-                </li>
-                <li>
-                  <strong>Sentry</strong>: error monitoring. Error events may include technical
-                  context (e.g. a URL or user ID) to help us diagnose problems.
                 </li>
                 <li>
                   <strong>PostHog</strong> (United States): product analytics. See section 6 for

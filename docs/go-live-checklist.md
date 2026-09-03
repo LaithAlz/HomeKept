@@ -64,8 +64,7 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 ## 6. Analytics / error tracking (optional at launch)
 - [ ] **PostHog** (#63) — create a project, set `POSTHOG_API_KEY` + `VITE_PUBLIC_POSTHOG_KEY`.
       Fully wired (server events + frontend, PII-scrubbed); a silent no-op until the key is set.
-- [ ] **Sentry** (#121) — not wired yet. Either add it or remove it from the privacy policy so
-      you're not naming a processor you don't use.
+- [x] **Sentry** (#121) — not used; removed from the privacy policy 2026-09-03.
 
 ## 7. Verify end-to-end (against the deployed stack; #13, #20, #28, #33, #37)
 - [ ] Auth: register-via-activation, login, refresh, logout, forgot/reset password.
