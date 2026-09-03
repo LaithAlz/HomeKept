@@ -40,18 +40,18 @@ import java.time.Instant;
 @Service
 public class SubscriptionAppService {
 
-    private final SubscriberRepository subscriberRepository;
+    private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final UserQueryService userQueryService;
     private final PropertyService propertyService;
     private final VisitQueryService visitQueryService;
 
-    public SubscriptionAppService(SubscriberRepository subscriberRepository,
+    public SubscriptionAppService(SubscriberQueryService subscriberQueryService,
                                   CatalogService catalogService,
                                   UserQueryService userQueryService,
                                   PropertyService propertyService,
                                   VisitQueryService visitQueryService) {
-        this.subscriberRepository = subscriberRepository;
+        this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.userQueryService = userQueryService;
         this.propertyService = propertyService;
@@ -66,7 +66,7 @@ public class SubscriptionAppService {
      */
     @Transactional(readOnly = true)
     public AppSubscriptionResponse getSubscription(Long userId) {
-        Subscriber subscriber = requireSubscriber(userId);
+        Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         String planCode = null;
         String planDisplayName = null;
@@ -105,7 +105,7 @@ public class SubscriptionAppService {
      */
     @Transactional(readOnly = true)
     public AppAccountResponse getAccount(Long userId) {
-        Subscriber subscriber = requireSubscriber(userId);
+        Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         var profile = userQueryService.findProfileById(userId)
                 .orElseThrow(() -> new IllegalStateException(
@@ -125,12 +125,6 @@ public class SubscriptionAppService {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private Subscriber requireSubscriber(Long userId) {
-        return subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
-    }
 
     /**
      * Resolves the price actually charged for the subscriber's billing cycle.

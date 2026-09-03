@@ -52,6 +52,23 @@ public class SubscriberQueryService {
     }
 
     /**
+     * Finds a subscriber by the owning user's id, or throws (404 per the ownership-failure
+     * rule). Package-private: this hard-failing variant is for {@code subscription}-domain
+     * services only (their own {@link SubscriberNotFoundException}); other domains use
+     * {@link #findByUserId} and decide their own not-found handling.
+     *
+     * @param userId the identity-domain user id
+     * @return the subscriber
+     * @throws SubscriberNotFoundException if the user has no subscriber row (404)
+     */
+    @Transactional(readOnly = true)
+    Subscriber requireByUserId(Long userId) {
+        return subscriberRepository.findByUserId(userId)
+                .orElseThrow(() -> new SubscriberNotFoundException(
+                        "No subscriber row found for userId=" + userId));
+    }
+
+    /**
      * Finds all subscribers currently in the given status.
      *
      * <p>Used by {@code com.homekept.visit.VisitTopUpScheduler} (the daily visit-scheduling

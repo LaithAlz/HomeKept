@@ -1,6 +1,7 @@
 package com.homekept.visit;
 
 import com.homekept.catalog.CatalogService;
+import com.homekept.common.Pagination;
 import com.homekept.subscription.SubscriberNotFoundException;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AdminCreateVisitRequest;
@@ -131,7 +132,7 @@ public class VisitAdminService {
      */
     @Transactional(readOnly = true)
     public List<AdminVisitListItem> listVisits(String status, Long cursor, Integer limit) {
-        int pageSize = resolveLimit(limit);
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
         List<Visit> visits;
@@ -295,13 +296,6 @@ public class VisitAdminService {
         Visit saved = visitRepository.save(visit);
         log.info("admin_visit_cancelled visitId={} subscriberId={}", saved.getId(), saved.getSubscriberId());
         return toResponse(saved, loadServiceItems(saved.getId()));
-    }
-
-    private int resolveLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(limit, 100);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

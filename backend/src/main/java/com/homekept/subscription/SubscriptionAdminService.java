@@ -1,6 +1,7 @@
 package com.homekept.subscription;
 
 import com.homekept.catalog.CatalogService;
+import com.homekept.common.Pagination;
 import com.homekept.property.PropertyService;
 import com.homekept.subscription.dto.AdminSubscriberDetail;
 import com.homekept.subscription.dto.AdminSubscriberListItem;
@@ -49,7 +50,7 @@ public class SubscriptionAdminService {
      */
     @Transactional(readOnly = true)
     public List<AdminSubscriberListItem> listSubscribers(Long cursor, Integer limit) {
-        int pageSize = resolveLimit(limit);
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
         List<Subscriber> subscribers = (cursor != null)
@@ -165,8 +166,7 @@ public class SubscriptionAdminService {
                 s.getStartedAt(),
                 s.getPausedAt(),
                 s.getCancelledAt(),
-                propertySummary,
-                List.of()
+                propertySummary
         );
     }
 
@@ -187,12 +187,5 @@ public class SubscriptionAdminService {
             }
         }
         return catalogService.getMonthlyPriceCents(s.getPlanTierId());
-    }
-
-    private int resolveLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(limit, 100);
     }
 }

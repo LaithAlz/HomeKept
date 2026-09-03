@@ -1,5 +1,6 @@
 package com.homekept.identity;
 
+import com.homekept.common.Hashing;
 import com.homekept.config.AppProperties;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
 import org.springframework.stereotype.Service;
@@ -8,8 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
@@ -72,7 +71,7 @@ public class PasswordResetTokenService {
 
         String payload = "userId=" + user.getId() + "&nonce=" + nonce + "&exp=" + expEpoch;
         String rawToken = buildSignedToken(payload);
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
 
         PasswordResetToken token = new PasswordResetToken(user, hash, expiresAt);
         PasswordResetToken saved = tokenRepository.save(token);
@@ -132,7 +131,7 @@ public class PasswordResetTokenService {
         }
 
         // 4. Look up in DB by hash
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         PasswordResetToken token = tokenRepository.findByTokenHash(hash).orElse(null);
         if (token == null) {
             return ValidationResult.invalid("INVALID");
@@ -173,7 +172,7 @@ public class PasswordResetTokenService {
         // The loser of the race updates 0 rows and is rejected — single-use is DB-enforced,
         // not dependent on a read-then-write window.
         Instant now = Instant.now();
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         int updated = tokenRepository.consumeIfUnconsumed(hash, now);
         if (updated == 0) {
             throw new InvalidPasswordResetTokenException("USED");
@@ -261,16 +260,6 @@ public class PasswordResetTokenService {
         byte[] bytes = new byte[16];
         secureRandom.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
-    }
-
-    static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     // ── Result types ──────────────────────────────────────────────────────────
