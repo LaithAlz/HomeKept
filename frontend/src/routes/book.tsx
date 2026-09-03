@@ -1233,7 +1233,10 @@ function SuccessScreen({
       <p className="mx-auto mt-3 max-w-[42ch] text-[15px] text-muted-foreground">
         We&rsquo;ll email <strong className="font-medium text-foreground">{email}</strong> to
         confirm a {timeLabel} slot during{" "}
-        <strong className="font-medium text-foreground">{weekLabel.toLowerCase()}</strong>.
+        <strong className="font-medium text-foreground">
+          {weekLabel.replace(/^Week/, "the week")}
+        </strong>
+        .
       </p>
 
       <ul className="mx-auto mt-8 max-w-sm space-y-3 text-left" aria-label="What happens next">
