@@ -185,7 +185,7 @@ public class ActivationService {
 
         BookingActivationData data = bookingService.getActivationData(bookingId);
 
-        // sendActivationLink(email, rawToken, bookingId) — email is not logged by DefaultActivationNotifier
+        // sendActivationLink(email, rawToken, bookingId) — email is not logged by ActivationNotifier
         activationNotifier.sendActivationLink(data.email(), mint.rawToken(), bookingId);
 
         log.info("Activation invite sent bookingId={} tokenId={}", bookingId, mint.tokenId());

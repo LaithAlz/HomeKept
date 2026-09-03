@@ -1,11 +1,48 @@
 package com.homekept.subscription;
 
-/**
- * Notifies a subscriber that an invoice payment failed (Stripe will retry). Fired from
- * {@code invoice.payment_failed}. The real implementation sends a "update your payment
- * method" email; it is best-effort and must never break webhook processing.
- */
-public interface PaymentFailedNotifier {
+import com.homekept.config.AppProperties;
+import com.homekept.identity.UserQueryService.UserContact;
+import com.homekept.notification.EmailSender;
+import com.homekept.notification.EmailTemplates;
+import com.homekept.notification.RecipientResolver;
+import com.homekept.notification.RenderedEmail;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
-    void onPaymentFailed(Long subscriberId);
+import java.util.Optional;
+
+/**
+ * Sends the "payment didn't go through" email on {@code invoice.payment_failed}
+ * (Stripe will retry the invoice). Best-effort; a missing recipient or send failure never
+ * breaks webhook processing.
+ */
+@Component
+public class PaymentFailedNotifier {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentFailedNotifier.class);
+
+    private final RecipientResolver recipientResolver;
+    private final EmailSender emailSender;
+    private final AppProperties appProperties;
+
+    public PaymentFailedNotifier(RecipientResolver recipientResolver,
+                                        EmailSender emailSender,
+                                        AppProperties appProperties) {
+        this.recipientResolver = recipientResolver;
+        this.emailSender = emailSender;
+        this.appProperties = appProperties;
+    }
+
+    public void onPaymentFailed(Long subscriberId) {
+        Optional<UserContact> contact = recipientResolver.forSubscriber(subscriberId);
+        if (contact.isEmpty()) {
+            return;
+        }
+        String billingUrl = appProperties.frontendBaseUrl() + "/app/billing";
+        RenderedEmail rendered = EmailTemplates.paymentFailed(contact.get().firstName(), billingUrl);
+        emailSender.send(contact.get().email(), contact.get().firstName(),
+                rendered.subject(), rendered.htmlBody());
+        log.info("payment_failed_email_dispatched subscriberId={}", subscriberId);
+    }
 }
