@@ -46,8 +46,11 @@ const AUTH_FLOW_PATHS = new Set(["/signin", "/forgot-password", "/reset-password
  * input before parsing, so a string a naive check accepts (e.g.
  * `"/\t/evil.com"`, which "starts with a single /") still resolves to an
  * off-site origin once parsed. Parsing with `URL` and comparing origins
- * closes that gap, and also rejects absolute URLs (`https://evil.com`) and
- * non-http(s) schemes (`javascript:...`), whose origin can never match.
+ * closes most of that gap, and also rejects absolute URLs (`https://evil.com`)
+ * and non-http(s) schemes (`javascript:...`), whose origin can never match.
+ * The emitted path is then re-checked for a single leading slash, because
+ * the parser resolves `/..//evil.com` to the same origin with pathname
+ * `//evil.com`, which `location.assign` would read as protocol-relative.
  * A same-origin `next` that lands back in the auth flow itself
  * (`AUTH_FLOW_PATHS`) is rejected the same way.
  *
@@ -60,8 +63,14 @@ function sanitizeNext(raw: string | undefined): string {
   try {
     const url = new URL(raw, window.location.origin);
     if (url.origin !== window.location.origin) return DEFAULT_REDIRECT;
-    if (AUTH_FLOW_PATHS.has(url.pathname)) return DEFAULT_REDIRECT;
-    return `${url.pathname}${url.search}${url.hash}`;
+    const dest = `${url.pathname}${url.search}${url.hash}`;
+    // The parser keeps the host but can still emit a "//host" pathname for
+    // inputs like "/..//evil.com", which location.assign would then treat as
+    // protocol-relative. Only a single leading slash is a same-origin path.
+    if (!/^\/(?![/\\])/.test(dest)) return DEFAULT_REDIRECT;
+    if (AUTH_FLOW_PATHS.has(url.pathname.replace(/\/+$/, "").toLowerCase()))
+      return DEFAULT_REDIRECT;
+    return dest;
   } catch {
     return DEFAULT_REDIRECT;
   }

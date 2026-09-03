@@ -69,6 +69,14 @@ function doFetch(path: string, init?: RequestInit): Promise<Response> {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
+const NO_REFRESH_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+  "/api/auth/forgot",
+  "/api/auth/reset",
+]);
+
 /**
  * Silently rotates the access cookie via the refresh cookie (15-min access
  * token, 7-day refresh token — see api-contract.md). Concurrent callers
@@ -88,11 +96,12 @@ function refreshAccessToken(): Promise<boolean> {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res = await doFetch(path, init);
 
-  // A 401 outside of /api/auth/* likely just means the short-lived access
-  // cookie expired while the refresh cookie is still valid — try one
-  // silent refresh + retry before surfacing the error. Never recurse for
-  // the auth endpoints themselves (login/refresh/logout/forgot/reset).
-  if (res.status === 401 && !path.startsWith("/api/auth/") && (await refreshAccessToken())) {
+  // A 401 usually just means the short-lived access cookie expired while the
+  // refresh cookie is still valid: try one silent refresh + retry before
+  // surfacing the error. /api/auth/me is included (every page load's session
+  // check goes through it); the endpoints that issue, rotate or revoke
+  // tokens are not, so a wrong password is never silently retried.
+  if (res.status === 401 && !NO_REFRESH_PATHS.has(path) && (await refreshAccessToken())) {
     res = await doFetch(path, init);
   }
 

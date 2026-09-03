@@ -60,6 +60,8 @@ export function AppShell() {
         if (!session) {
           setGuard("unauthenticated");
         } else if (session.role !== "CUSTOMER") {
+          // api-contract.md reserves ADMIN-via-ownership access to the owner app;
+          // until a controller honours it, staff go to their own console.
           // An admin or technician has no subscriber row, so every card here
           // would fail — send them to their own shell instead.
           setRole(session.role);
