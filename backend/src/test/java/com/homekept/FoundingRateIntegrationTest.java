@@ -2,7 +2,6 @@ package com.homekept;
 
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -12,17 +11,8 @@ import com.homekept.subscription.FoundingRateAvailabilityImpl;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,42 +32,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       {@code foundingRateAvailable:false}.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class FoundingRateIntegrationTest {
+class FoundingRateIntegrationTest extends AbstractIntegrationTest {
 
     private static final String PLANS_URL = "/api/catalog/plans";
 
-    @Autowired MockMvc mockMvc;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
     @Autowired FoundingRateAvailabilityImpl foundingRateAvailability;
-    @Autowired PasswordEncoder passwordEncoder;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
-
-    @AfterEach
-    void tearDown() {
-        // Delete subscribers first (references property and user).
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
-    }
 
     // ── With 0 founding subscribers ───────────────────────────────────────────
 
@@ -169,19 +130,16 @@ class FoundingRateIntegrationTest {
                     passwordEncoder.encode("password"),
                     "Founding", "Stub",
                     Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
-            createdUserIds.add(user.getId());
 
             Property property = propertyRepository.save(new Property(
                     stub + " Founding St", null, "Mississauga", "L5L 1A1",
                     "L5L", null, null, PropertyType.DETACHED));
-            createdPropertyIds.add(property.getId());
 
             Subscriber sub = new Subscriber(
                     user.getId(), property.getId(),
                     SubscriberStatus.PENDING_ACTIVATION, BillingCycle.MONTHLY);
             sub.setFoundingRate(true);
             sub = subscriberRepository.save(sub);
-            createdSubscriberIds.add(sub.getId());
         }
     }
 
@@ -198,19 +156,16 @@ class FoundingRateIntegrationTest {
                     passwordEncoder.encode("password"),
                     "NonFounding", "Stub",
                     Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
-            createdUserIds.add(user.getId());
 
             Property property = propertyRepository.save(new Property(
                     stub + " Regular St", null, "Oakville", "L6J 1A1",
                     "L6J", null, null, PropertyType.TOWNHOUSE));
-            createdPropertyIds.add(property.getId());
 
             Subscriber sub = new Subscriber(
                     user.getId(), property.getId(),
                     SubscriberStatus.PENDING_ACTIVATION, BillingCycle.MONTHLY);
             // foundingRate defaults to false — do not set it.
             sub = subscriberRepository.save(sub);
-            createdSubscriberIds.add(sub.getId());
         }
     }
 }

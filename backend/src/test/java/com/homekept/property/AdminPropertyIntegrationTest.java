@@ -1,29 +1,17 @@
 package com.homekept.property;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,21 +31,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>PATCH waterHeaterAgeYears = 101 → 400 validation error.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AdminPropertyIntegrationTest {
+class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
 
-    private static final String LOGIN_URL = "/api/auth/login";
     private static final String SKU_URL   = "/api/admin/properties/{propertyId}/sku";
 
-    @Autowired MockMvc mockMvc;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
-
-    private final List<Long> createdUserIds     = new ArrayList<>();
-    private final List<Long> createdPropertyIds = new ArrayList<>();
 
     private String adminToken;
     private String customerToken;
@@ -72,7 +50,6 @@ class AdminPropertyIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Property",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(adminUser.getId());
         adminToken = loginAs(adminUser.getEmail(), "Test1234!");
 
         User customerUser = userRepository.save(new User(
@@ -80,26 +57,11 @@ class AdminPropertyIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Customer", "Property",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
 
         property = propertyRepository.save(new Property(
                 nano + " Sku Sheet Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── PATCH /api/admin/properties/{propertyId}/sku ─────────────────────────
@@ -217,23 +179,4 @@ class AdminPropertyIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult loginResult = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        return extractCookieValue(loginResult.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
-    }
 }

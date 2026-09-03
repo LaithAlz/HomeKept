@@ -1,27 +1,17 @@
 package com.homekept;
 
-import com.homekept.identity.AdminSeeder;
-import com.homekept.identity.AuthService;
 import com.homekept.identity.JwtService;
 import com.homekept.identity.LoginRateLimiter;
 import com.homekept.identity.RefreshTokenRepository;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Runs against a real Postgres instance via Testcontainers (@ServiceConnection).
  *
  * <p>No class-level @Transactional — MockMvc HTTP calls execute in their own
- * transactions. Test data is cleaned up in @AfterEach to avoid cross-test pollution.
+ * transactions. Test data is cleaned up by {@link AbstractIntegrationTest}'s per-test
+ * truncation, not per-class teardown.
  *
  * <p>Covers:
  * <ul>
@@ -56,28 +47,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>GET /api/health → 200, no auth required</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AuthIntegrationTest {
+class AuthIntegrationTest extends AbstractIntegrationTest {
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired RefreshTokenRepository refreshTokenRepository;
-    @Autowired PasswordEncoder passwordEncoder;
-    @Autowired AuthService authService;
-    @Autowired JwtService jwtService;
     @Autowired LoginRateLimiter rateLimiter;
-    @Autowired AdminSeeder adminSeeder;
+    @Autowired JwtService jwtService;
 
-    private static final String LOGIN_URL   = "/api/auth/login";
     private static final String REFRESH_URL = "/api/auth/refresh";
     private static final String LOGOUT_URL  = "/api/auth/logout";
     private static final String ME_URL      = "/api/auth/me";
     private static final String HEALTH_URL  = "/api/health";
-
-    /** Track user IDs created per test for cleanup. */
-    private final List<Long> createdUserIds = new ArrayList<>();
 
     // Credentials that match src/test/resources/application.yml admin-seed config.
     private static final String SEED_ADMIN_EMAIL    = "seed-admin@test.local";
@@ -91,16 +70,6 @@ class AuthIntegrationTest {
         rateLimiter.reset("ratelimit@example.com");
         rateLimiter.reset("suspended@example.com");
         rateLimiter.reset("pending@example.com");
-        createdUserIds.clear();
-    }
-
-    @AfterEach
-    void tearDown() {
-        // Clean up in FK order: refresh tokens are ON DELETE CASCADE so deleting the user cleans them up
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── /api/health ────────────────────────────────────────────────────────────
@@ -487,22 +456,18 @@ class AuthIntegrationTest {
         return createTestUserWithStatus(email, rawPassword, role, UserStatus.ACTIVE);
     }
 
-    private User createTestUserWithStatus(String email, String rawPassword, Role role, UserStatus status) {
-        User user = userRepository.save(
-                new User(email, passwordEncoder.encode(rawPassword), "Test", "User", role, status));
-        createdUserIds.add(user.getId());
-        return user;
+    @Test
+    void accessToken_headerWireFormat_isPinnedAgainstTheRealObjectMapperBean() {
+        // JwtServiceTest pins the header bytes with a plain ObjectMapper; this pins them with
+        // the Spring-configured bean, so a Jackson setting change can't silently re-encode the
+        // header and sign every live session out on deploy.
+        User user = createTestUser("pin@example.com", "Passw0rd!x", Role.CUSTOMER);
+        String headerB64 = jwtService.issueAccessToken(user).split("\\.")[0];
+        assertThat(headerB64).isEqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
     }
 
-    /**
-     * Extracts a cookie value from Set-Cookie header strings.
-     * Each header looks like: {@code name=value; Path=/; HttpOnly; ...}
-     */
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
+    private User createTestUserWithStatus(String email, String rawPassword, Role role, UserStatus status) {
+        return userRepository.save(
+                new User(email, passwordEncoder.encode(rawPassword), "Test", "User", role, status));
     }
 }

@@ -1,9 +1,8 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.AccessNotesCipher;
 import com.homekept.property.Property;
@@ -16,25 +15,17 @@ import com.homekept.subscription.SubscriberStatus;
 import com.homekept.technician.TechnicianProfile;
 import com.homekept.technician.TechnicianProfileRepository;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
@@ -65,12 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Authz: anon → 401; CUSTOMER → 403; wrong-tech visit → 404.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class TechVisitIntegrationTest {
+class TechVisitIntegrationTest extends AbstractIntegrationTest {
 
-    private static final String LOGIN_URL          = "/api/auth/login";
     private static final String TODAY_URL          = "/api/tech/visits/today";
     private static final String START_URL          = "/api/tech/visits/{id}/start";
     private static final String PATCH_SVC_URL      = "/api/tech/visits/{visitId}/services/{vsId}";
@@ -80,8 +67,6 @@ class TechVisitIntegrationTest {
     private static final String APP_VISIT_URL      = "/api/app/visits/{id}";
     private static final String TODO_URL           = "/api/tech/todos/{id}";
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
@@ -90,15 +75,7 @@ class TechVisitIntegrationTest {
     @Autowired TodoItemRepository todoItemRepository;
     @Autowired TechnicianProfileRepository techProfileRepository;
     @Autowired AccessNotesCipher accessNotesCipher;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    // ── Created-row tracking for FK-safe teardown ─────────────────────────────
-
-    private final List<Long> createdTechProfileIds  = new ArrayList<>();
-    private final List<Long> createdSubscriberIds   = new ArrayList<>();
-    private final List<Long> createdPropertyIds     = new ArrayList<>();
-    private final List<Long> createdUserIds         = new ArrayList<>();
 
     // ── Primary tech fixture ──────────────────────────────────────────────────
 
@@ -110,7 +87,6 @@ class TechVisitIntegrationTest {
     private Property property;
     private Visit todayVisit;
     private VisitService visitService1;
-    private VisitService visitService2;
 
     @BeforeEach
     void seedData() throws Exception {
@@ -122,12 +98,10 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Tech1234!"),
                 "Tech", "User",
                 Role.TECHNICIAN, UserStatus.ACTIVE));
-        createdUserIds.add(techUser.getId());
 
         // 2. TechnicianProfile for the technician.
-        TechnicianProfile profile = techProfileRepository.save(
+        techProfileRepository.save(
                 new TechnicianProfile(techUser.getId(), "ACTIVE", null, 4500));
-        createdTechProfileIds.add(profile.getId());
 
         // 3. CUSTOMER user + Property + Subscriber.
         User customerUser = userRepository.save(new User(
@@ -135,8 +109,7 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Cust1234!"),
                 "Customer", "User",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
-        customerToken = loginAsUser(customerUser.getEmail(), "Cust1234!");
+        customerToken = loginAs(customerUser.getEmail(), "Cust1234!");
 
         // Encrypt access notes for the property.
         byte[] encrypted = accessNotesCipher.encrypt("Lockbox 1234");
@@ -145,12 +118,10 @@ class TechVisitIntegrationTest {
                 "L5L", null, null, PropertyType.DETACHED);
         property.setAccessNotes(encrypted);
         property = propertyRepository.save(property);
-        createdPropertyIds.add(property.getId());
 
         subscriber = subscriberRepository.save(new Subscriber(
                 customerUser.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(subscriber.getId());
 
         // Link subscriber to property.
         property.setSubscriberId(subscriber.getId());
@@ -171,48 +142,11 @@ class TechVisitIntegrationTest {
         Long serviceId = firstServiceId();
         visitService1 = visitServiceRepository.save(
                 new VisitService(todayVisit.getId(), serviceId, VisitServiceSource.TEMPLATE));
-        visitService2 = visitServiceRepository.save(
+        visitServiceRepository.save(
                 new VisitService(todayVisit.getId(), serviceId, VisitServiceSource.TEMPLATE));
 
         // 6. Login as the tech.
-        techToken = loginAsUser(techUser.getEmail(), "Tech1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // FK-safe delete order:
-        // visit_photo, visit_note, flag, todo_item are handled below then visit, then rest.
-
-        for (Long subId : createdSubscriberIds) {
-            // visit_photo and visit_note cascade from visit (ON DELETE CASCADE) — no explicit delete needed.
-            // flag.origin_visit_id is SET NULL — safe to delete visit directly.
-            // todo_item.visit_id is SET NULL — safe to delete visit directly.
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM flag WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM todo_item WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long profId : createdTechProfileIds) {
-            techProfileRepository.deleteById(profId);
-        }
-        createdTechProfileIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
+        techToken = loginAs(techUser.getEmail(), "Tech1234!");
     }
 
     // ── GET /api/tech/visits/today — day sheet ─────────────────────────────────
@@ -307,8 +241,7 @@ class TechVisitIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        Long todoIdFromDaySheet = ((Number) com.jayway.jsonpath.JsonPath.read(
-                daySheetResult.getResponse().getContentAsString(), "$[0].todos[0].id")).longValue();
+        Long todoIdFromDaySheet = idFrom(daySheetResult, "$[0].todos[0].id");
 
         mockMvc.perform(patch(TODO_URL, todoIdFromDaySheet)
                         .cookie(new Cookie("hk_access", techToken))
@@ -330,13 +263,11 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Tech1234!"),
                 "Tech2", "User",
                 Role.TECHNICIAN, UserStatus.ACTIVE));
-        createdUserIds.add(tech2.getId());
 
         TechnicianProfile profile2 = techProfileRepository.save(
                 new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
-        createdTechProfileIds.add(profile2.getId());
 
-        String tech2Token = loginAsUser(tech2.getEmail(), "Tech1234!");
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
 
         // Tech2's day sheet must be empty (or at least must NOT contain tech1's visit).
         mockMvc.perform(get(TODAY_URL)
@@ -622,8 +553,7 @@ class TechVisitIntegrationTest {
                 .andExpect(jsonPath("$.followUpVisitId").isNumber())
                 .andReturn();
 
-        Long followUpId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.followUpVisitId")).longValue();
+        Long followUpId = idFrom(result, "$.followUpVisitId");
 
         // Original visit must be INCOMPLETE.
         Visit original = visitRepository.findById(todayVisit.getId()).orElseThrow();
@@ -658,8 +588,7 @@ class TechVisitIntegrationTest {
                 .andExpect(jsonPath("$.subscriberId").value(subscriber.getId()))
                 .andReturn();
 
-        Long flagId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long flagId = idFrom(result);
 
         Flag persisted = flagRepository.findById(flagId).orElseThrow();
         assertThat(persisted.getStatus()).isEqualTo(FlagStatus.OPEN);
@@ -683,8 +612,7 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Cust1234!"),
                 "Customer", "Authz",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(cust.getId());
-        String custToken = loginAsUser(cust.getEmail(), "Cust1234!");
+        String custToken = loginAs(cust.getEmail(), "Cust1234!");
 
         mockMvc.perform(get(TODAY_URL)
                         .cookie(new Cookie("hk_access", custToken)))
@@ -705,8 +633,7 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Cust1234!"),
                 "Customer", "Authz",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(cust.getId());
-        String custToken = loginAsUser(cust.getEmail(), "Cust1234!");
+        String custToken = loginAs(cust.getEmail(), "Cust1234!");
 
         mockMvc.perform(post(START_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", custToken)))
@@ -722,13 +649,11 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Tech1234!"),
                 "Tech2", "Authz",
                 Role.TECHNICIAN, UserStatus.ACTIVE));
-        createdUserIds.add(tech2.getId());
 
         TechnicianProfile p2 = techProfileRepository.save(
                 new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
-        createdTechProfileIds.add(p2.getId());
 
-        String tech2Token = loginAsUser(tech2.getEmail(), "Tech1234!");
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
 
         mockMvc.perform(post(START_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", tech2Token)))
@@ -749,13 +674,11 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Tech1234!"),
                 "Tech2", "Complete",
                 Role.TECHNICIAN, UserStatus.ACTIVE));
-        createdUserIds.add(tech2.getId());
 
         TechnicianProfile p2 = techProfileRepository.save(
                 new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
-        createdTechProfileIds.add(p2.getId());
 
-        String tech2Token = loginAsUser(tech2.getEmail(), "Tech1234!");
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
 
         mockMvc.perform(post(COMPLETE_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", tech2Token))
@@ -772,13 +695,11 @@ class TechVisitIntegrationTest {
                 passwordEncoder.encode("Tech1234!"),
                 "Tech2", "Flags",
                 Role.TECHNICIAN, UserStatus.ACTIVE));
-        createdUserIds.add(tech2.getId());
 
         TechnicianProfile p2 = techProfileRepository.save(
                 new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
-        createdTechProfileIds.add(p2.getId());
 
-        String tech2Token = loginAsUser(tech2.getEmail(), "Tech1234!");
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
 
         mockMvc.perform(post(FLAGS_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", tech2Token))
@@ -788,23 +709,6 @@ class TechVisitIntegrationTest {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
-
-    private String loginAsUser(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
-    }
 
     private Long firstServiceId() {
         Long id = jdbc.queryForObject(

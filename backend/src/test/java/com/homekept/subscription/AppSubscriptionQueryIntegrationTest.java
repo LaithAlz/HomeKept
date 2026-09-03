@@ -1,9 +1,8 @@
 package com.homekept.subscription;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -12,26 +11,15 @@ import com.homekept.visit.Visit;
 import com.homekept.visit.VisitRepository;
 import com.homekept.visit.VisitType;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,27 +38,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Runs against a real Postgres via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AppSubscriptionQueryIntegrationTest {
+class AppSubscriptionQueryIntegrationTest extends AbstractIntegrationTest {
 
     private static final String SUBSCRIPTION_URL = "/api/app/subscription";
     private static final String ACCOUNT_URL = "/api/app/account";
-    private static final String LOGIN_URL = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
     @Autowired VisitRepository visitRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdUserIds = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds = new ArrayList<>();
-    private final List<Long> createdVisitIds = new ArrayList<>();
 
     private User customerUser;
     private Property customerProperty;
@@ -86,44 +62,17 @@ class AppSubscriptionQueryIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Priya", "Sharma",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
 
         customerProperty = propertyRepository.save(new Property(
                 nano + " Maple Ridge Crt", "Unit 4", "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(customerProperty.getId());
 
         customerSubscriber = new Subscriber(
                 customerUser.getId(), customerProperty.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
         customerSubscriber = subscriberRepository.save(customerSubscriber);
-        createdSubscriberIds.add(customerSubscriber.getId());
 
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
-        createdVisitIds.clear();
     }
 
     // ── GET /api/app/subscription ────────────────────────────────────────────
@@ -273,15 +222,13 @@ class AppSubscriptionQueryIntegrationTest {
     }
 
     private Visit seedVisit(Instant scheduledFor) {
-        Visit visit = visitRepository.save(new Visit(
+        return visitRepository.save(new Visit(
                 customerSubscriber.getId(),
                 customerSubscriber.getPropertyId(),
                 null,
                 scheduledFor,
                 120,
                 VisitType.ROUTINE));
-        createdVisitIds.add(visit.getId());
-        return visit;
     }
 
     /**
@@ -294,12 +241,11 @@ class AppSubscriptionQueryIntegrationTest {
     private String createCustomerWithNoSubscriber() throws Exception {
         long nano = System.nanoTime();
         String email = "app-sub-nosub-" + nano + "@test.local";
-        User user = userRepository.save(new User(
+        userRepository.save(new User(
                 email,
                 passwordEncoder.encode("Test1234!"),
                 "No", "Subscriber",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
         return loginAs(email, "Test1234!");
     }
 
@@ -307,32 +253,14 @@ class AppSubscriptionQueryIntegrationTest {
         return new Cookie("hk_access", customerToken);
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "app-sub-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email,
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Test",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Test1234!");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie '" + name + "' not found in Set-Cookie headers"));
     }
 }

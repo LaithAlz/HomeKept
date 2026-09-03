@@ -4,7 +4,6 @@ import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
 import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -14,20 +13,11 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import com.stripe.net.Webhook;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -44,14 +34,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>{@link com.homekept.subscription.SubscriptionEventRepository} is package-private
  * so we query {@code subscription_event} rows via {@link JdbcTemplate} instead.
  *
- * <p>Runs against a real Postgres via Testcontainers. Teardown follows the FK-safe
- * order established in {@link ActivationIntegrationTest}:
- * subscription_event → subscriber → property → user.
+ * <p>Runs against a real Postgres via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, RecordingAnalyticsConfig.class})
-class StripeWebhookIntegrationTest {
+class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
 
     /**
      * Must match {@code app.stripe.webhook-secret} in
@@ -61,56 +46,14 @@ class StripeWebhookIntegrationTest {
     private static final String WEBHOOK_SECRET = "test-only-webhook-signing-placeholder";
     private static final String WEBHOOK_URL     = "/api/webhooks/stripe";
 
-    @Autowired MockMvc mockMvc;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
     @Autowired RecordingAnalyticsService recording;
 
     @BeforeEach
     void clearRecorder() {
         recording.clear();
-    }
-
-    // Track row ids in creation order for FK-safe teardown.
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
-
-    @AfterEach
-    void tearDown() {
-        // visit_service and visit rows reference subscriber via visit.subscriber_id
-        // (ON DELETE RESTRICT), so they must be removed before the subscriber row.
-        // visit_service has ON DELETE CASCADE from visit, but we delete explicitly in
-        // the correct FK order: visit_service → visit → subscriber.
-        for (Long id : createdSubscriberIds) {
-            jdbc.update(
-                    "DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", id);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", id);
-        }
-
-        // subscription_event rows reference subscriber_id — delete them next.
-        for (Long id : createdSubscriberIds) {
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", id);
-        }
-
-        // subscriber references property and user.
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── Signature verification ────────────────────────────────────────────────
@@ -533,8 +476,7 @@ class StripeWebhookIntegrationTest {
     }
 
     /**
-     * Creates a user + property + subscriber row in the given status and tracks all created
-     * ids for FK-safe teardown.
+     * Creates a user + property + subscriber row in the given status.
      *
      * <p>For non-{@code PENDING_ACTIVATION} statuses, deterministic Stripe ids are set so
      * that invoice / subscription webhook handlers can find the subscriber by those ids.
@@ -547,12 +489,10 @@ class StripeWebhookIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Test", "Webhook",
                 Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
-        createdUserIds.add(user.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Webhook St", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         Subscriber sub = new Subscriber(user.getId(), property.getId(),
                 status, BillingCycle.MONTHLY);
@@ -565,9 +505,7 @@ class StripeWebhookIntegrationTest {
             sub.setStripeSubscriptionId("sub_seed_" + nano);
         }
 
-        sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
-        return sub;
+        return subscriberRepository.save(sub);
     }
 
     // ── Helpers: assertions ───────────────────────────────────────────────────

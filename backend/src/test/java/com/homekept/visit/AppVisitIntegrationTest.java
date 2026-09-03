@@ -1,9 +1,8 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -13,22 +12,14 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -55,30 +46,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       (batch-computed for the whole page) the list endpoint.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AppVisitIntegrationTest {
+class AppVisitIntegrationTest extends AbstractIntegrationTest {
 
     private static final String LIST_URL   = "/api/app/visits";
     private static final String DETAIL_URL = "/api/app/visits/{id}";
-    private static final String LOGIN_URL  = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired VisitPhotoRepository visitPhotoRepository;
     @Autowired RescheduleRequestRepository rescheduleRequestRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdUserIds       = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdVisitIds      = new ArrayList<>();
 
     /** The CUSTOMER under test. */
     private User customerUser;
@@ -86,7 +65,6 @@ class AppVisitIntegrationTest {
     private String customerToken;
 
     /** A second CUSTOMER used for ownership isolation tests. */
-    private User otherUser;
     private Subscriber otherSubscriber;
 
     @BeforeEach
@@ -99,67 +77,31 @@ class AppVisitIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "App", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
 
         Property customerProp = propertyRepository.save(new Property(
                 nano + " Customer Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(customerProp.getId());
 
         customerSubscriber = subscriberRepository.save(new Subscriber(
                 customerUser.getId(), customerProp.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(customerSubscriber.getId());
 
         // Other customer (different subscriber).
-        otherUser = userRepository.save(new User(
+        User otherUser = userRepository.save(new User(
                 "app-visit-other-" + nano + "@test.local",
                 passwordEncoder.encode("Test1234!"),
                 "Other", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(otherUser.getId());
 
         Property otherProp = propertyRepository.save(new Property(
                 nano + " Other Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(otherProp.getId());
 
         otherSubscriber = subscriberRepository.save(new Subscriber(
                 otherUser.getId(), otherProp.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(otherSubscriber.getId());
 
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // visit_service → visit (cascade on delete visit) → subscriber ON DELETE RESTRICT.
-        // Delete visit_service and visit explicitly before subscriber.
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM reschedule_request_slot WHERE reschedule_request_id IN "
-                    + "(SELECT id FROM reschedule_request WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM reschedule_request WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
-
-        createdVisitIds.clear();
     }
 
     // ── GET /api/app/visits — list ────────────────────────────────────────────
@@ -438,7 +380,7 @@ class AppVisitIntegrationTest {
     }
 
     private Visit seedVisitForSubscriber(Subscriber subscriber, Instant scheduledFor) {
-        Visit visit = visitRepository.save(new Visit(
+        return visitRepository.save(new Visit(
                 subscriber.getId(),
                 subscriber.getPropertyId(),
                 null,
@@ -446,8 +388,6 @@ class AppVisitIntegrationTest {
                 120,
                 VisitType.ROUTINE
         ));
-        createdVisitIds.add(visit.getId());
-        return visit;
     }
 
     /**
@@ -464,32 +404,14 @@ class AppVisitIntegrationTest {
         return id;
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "app-visit-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email,
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Test",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Test1234!");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
     }
 }

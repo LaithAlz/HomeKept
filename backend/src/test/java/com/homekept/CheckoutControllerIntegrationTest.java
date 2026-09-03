@@ -5,7 +5,6 @@ import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -18,21 +17,11 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -47,31 +36,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The fake returns canned URLs ({@link FakeStripeServiceConfig#FAKE_CHECKOUT_URL} /
  * {@link FakeStripeServiceConfig#FAKE_PORTAL_URL}).
  *
- * <p>Runs against a real Postgres via Testcontainers. Teardown follows the FK-safe
- * order from {@link ActivationIntegrationTest}: subscription_event → subscriber →
- * property → user.
+ * <p>Runs against a real Postgres via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, FakeStripeServiceConfig.class, RecordingAnalyticsConfig.class})
-class CheckoutControllerIntegrationTest {
+@Import(FakeStripeServiceConfig.class)
+class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     private static final String CHECKOUT_SESSION_URL = "/api/checkout/session";
     private static final String PORTAL_SESSION_URL   = "/api/billing/portal-session";
-    private static final String LOGIN_URL            = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
-    @Autowired JdbcTemplate jdbc;
     @Autowired CheckoutService checkoutService;
     @Autowired RecordingAnalyticsService recording;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
 
     /** CUSTOMER user + subscriber shared across the checkout/portal tests. */
     private User customerUser;
@@ -91,44 +67,17 @@ class CheckoutControllerIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Test", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
 
         Property prop = propertyRepository.save(new Property(
                 nano + " Checkout Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(prop.getId());
 
         customerSubscriber = new Subscriber(
                 customerUser.getId(), prop.getId(),
                 SubscriberStatus.PENDING_ACTIVATION, BillingCycle.MONTHLY);
         customerSubscriber = subscriberRepository.save(customerSubscriber);
-        createdSubscriberIds.add(customerSubscriber.getId());
 
         customerAccessToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // subscription_event rows reference subscriber_id — delete them first.
-        for (Long id : createdSubscriberIds) {
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", id);
-        }
-
-        // subscriber references property and user.
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── POST /api/checkout/session — happy path ───────────────────────────────
@@ -359,31 +308,16 @@ class CheckoutControllerIntegrationTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Logs in with the given credentials and returns the {@code hk_access} cookie value.
-     */
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    /**
-     * Creates a fresh ADMIN user, logs in, and returns the access token.
-     * The admin user is tracked for teardown.
+     * Creates a fresh ADMIN user and logs in, returning the access token.
      */
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "checkout-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email,
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Test",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Test1234!");
     }
 
@@ -400,19 +334,16 @@ class CheckoutControllerIntegrationTest {
                     passwordEncoder.encode("placeholder"),
                     "Founding", "Stub",
                     Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
-            createdUserIds.add(user.getId());
 
             Property property = propertyRepository.save(new Property(
                     nano + " Founding Checkout St", null, "Mississauga", "L5L 1A1",
                     "L5L", null, null, PropertyType.DETACHED));
-            createdPropertyIds.add(property.getId());
 
             Subscriber sub = new Subscriber(
                     user.getId(), property.getId(),
                     SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
             sub.setFoundingRate(true);
-            sub = subscriberRepository.save(sub);
-            createdSubscriberIds.add(sub.getId());
+            subscriberRepository.save(sub);
         }
     }
 
@@ -428,25 +359,14 @@ class CheckoutControllerIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Test", "Concurrent",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
 
         Property prop = propertyRepository.save(new Property(
                 nano + " Concurrent St", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(prop.getId());
 
         Subscriber sub = new Subscriber(user.getId(), prop.getId(),
                 SubscriberStatus.PENDING_ACTIVATION, BillingCycle.MONTHLY);
-        sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
+        subscriberRepository.save(sub);
         return user.getId();
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie '" + name + "' not found in Set-Cookie headers"));
     }
 }

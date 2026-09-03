@@ -1,9 +1,8 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -14,23 +13,15 @@ import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import com.homekept.visit.exception.RescheduleRequestConflictException;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -47,27 +38,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Runs against real Postgres via Testcontainers — exercises the partial unique index
  * (duplicate-pending guard) and the visit reschedule swap (RESCHEDULED old + new SCHEDULED).
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class RescheduleRequestIntegrationTest {
+class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
 
-    private static final String LOGIN_URL  = "/api/auth/login";
     private static final String ADMIN_LIST_URL = "/api/admin/reschedule-requests";
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
     @Autowired RescheduleRequestRepository rescheduleRequestRepository;
     @Autowired RescheduleService rescheduleService;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds        = new ArrayList<>();
 
     private Subscriber subscriber;
     private Visit visit;
@@ -83,17 +63,14 @@ class RescheduleRequestIntegrationTest {
                 passwordEncoder.encode("Cust1234!"),
                 "Resched", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customer.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Reschedule Rd", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         subscriber = subscriberRepository.save(new Subscriber(
                 customer.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(subscriber.getId());
 
         // A SCHEDULED visit, two weeks out.
         Instant scheduledFor = Instant.now().plus(14, ChronoUnit.DAYS);
@@ -103,30 +80,6 @@ class RescheduleRequestIntegrationTest {
 
         customerToken = loginAs(customer.getEmail(), "Cust1234!");
         adminToken = loginAsNewAdmin();
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM reschedule_request_slot WHERE reschedule_request_id IN "
-                    + "(SELECT id FROM reschedule_request WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM reschedule_request WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     private String rescheduleUrl(Long visitId) {
@@ -203,13 +156,10 @@ class RescheduleRequestIntegrationTest {
                 "resched-other-" + nano + "@test.local",
                 passwordEncoder.encode("Other1234!"),
                 "Other", "Customer", Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(other.getId());
         Property otherProp = propertyRepository.save(new Property(
                 nano + " Other Rd", null, "Mississauga", "L5L 1A1", "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(otherProp.getId());
         Subscriber otherSub = subscriberRepository.save(new Subscriber(
                 other.getId(), otherProp.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(otherSub.getId());
         Visit otherVisit = visitRepository.save(new Visit(
                 otherSub.getId(), otherProp.getId(), null,
                 Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
@@ -336,13 +286,10 @@ class RescheduleRequestIntegrationTest {
                 "resched-cancel-other-" + nano + "@test.local",
                 passwordEncoder.encode("Other1234!"),
                 "Other", "Customer", Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(other.getId());
         Property otherProp = propertyRepository.save(new Property(
                 nano + " Other Cancel Rd", null, "Mississauga", "L5L 1A1", "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(otherProp.getId());
         Subscriber otherSub = subscriberRepository.save(new Subscriber(
                 other.getId(), otherProp.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(otherSub.getId());
         Visit otherVisit = visitRepository.save(new Visit(
                 otherSub.getId(), otherProp.getId(), null,
                 Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
@@ -511,30 +458,12 @@ class RescheduleRequestIntegrationTest {
                 .findFirst().orElseThrow().getId();
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "resched-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email, passwordEncoder.encode("Admin1234!"),
                 "Admin", "Test", Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Admin1234!");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie '" + name + "' not found in Set-Cookie headers"));
     }
 }

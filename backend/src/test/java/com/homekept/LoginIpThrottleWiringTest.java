@@ -1,13 +1,8 @@
 package com.homekept;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
-import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -21,15 +16,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Uses failed logins for an unknown email: the per-IP check runs BEFORE the credential
  * compare, so the first two attempts 401 (throttle allows them) and the third 429s.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
 @TestPropertySource(properties = "app.security.login-ip-max-attempts=2")
-class LoginIpThrottleWiringTest {
-
-    private static final String LOGIN_URL = "/api/auth/login";
-
-    @Autowired MockMvc mockMvc;
+class LoginIpThrottleWiringTest extends AbstractIntegrationTest {
 
     @Test
     void loginEndpoint_enforcesPerIpThrottle_429AfterCap() throws Exception {
