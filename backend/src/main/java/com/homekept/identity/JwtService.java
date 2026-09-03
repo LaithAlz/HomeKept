@@ -5,13 +5,15 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -31,17 +33,15 @@ import java.util.Optional;
  *   <li>{@code exp} — expiry (epoch seconds)</li>
  * </ul>
  *
- * <p>JSON serialisation/deserialisation is done with a minimal hand-rolled parser that
- * only handles the fixed claim types this service writes — no reflection, no dependencies.
- * This approach is safe because we control both the write and read side.
+ * <p>Header/payload JSON is built and parsed via the shared Jackson {@link ObjectMapper}.
+ * Claim order is fixed ({@code sub}, {@code email}, {@code role}, {@code iat}, {@code exp})
+ * via insertion-ordered maps, matching the wire format previously produced by hand.
  */
 @Service
 public class JwtService {
 
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
     private static final String ALGORITHM = "HmacSHA256";
-    private static final String HEADER_B64 = base64UrlEncode(
-            "{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
 
     /**
      * The well-known dev sentinel value set in application.yml.
@@ -54,8 +54,10 @@ public class JwtService {
     private final long accessTokenExpirySeconds;
     private final boolean devMode;
     private final String rawKey;
+    private final ObjectMapper objectMapper;
+    private final String headerB64;
 
-    public JwtService(AppProperties appProperties) {
+    public JwtService(AppProperties appProperties, ObjectMapper objectMapper) {
         String key = appProperties.jwt().signingKey();
         if (key == null || key.isBlank()) {
             throw new IllegalStateException(
@@ -66,6 +68,13 @@ public class JwtService {
         this.signingKey = key.getBytes(StandardCharsets.UTF_8);
         this.accessTokenExpirySeconds = appProperties.jwt().accessTokenExpirySeconds();
         this.devMode = appProperties.devMode();
+        this.objectMapper = objectMapper;
+
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("alg", "HS256");
+        header.put("typ", "JWT");
+        this.headerB64 = base64UrlEncode(
+                objectMapper.writeValueAsString(header).getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -112,7 +121,7 @@ public class JwtService {
         String payload = buildPayloadJson(
                 String.valueOf(user.getId()), user.getEmail(), user.getRole().name(), iat, exp);
         String encodedPayload = base64UrlEncode(payload.getBytes(StandardCharsets.UTF_8));
-        String signingInput = HEADER_B64 + "." + encodedPayload;
+        String signingInput = headerB64 + "." + encodedPayload;
         String signature = computeSignature(signingInput);
         return signingInput + "." + signature;
     }
@@ -141,6 +150,9 @@ public class JwtService {
             byte[] payloadBytes = Base64.getUrlDecoder().decode(parts[1]);
             String payloadJson = new String(payloadBytes, StandardCharsets.UTF_8);
             Map<String, Object> claims = parsePayloadJson(payloadJson);
+            if (claims == null) {
+                return Optional.empty();
+            }
             Number exp = (Number) claims.get("exp");
             if (exp == null || Instant.now().getEpochSecond() > exp.longValue()) {
                 return Optional.empty();
@@ -183,56 +195,49 @@ public class JwtService {
     }
 
     /**
-     * Builds the JWT payload JSON from the fixed set of claims this service uses.
-     * Values are safely escaped (no user-controlled characters can break the JSON structure
-     * because email is validated by the DB unique constraint and role comes from a controlled enum).
+     * Builds the JWT payload JSON from the fixed set of claims this service uses, via the
+     * shared Jackson {@link ObjectMapper}. Insertion order is fixed ({@code sub}, {@code email},
+     * {@code role}, {@code iat}, {@code exp}) to match the historical hand-rolled wire format.
+     *
+     * <p>Package-private so the exact wire format can be pinned in {@code JwtServiceTest}.
      */
-    private String buildPayloadJson(String sub, String email, String role, long iat, long exp) {
-        return "{" +
-               "\"sub\":\"" + escapeJsonString(sub) + "\"," +
-               "\"email\":\"" + escapeJsonString(email) + "\"," +
-               "\"role\":\"" + escapeJsonString(role) + "\"," +
-               "\"iat\":" + iat + "," +
-               "\"exp\":" + exp +
-               "}";
+    String buildPayloadJson(String sub, String email, String role, long iat, long exp) {
+        Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("sub", sub);
+        claims.put("email", email);
+        claims.put("role", role);
+        claims.put("iat", iat);
+        claims.put("exp", exp);
+        return objectMapper.writeValueAsString(claims);
     }
 
     /**
-     * Minimal JSON parser for the fixed payload format produced by {@link #buildPayloadJson}.
-     * Handles exactly: string values for {@code sub}, {@code email}, {@code role};
-     * numeric values for {@code iat}, {@code exp}.
+     * Parses the JWT payload JSON into the fixed claim shape this service issues, via the
+     * shared Jackson {@link ObjectMapper}. Returns {@code null} (rejected) if the payload
+     * is not a JSON object, or if any expected claim is missing or has an unexpected type:
+     * {@code sub}/{@code email}/{@code role} must be JSON strings, {@code iat}/{@code exp}
+     * must be JSON integral numbers.
      */
     private Map<String, Object> parsePayloadJson(String json) {
-        Map<String, Object> claims = new HashMap<>();
-        // Strip outer braces
-        String content = json.trim();
-        if (content.startsWith("{")) content = content.substring(1);
-        if (content.endsWith("}")) content = content.substring(0, content.length() - 1);
-
-        // Split on top-level commas (safe since none of our string values contain commas or nested objects)
-        String[] pairs = content.split(",(?=\")");
-        for (String pair : pairs) {
-            int colonIdx = pair.indexOf(':');
-            if (colonIdx < 0) continue;
-            String rawKey = pair.substring(0, colonIdx).trim().replace("\"", "");
-            String rawVal = pair.substring(colonIdx + 1).trim();
-            if (rawVal.startsWith("\"")) {
-                // String value
-                claims.put(rawKey, rawVal.substring(1, rawVal.length() - 1));
-            } else {
-                // Numeric value
-                try {
-                    claims.put(rawKey, Long.parseLong(rawVal));
-                } catch (NumberFormatException e) {
-                    claims.put(rawKey, rawVal);
-                }
+        JsonNode root = objectMapper.readTree(json);
+        if (root == null || !root.isObject()) {
+            return null;
+        }
+        Map<String, Object> claims = new LinkedHashMap<>();
+        for (String field : new String[] {"sub", "email", "role"}) {
+            JsonNode value = root.get(field);
+            if (value == null || !value.isTextual()) {
+                return null;
             }
+            claims.put(field, value.asString());
+        }
+        for (String field : new String[] {"iat", "exp"}) {
+            JsonNode value = root.get(field);
+            if (value == null || !value.isIntegralNumber()) {
+                return null;
+            }
+            claims.put(field, value.asLong());
         }
         return claims;
-    }
-
-    /** Escapes backslash and double-quote characters for safe embedding in JSON strings. */
-    private String escapeJsonString(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }
