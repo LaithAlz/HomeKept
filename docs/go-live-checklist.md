@@ -62,8 +62,8 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
       the Render origin to Cloudflare (#46).
 
 ## 6. Analytics / error tracking (optional at launch)
-- [ ] **PostHog** (#63) — create a project, set `POSTHOG_API_KEY` + `VITE_PUBLIC_POSTHOG_KEY`.
-      Fully wired (server events + frontend, PII-scrubbed); a silent no-op until the key is set.
+- [x] **PostHog** (#63) — keys set on Render + Cloudflare 2026-09-03. Fully wired (server
+      events + frontend, PII-scrubbed); verify events in PostHog Activity after a page view.
 - [x] **Sentry** (#121) — not used; removed from the privacy policy 2026-09-03.
 
 ## 7. Verify end-to-end (against the deployed stack; #13, #20, #28, #33, #37)
