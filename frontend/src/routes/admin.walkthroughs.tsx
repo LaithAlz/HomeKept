@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Calendar, MapPin, Check, X, Send, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
@@ -9,6 +10,7 @@ import {
   useAdminBookings,
   usePatchBooking,
   useSendActivationInvite,
+  formatWeekOf,
   type AdminBookingListItem,
   type BookingStatus,
 } from "@/lib/admin";
@@ -19,21 +21,6 @@ export const Route = createFileRoute("/admin/walkthroughs")({
   }),
   component: WalkthroughsPage,
 });
-
-/**
- * `preferredWeek` is a LocalDate ("YYYY-MM-DD") — a calendar date with no
- * time-of-day meaning. Anchoring it to UTC noon and formatting with an
- * explicit UTC timeZone keeps the displayed date stable regardless of the
- * viewer's local timezone (avoids the off-by-one day you'd get parsing a
- * bare date string as local midnight and then rendering in another zone).
- */
-function formatWeekOf(dateStr: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "UTC",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(`${dateStr}T12:00:00Z`));
-}
 
 const NON_TERMINAL: BookingStatus[] = ["PENDING", "CONFIRMED", "PERFORMED"];
 
@@ -52,27 +39,14 @@ function WalkthroughsPage() {
         <Button size="sm">Schedule walk-through</Button>
       </div>
 
-      {isLoading && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="mt-8 flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading the pipeline.
-        </div>
-      )}
+      {isLoading && <PanelLoading label="Loading the pipeline." className="mt-8" />}
 
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-        >
-          <span>We couldn't load the walk-through pipeline.</span>
-          <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
+        <PanelError
+          label="We couldn't load the walk-through pipeline."
+          onRetry={() => void refetch()}
+          className="mt-8 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+        />
       )}
 
       {bookings && <PipelineView bookings={bookings} />}

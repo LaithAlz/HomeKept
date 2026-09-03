@@ -4,6 +4,7 @@ import { ArrowRight, BellRing, Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
+import { StatusPanel } from "@/components/app/StatusPanel";
 import { formatVisitWindow, getCalendarParts } from "@/lib/format";
 import { useNextVisit, useRecentCompletedVisits, type AppVisitListItem } from "@/lib/visits";
 import { useSessionExpiredRedirect } from "@/lib/auth";
@@ -88,22 +89,6 @@ function VisitsPage() {
           )}
         </div>
       </section>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Loading / error / empty
-// ---------------------------------------------------------------------------
-
-function StatusPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="flex items-center gap-3 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground"
-      role="status"
-      aria-live="polite"
-    >
-      {children}
     </div>
   );
 }
