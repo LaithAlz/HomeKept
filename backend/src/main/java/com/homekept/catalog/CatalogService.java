@@ -158,14 +158,6 @@ public class CatalogService {
     }
 
     /**
-     * Returns whether founding-rate slots are still available.
-     * Delegates to the live {@link FoundingRateAvailability} implementation.
-     */
-    public boolean isFoundingRateAvailable() {
-        return foundingRateAvailability.foundingSlotsRemaining();
-    }
-
-    /**
      * Returns a map of service id → service name for the given ids.
      * Used by the visit domain to resolve service names for display without reaching
      * into the catalog repository directly (domain boundary rule).

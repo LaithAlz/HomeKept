@@ -59,10 +59,7 @@ public class PasswordResetToken {
 
     public Long getId() { return id; }
     public User getUser() { return user; }
-    public String getTokenHash() { return tokenHash; }
-    public Instant getExpiresAt() { return expiresAt; }
     public Instant getConsumedAt() { return consumedAt; }
-    public void setConsumedAt(Instant consumedAt) { this.consumedAt = consumedAt; }
     public boolean isConsumed() { return consumedAt != null; }
     public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
     public Instant getCreatedAt() { return createdAt; }

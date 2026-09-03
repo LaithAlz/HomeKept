@@ -15,9 +15,6 @@ import java.util.Optional;
  */
 public interface RescheduleRequestRepository extends JpaRepository<RescheduleRequest, Long> {
 
-    /** Ownership-scoped lookup for the customer (returns empty if not owned → 404). */
-    Optional<RescheduleRequest> findByIdAndSubscriberId(Long id, Long subscriberId);
-
     /**
      * Pessimistic-write-locked lookup by id, used by the admin confirm/decline path to
      * serialise concurrent resolutions of the SAME request (e.g. a double-clicked confirm, or

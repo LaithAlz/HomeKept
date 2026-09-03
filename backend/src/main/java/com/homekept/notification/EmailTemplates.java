@@ -171,15 +171,6 @@ public final class EmailTemplates {
     }
 
     /**
-     * Wraps content in the shared 600px brand layout with no call-to-action button — used when
-     * there's nothing yet for the recipient to click (e.g. a plain confirmation). Uses the
-     * default "your HomeKept membership" footer context.
-     */
-    private static String layout(String heading, String bodyHtml) {
-        return layout(heading, bodyHtml, null, null, MEMBERSHIP_FOOTER_CONTEXT);
-    }
-
-    /**
      * Wraps content in the shared 600px brand layout: pine header band, cream card with pine
      * heading + body, an optional honey CTA button with PINE text (WCAG), and a
      * sender-identification footer. Pass a null/blank {@code ctaUrl} to omit the button. Uses

@@ -30,8 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration tests for {@link FoundingRateAvailabilityImpl} — the live {@code @Primary}
- * implementation that counts {@code subscriber.founding_rate = true} rows in the DB.
+ * Integration tests for {@link FoundingRateAvailabilityImpl} — the live implementation
+ * that counts {@code subscriber.founding_rate = true} rows in the DB.
  *
  * <p>Runs against a real Postgres via Testcontainers. Verifies:
  * <ul>
@@ -40,9 +40,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>After inserting 15 founding subscribers, {@code foundingSlotsRemaining()} returns
  *       {@code false} and {@code GET /api/catalog/plans} COMPLETE shows
  *       {@code foundingRateAvailable:false}.</li>
- *   <li>The {@code @Primary} bean ({@link FoundingRateAvailabilityImpl}) is the one
- *       injected into {@code CatalogService} — i.e. the DB-backed bean overrides the
- *       placeholder.</li>
  * </ul>
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)

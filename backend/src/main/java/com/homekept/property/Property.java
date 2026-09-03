@@ -138,9 +138,7 @@ public class Property {
     public String getCity() { return city; }
     public String getPostalCode() { return postalCode; }
     public Double getLatitude() { return latitude; }
-    public void setLatitude(Double latitude) { this.latitude = latitude; }
     public Double getLongitude() { return longitude; }
-    public void setLongitude(Double longitude) { this.longitude = longitude; }
     public String getFsa() { return fsa; }
     public Integer getYearBuilt() { return yearBuilt; }
     public String getSquareFootageRange() { return squareFootageRange; }

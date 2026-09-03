@@ -130,7 +130,6 @@ public class Visit {
     public Instant getScheduledFor() { return scheduledFor; }
     public void setScheduledFor(Instant scheduledFor) { this.scheduledFor = scheduledFor; }
     public int getDurationMinutes() { return durationMinutes; }
-    public void setDurationMinutes(int durationMinutes) { this.durationMinutes = durationMinutes; }
     public Integer getActualDurationMinutes() { return actualDurationMinutes; }
     public void setActualDurationMinutes(Integer actualDurationMinutes) { this.actualDurationMinutes = actualDurationMinutes; }
     public Integer getMaterialsCostCents() { return materialsCostCents; }
