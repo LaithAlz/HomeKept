@@ -106,7 +106,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/catalog/plans").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/catalog/picks").permitAll()
                         // Public booking form submission (arch doc §5.1, api-contract.md)
-                        // Rate-limited 3/IP/hour in BookingController; CASL consent enforced in DTO.
+                        // Rate-limited 10/IP/hour in BookingController; CASL consent enforced in DTO.
                         .requestMatchers(HttpMethod.POST, "/api/bookings/walkthrough").permitAll()
                         // Activation magic-link flow (api-contract.md §Activation)
                         // Rate-limited 10/IP/hour in ActivationController; token is HMAC-signed + single-use.

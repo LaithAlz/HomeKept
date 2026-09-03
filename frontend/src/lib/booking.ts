@@ -1,6 +1,6 @@
 /**
  * Shared contract for `POST /api/bookings/walkthrough` — the public walk-through
- * booking endpoint. No auth required; rate limited 3/IP/hour.
+ * booking endpoint. No auth required; rate limited 10/IP/hour.
  *
  * Field shape mirrors backend/api-contract.md and
  * backend/src/main/java/com/homekept/booking/dto/WalkthroughBookingRequest.java
@@ -51,7 +51,7 @@ export interface WalkthroughBookingResponse {
   status: "PENDING";
 }
 
-/** `POST /api/bookings/walkthrough` — public, no auth, rate limited 3/IP/hour. */
+/** `POST /api/bookings/walkthrough` — public, no auth, rate limited 10/IP/hour. */
 export function submitWalkthroughBooking(
   payload: WalkthroughBookingRequest,
 ): Promise<WalkthroughBookingResponse> {
