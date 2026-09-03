@@ -263,7 +263,7 @@
   margin-bottom: 7px;
 }
 
-/* Scroll-reveal contract used by useReveal(): hidden until .in lands. */
+/* Scroll-reveal contract used by useRevealGroup(): hidden until .in lands. */
 @utility reveal-init {
   opacity: 0;
   transform: translateY(26px) scale(0.985);
