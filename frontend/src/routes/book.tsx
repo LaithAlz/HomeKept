@@ -1232,7 +1232,7 @@ function SuccessScreen({
 
       <p className="mx-auto mt-3 max-w-[42ch] text-[15px] text-muted-foreground">
         We&rsquo;ll email <strong className="font-medium text-foreground">{email}</strong> to
-        confirm a {timeLabel} slot during{" "}
+        confirm {timeLabel === "morning" ? "a" : "an"} {timeLabel} slot during{" "}
         <strong className="font-medium text-foreground">
           {weekLabel.replace(/^Week/, "the week")}
         </strong>
