@@ -12,11 +12,10 @@ import {
   Menu,
   X,
   LogOut,
-  Loader2,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
-import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+import { SessionError, SessionLoading } from "@/components/app/SessionScreens";
 import { useAccount, useSubscription } from "@/lib/account";
 import { cn } from "@/lib/utils";
 import { getSession, logout } from "@/lib/auth";
@@ -74,7 +73,7 @@ export function AppShell() {
   }, [guard, navigate, pathname]);
 
   if (guard === "checking") {
-    return <SessionLoading />;
+    return <SessionLoading label="Loading your account." />;
   }
 
   if (guard === "error") {
@@ -84,7 +83,7 @@ export function AppShell() {
   if (guard === "unauthenticated") {
     // Redirect is in flight (see effect above) — render nothing so the
     // dashboard's mock content never flashes for a signed-out visitor.
-    return <SessionLoading />;
+    return <SessionLoading label="Loading your account." />;
   }
 
   return <AuthedShell />;
@@ -280,34 +279,5 @@ function Avatar({ initials }: { initials: string }) {
     >
       {initials}
     </span>
-  );
-}
-
-function SessionLoading() {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex min-h-dvh items-center justify-center bg-background"
-    >
-      <Loader2 className="size-6 animate-spin text-muted-foreground" aria-hidden="true" />
-      <span className="sr-only">Loading your account.</span>
-    </div>
-  );
-}
-
-function SessionError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
-      <div className="max-w-sm text-center">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">
-          We couldn't check your session.
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">Check your connection and try again.</p>
-        <div className="mt-6">
-          <Button onClick={onRetry}>Try again</Button>
-        </div>
-      </div>
-    </div>
   );
 }

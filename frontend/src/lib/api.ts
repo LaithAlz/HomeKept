@@ -112,3 +112,18 @@ export function patch<T>(path: string, body?: unknown, init?: RequestInit): Prom
 export function del<T>(path: string, init?: RequestInit): Promise<T> {
   return request<T>(path, { ...init, method: "DELETE" });
 }
+
+/**
+ * Builds a `?a=b&c=d` query string from a params object, skipping any value
+ * that's undefined, empty, or 0 (matching the truthy-check convention used
+ * across the list endpoints — e.g. no `cursor` param on the first page).
+ * Returns `""` (not `"?"`) when nothing is set.
+ */
+export function qs(params: Record<string, string | number | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, String(value));
+  }
+  const s = search.toString();
+  return s ? `?${s}` : "";
+}

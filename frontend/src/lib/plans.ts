@@ -9,6 +9,9 @@
 
 export type PlanId = "essential" | "complete" | "premier";
 
+/** Founding-member rate cap: first 15 customers (docs/pricing-and-visits.md). */
+export const FOUNDING_RATE_CAP = 15;
+
 export interface Plan {
   id: PlanId;
   emoji: string;
@@ -144,13 +147,7 @@ export const PLANS: Plan[] = [
   },
 ];
 
-export function getPlan(id: PlanId): Plan {
-  const plan = PLANS.find((p) => p.id === id);
-  if (!plan) throw new Error(`Unknown plan id: ${id}`);
-  return plan;
-}
-
-export function formatCad(amount: number): string {
+export function formatDollarsCad(amount: number): string {
   return `$${amount.toLocaleString("en-CA")}`;
 }
 

@@ -1,6 +1,4 @@
-{
-  /* DRAFT — not legal advice. Founder/lawyer must review before launch. */
-}
+// DRAFT — not legal advice. Founder/lawyer must review before launch.
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";

@@ -196,7 +196,10 @@ export const Route = createFileRoute("/learn/$slug")({
 });
 
 function LearnArticlePage() {
-  const { article } = Route.useLoaderData();
+  const { slug } = Route.useParams();
+  // The loader already threw `notFound()` for unknown slugs, so this lookup
+  // is guaranteed to succeed by the time the component renders.
+  const article = ARTICLE_MAP.get(slug) as Article;
   const monthIndex = ARTICLES.findIndex((a) => a.slug === article.slug);
   const prevArticle = monthIndex > 0 ? ARTICLES[monthIndex - 1] : null;
   const nextArticle = monthIndex < ARTICLES.length - 1 ? ARTICLES[monthIndex + 1] : null;

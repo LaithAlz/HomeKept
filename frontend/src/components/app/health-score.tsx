@@ -54,7 +54,7 @@ const SEVERITY_STYLES: Record<FlagSeverity, { label: string; className: string }
   INFO: { label: "Info", className: "bg-info text-info-foreground" },
 };
 
-export function SeverityBadge({ severity }: { severity: FlagSeverity }) {
+function SeverityBadge({ severity }: { severity: FlagSeverity }) {
   const { label, className } = SEVERITY_STYLES[severity];
   return (
     <span

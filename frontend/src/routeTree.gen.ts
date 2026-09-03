@@ -20,8 +20,6 @@ import { Route as OakvilleRouteImport } from './routes/oakville'
 import { Route as MississaugaRouteImport } from './routes/mississauga'
 import { Route as MiltonRouteImport } from './routes/milton'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as DesignSystemRouteImport } from './routes/design-system'
-import { Route as CheckoutRouteImport } from './routes/checkout'
 import { Route as BookRouteImport } from './routes/book'
 import { Route as AppRouteImport } from './routes/app'
 import { Route as AdminRouteImport } from './routes/admin'
@@ -101,16 +99,6 @@ const MiltonRoute = MiltonRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DesignSystemRoute = DesignSystemRouteImport.update({
-  id: '/design-system',
-  path: '/design-system',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CheckoutRoute = CheckoutRouteImport.update({
-  id: '/checkout',
-  path: '/checkout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BookRoute = BookRouteImport.update({
@@ -245,8 +233,6 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRouteWithChildren
   '/book': typeof BookRoute
-  '/checkout': typeof CheckoutRoute
-  '/design-system': typeof DesignSystemRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
@@ -283,8 +269,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activate': typeof ActivateRoute
   '/book': typeof BookRoute
-  '/checkout': typeof CheckoutRoute
-  '/design-system': typeof DesignSystemRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
@@ -324,8 +308,6 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/app': typeof AppRouteWithChildren
   '/book': typeof BookRoute
-  '/checkout': typeof CheckoutRoute
-  '/design-system': typeof DesignSystemRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/milton': typeof MiltonRoute
   '/mississauga': typeof MississaugaRoute
@@ -366,8 +348,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/book'
-    | '/checkout'
-    | '/design-system'
     | '/forgot-password'
     | '/milton'
     | '/mississauga'
@@ -404,8 +384,6 @@ export interface FileRouteTypes {
     | '/'
     | '/activate'
     | '/book'
-    | '/checkout'
-    | '/design-system'
     | '/forgot-password'
     | '/milton'
     | '/mississauga'
@@ -444,8 +422,6 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/book'
-    | '/checkout'
-    | '/design-system'
     | '/forgot-password'
     | '/milton'
     | '/mississauga'
@@ -485,8 +461,6 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   AppRoute: typeof AppRouteWithChildren
   BookRoute: typeof BookRoute
-  CheckoutRoute: typeof CheckoutRoute
-  DesignSystemRoute: typeof DesignSystemRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   MiltonRoute: typeof MiltonRoute
   MississaugaRoute: typeof MississaugaRoute
@@ -578,20 +552,6 @@ declare module '@tanstack/react-router' {
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/design-system': {
-      id: '/design-system'
-      path: '/design-system'
-      fullPath: '/design-system'
-      preLoaderRoute: typeof DesignSystemRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/checkout': {
-      id: '/checkout'
-      path: '/checkout'
-      fullPath: '/checkout'
-      preLoaderRoute: typeof CheckoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/book': {
@@ -842,8 +802,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   AppRoute: AppRouteWithChildren,
   BookRoute: BookRoute,
-  CheckoutRoute: CheckoutRoute,
-  DesignSystemRoute: DesignSystemRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   MiltonRoute: MiltonRoute,
   MississaugaRoute: MississaugaRoute,

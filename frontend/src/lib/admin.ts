@@ -27,8 +27,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { get, patch, post } from "@/lib/api";
+import { get, patch, post, qs } from "@/lib/api";
 import { submitWalkthroughBooking, type WalkthroughBookingRequest } from "@/lib/booking";
+import type { RescheduleRequestStatus, VisitStatus, VisitType } from "@/lib/visits";
 
 /* -------------------------------------------------------------------------- */
 /* Bookings (walk-through pipeline)                                           */
@@ -86,13 +87,7 @@ export function useAdminBookings(options?: { status?: BookingStatus; limit?: num
   const { status, limit } = options ?? {};
   return useQuery({
     queryKey: bookingsKey(status, limit),
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      if (limit) params.set("limit", String(limit));
-      const qs = params.toString();
-      return get<AdminBookingListItem[]>(`/api/admin/bookings${qs ? `?${qs}` : ""}`);
-    },
+    queryFn: () => get<AdminBookingListItem[]>(`/api/admin/bookings${qs({ status, limit })}`),
   });
 }
 
@@ -189,13 +184,7 @@ export function useAdminSubscribers(options?: { cursor?: number; limit?: number 
   const { cursor, limit } = options ?? {};
   return useQuery({
     queryKey: ["admin", "subscribers", cursor ?? null, limit ?? null],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (cursor) params.set("cursor", String(cursor));
-      if (limit) params.set("limit", String(limit));
-      const qs = params.toString();
-      return get<AdminSubscriberListItem[]>(`/api/admin/subscribers${qs ? `?${qs}` : ""}`);
-    },
+    queryFn: () => get<AdminSubscriberListItem[]>(`/api/admin/subscribers${qs({ cursor, limit })}`),
   });
 }
 
@@ -250,26 +239,9 @@ export function useUpdatePropertySku(propertyId: number) {
   });
 }
 
-/**
- * Formats integer cents as whole-dollar CAD. Every money field from the
- * backend is integer cents per CLAUDE.md, so this always divides by 100
- * before formatting (mirrors `formatCentsCad` in `@/lib/format`, which takes
- * the same cents-in shape for the customer-facing app).
- */
-export function formatCentsCAD(cents: number | null | undefined): string {
-  if (cents === undefined || cents === null) return "—";
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
-
 /* -------------------------------------------------------------------------- */
 /* Reschedule requests                                                        */
 /* -------------------------------------------------------------------------- */
-
-export type RescheduleRequestStatus = "PENDING" | "CONFIRMED" | "DECLINED";
 
 export interface AdminRescheduleRequestListItem {
   id: number;
@@ -297,16 +269,6 @@ export function useAdminRescheduleRequests() {
 /* -------------------------------------------------------------------------- */
 /* Visits                                                                     */
 /* -------------------------------------------------------------------------- */
-
-export type VisitStatus =
-  | "SCHEDULED"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "INCOMPLETE"
-  | "CANCELLED"
-  | "RESCHEDULED";
-
-export type VisitType = "ROUTINE" | "EXTRA" | "WARRANTY" | "WALKTHROUGH";
 
 export interface AdminVisitListItem {
   id: number;
@@ -338,14 +300,7 @@ export function useAdminVisits(options?: {
   const { status, cursor, limit } = options ?? {};
   return useQuery({
     queryKey: ["admin", "visits", status ?? "all", cursor ?? null, limit ?? null],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (status) params.set("status", status);
-      if (cursor) params.set("cursor", String(cursor));
-      if (limit) params.set("limit", String(limit));
-      const qs = params.toString();
-      return get<AdminVisitListItem[]>(`/api/admin/visits${qs ? `?${qs}` : ""}`);
-    },
+    queryFn: () => get<AdminVisitListItem[]>(`/api/admin/visits${qs({ status, cursor, limit })}`),
   });
 }
 

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatCentsCAD } from "@/lib/admin";
+import { formatCentsCad } from "@/lib/format";
 import {
   useCatalogPlans,
   useCatalogPicks,
@@ -107,7 +107,7 @@ function CatalogPage() {
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="font-display text-lg font-bold">{plan.displayName}</h3>
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {formatCentsCAD(plan.monthlyPriceCents)}/mo
+                    {formatCentsCad(plan.monthlyPriceCents)}/mo
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -164,7 +164,7 @@ function CatalogPage() {
                       {TIER_CLASS_LABEL[band.toUpperCase() as TierClass]}
                     </h3>
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      {formatCentsCAD(group.aLaCartePriceCents)} each
+                      {formatCentsCad(group.aLaCartePriceCents)} each
                     </span>
                   </div>
                   <ul className="mt-4 space-y-2 border-t border-border pt-4 text-sm">

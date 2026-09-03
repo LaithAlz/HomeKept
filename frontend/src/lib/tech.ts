@@ -5,8 +5,9 @@
  * Field names below mirror the backend DTOs verbatim — see
  * `backend/src/main/java/com/homekept/visit/dto/Tech*.java` and
  * `VisitServiceItem.java`. `VisitStatus`/`VisitType`/`VisitServiceItem` are
- * shared with the customer app's visit DTOs (`@/lib/visits`) since the
- * backend enums and the checklist item shape are identical.
+ * shared with the customer app's visit DTOs (`@/lib/visits`), `FlagSeverity`
+ * with `@/lib/health`, and `TodoItemStatus` with `@/lib/todos`, since the
+ * backend enums are identical across those slices.
  *
  * SENSITIVE DATA: `TechVisitListItem.accessNotes` is decrypted plaintext
  * (lockbox/alarm codes) and the address fields are customer PII. Nothing in
@@ -23,10 +24,10 @@ import {
 } from "@tanstack/react-query";
 import { get, patch, post } from "@/lib/api";
 import type { VisitServiceItem, VisitStatus, VisitType } from "@/lib/visits";
+import type { FlagSeverity } from "@/lib/health";
+import type { TodoItemStatus } from "@/lib/todos";
 
-export type { VisitServiceItem, VisitStatus, VisitType };
-
-export type FlagSeverity = "INFO" | "ATTENTION" | "URGENT";
+export type { VisitServiceItem, VisitStatus, VisitType, FlagSeverity };
 
 /**
  * A single visit on the technician's day sheet
@@ -145,8 +146,6 @@ export function useCreateFlag(): UseMutationResult<FlagResponse, unknown, Create
       post<FlagResponse>(`/api/tech/visits/${visitId}/flags`, request),
   });
 }
-
-export type TodoItemStatus = "OPEN" | "SCHEDULED" | "DONE" | "DECLINED";
 
 export interface TechPatchTodoRequest {
   status: "DONE" | "DECLINED";

@@ -8,7 +8,7 @@
  *   - PicksMenuResponse / PickServiceResponse
  *     (backend/src/main/java/com/homekept/catalog/dto/PicksMenuResponse.java, PickServiceResponse.java)
  *
- * Money is integer cents on both endpoints — format with `formatCentsCAD` from `@/lib/admin`,
+ * Money is integer cents on both endpoints — format with `formatCentsCad` from `@/lib/format`,
  * never a float-dollar helper. These endpoints require no auth (see SecurityConfig's
  * permitAll allowlist), so the hooks below have no role guard.
  */

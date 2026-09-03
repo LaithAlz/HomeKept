@@ -17,8 +17,8 @@ export function canonicalUrl(path: string): string {
   return `${BASE_URL}${path}`;
 }
 
-/** Shared organisation identity re-used in every JSON-LD graph. */
-export const ORG_IDENTITY = {
+/** Shared organisation identity, re-used for `areaServed` below. */
+const ORG_IDENTITY = {
   "@type": "HomeAndConstructionBusiness",
   "@id": `${BASE_URL}/#organization`,
   name: "HomeKept",
