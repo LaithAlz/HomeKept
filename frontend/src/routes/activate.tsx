@@ -265,6 +265,15 @@ function PasswordForm({ token, onStale }: { token: string; onStale: () => void }
         return;
       }
 
+      if (err instanceof ApiError && err.status === 409) {
+        // The unique-email index rejected the new account: this address is
+        // already registered (a staff login, or an earlier activation).
+        setBannerError(
+          "An account already exists for this email address. Sign in instead, or book the walk-through with a different email.",
+        );
+        return;
+      }
+
       setBannerError("Something went wrong on our end. Please try again.");
     }
   }
