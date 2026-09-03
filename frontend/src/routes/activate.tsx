@@ -269,7 +269,7 @@ function PasswordForm({ token, onStale }: { token: string; onStale: () => void }
         // The unique-email index rejected the new account: this address is
         // already registered (a staff login, or an earlier activation).
         setBannerError(
-          "An account already exists for this email address. Sign in instead, or book the walk-through with a different email.",
+          "You already have an account with this email. Sign in instead, or book the walk-through with a different email.",
         );
         return;
       }
