@@ -326,7 +326,7 @@ All auth endpoints live in `identity/AuthController`.
 
 **Documented in `api-contract.md` but not built** (all consistent with unfinished picks and
 activity-feed work, not silent drift): `GET /api/app/activity`, `POST /api/app/picks`,
-`POST /api/checkout/extra`, `POST /api/admin/visits/{id}/complete`. See
+`POST /api/checkout/extra`. See
 [§13](#13-where-code-and-the-design-docs-disagree).
 
 ### Standard error envelope and status codes
@@ -493,7 +493,7 @@ the `api.ts` wrapper. Issue #105 (clear the query cache on logout) is an open fo
 
 | Group | Files | Wiring |
 |---|---|---|
-| Marketing / public | `index`, `plans`, `milton`, `mississauga`, `oakville`, `learn.$slug`, `privacy`, `terms`, `design-system`, `sitemap[.]xml` | Static content (pricing sourced from `lib/plans.ts`, itself transcribed from the pricing spec). No API/mock. |
+| Marketing / public | `index`, `plans`, `milton`, `mississauga`, `oakville`, `learn.$slug`, `privacy`, `terms`, `sitemap[.]xml` | Static content (pricing sourced from `lib/plans.ts`, itself transcribed from the pricing spec). No API/mock. |
 | Auth / lead flow | `signin`, `activate`, `forgot-password`, `reset-password`, `book`, `plans` | Wired to real API (`lib/api.ts`). |
 | `checkout.tsx` | 1 file | Stub: "Checkout flow coming next." Not wired. |
 | Customer app `/app/*` | `app` shell + `index`, `visits`, `visits.$id`, `list`, `health`, `reports`, `billing`, `settings` | **Mixed.** Real: `billing`, `settings`, `list`, `visits`, `visits.$id`. Still mock: `health` (not wired to the shipped `/api/app/health-score`), `reports`; `index` and `AppShell` sidebar pull greeting/name/health from `mock-account.ts`. |
@@ -558,13 +558,13 @@ CTA uses pine text per the WCAG rule):
 
 | Template | Fired from | Trigger |
 |---|---|---|
-| `bookingConfirmation` | `DefaultBookingNotifier` <- `BookingService` | Walk-through submitted |
+| `bookingConfirmation` | `BookingNotifier` <- `BookingService` | Walk-through submitted |
 | `activationInvite` | `ActivationNotifier` <- `ActivationService` | Admin sends activation invite |
-| `welcome` | `DefaultSubscriptionStartedNotifier` <- `StripeWebhookService` | `checkout.session.completed` |
-| `visitComplete` | `DefaultVisitReportNotifier` <- `TechVisitService` | Visit completed |
-| `paymentFailed` | `DefaultPaymentFailedNotifier` <- `StripeWebhookService` | `invoice.payment_failed` |
-| `subscriptionCancelled` | `DefaultSubscriptionCancelledNotifier` <- `StripeWebhookService` | `customer.subscription.deleted` |
-| `passwordReset` | `DefaultPasswordResetNotifier` <- `AuthService` | Forgot-password request |
+| `welcome` | `SubscriptionStartedNotifier` <- `StripeWebhookService` | `checkout.session.completed` |
+| `visitComplete` | `VisitReportNotifier` <- `TechVisitService` | Visit completed |
+| `paymentFailed` | `PaymentFailedNotifier` <- `StripeWebhookService` | `invoice.payment_failed` |
+| `subscriptionCancelled` | `SubscriptionCancelledNotifier` <- `StripeWebhookService` | `customer.subscription.deleted` |
+| `passwordReset` | `PasswordResetNotifier` <- `AuthService` | Forgot-password request |
 
 The two 24h reminder emails (walk-through, visit) are deferred to Stage 2 (issue #89; needs a
 founder `notification_log` migration + `@Scheduled`). **Config caveat (verify before
@@ -823,7 +823,7 @@ unfinished feature the contract already anticipated, or stale doc prose.
 
 **Against `backend/api-contract.md`:**
 - Documented, not built: `GET /api/app/activity`, `POST /api/app/picks`,
-  `POST /api/checkout/extra`, `POST /api/admin/visits/{id}/complete`. The picks/extra
+  `POST /api/checkout/extra`. The picks/extra
   endpoints belong to issue #60; the contract already flags picks tracking as "not yet
   built."
 - Built, not documented: `GET /actuator/health` (Actuator infrastructure, allowlisted).
