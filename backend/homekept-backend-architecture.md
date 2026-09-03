@@ -254,12 +254,11 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 **Responsibilities:** scheduled and completed maintenance visits. This is what the business *is*. Every paying subscriber generates 4-24 visits per year; this is the most-touched table in the database.
 
-**Owns:** `visit`, `visit_service`, `visit_photo`, `visit_note`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
+**Owns:** `visit`, `visit_service`, `visit_photo`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
 
 **Key entities:**
 - `Visit` — id, subscriber_id, property_id, technician_id, visit_template_id (nullable — null for EXTRA/WALKTHROUGH), scheduled_for, duration_minutes, actual_duration_minutes, materials_cost_cents, status, type, completion_notes, completed_at, created_at, updated_at
 - `VisitService` — id, visit_id, service_id (FK to catalog), source (TEMPLATE / PICK / EXTRA / FLAGGED / TODO — PICK burns the allowance, EXTRA is paid à la carte and never does), completed, completed_at, technician_notes
-- `VisitNote` — id, visit_id, author_user_id, body, created_at
 - `VisitPhoto` — id, visit_id, storage_key (R2), caption, taken_at, created_at
 - `TodoItem` ("your list") — id, subscriber_id, body, status (OPEN / SCHEDULED / DONE / DECLINED — DECLINED set by the technician with a note), visit_id (nullable), created_at
 - `Flag` — id, subscriber_id, origin_visit_id, body, severity (INFO / ATTENTION / URGENT), status (OPEN / SCHEDULED / RESOLVED / REFERRED), photo_storage_key (nullable), created_at, resolved_at — the persistent half of observe → photograph → flag → refer; OPEN flags fold into the next visit and feed the health score
@@ -411,7 +410,6 @@ visit
   ├── N:1 → property
   ├── N:1 → technician (optional)
   ├── 1:N → visit_service
-  ├── 1:N → visit_note
   ├── 1:N → visit_photo
   ├── 1:N → reschedule_request
   └── 0:1 → visit_template (its origin)

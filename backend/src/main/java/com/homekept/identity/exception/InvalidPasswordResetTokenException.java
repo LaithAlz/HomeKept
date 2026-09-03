@@ -1,15 +1,13 @@
 package com.homekept.identity.exception;
 
 /**
- * Thrown when a password reset token is invalid, expired, or already consumed.
- * The {@code reason} field matches the API contract values: "EXPIRED", "USED", "INVALID".
+ * Thrown when a password reset token is invalid, expired, or already consumed. The reason
+ * ("EXPIRED", "USED", "INVALID") goes into the log message only; the API response is the
+ * same generic INVALID_TOKEN for all three so callers can't tell them apart.
  */
 public class InvalidPasswordResetTokenException extends RuntimeException {
 
-    private final String reason;
-
     public InvalidPasswordResetTokenException(String reason) {
         super("Password reset token is " + reason.toLowerCase());
-        this.reason = reason;
     }
 }

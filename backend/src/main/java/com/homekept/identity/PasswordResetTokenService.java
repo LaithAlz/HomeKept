@@ -109,7 +109,6 @@ public class PasswordResetTokenService {
      * @param rawToken the raw token from the reset link
      * @return validation outcome
      */
-    @Transactional(readOnly = true)
     private ValidationResult validate(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return ValidationResult.invalid("INVALID");
