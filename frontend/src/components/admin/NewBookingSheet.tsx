@@ -8,7 +8,7 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -229,20 +229,9 @@ export function NewBookingSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <div className="flex items-center justify-between">
-            <SheetTitle className="font-display text-2xl font-extrabold tracking-tight">
-              New booking
-            </SheetTitle>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              disabled={mutation.isPending}
-              aria-label="Close"
-              className="inline-flex size-8 items-center justify-center rounded-full hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
+          <SheetTitle className="font-display text-2xl font-extrabold tracking-tight">
+            New booking
+          </SheetTitle>
           <SheetDescription>
             Log a walk-through booked by phone or in person. It&rsquo;s created exactly like a
             self-serve request and enters the same pipeline.
