@@ -220,7 +220,8 @@ public class VisitSchedulingService {
      * <p>The placeholder is the 15th of the month at noon Toronto time. If that date
      * is within {@value #MIN_DAYS_AHEAD} days of today (or in the past), the placeholder
      * is pushed to {@value #MIN_DAYS_AHEAD} days from now so admin still has time to
-     * confirm. If the adjusted date falls outside the window, returns null.
+     * confirm. A weekend placeholder moves to the following Monday. If the adjusted date
+     * falls outside the window, returns null.
      *
      * @param month      calendar month (1-12)
      * @param today      current date in Toronto timezone
@@ -235,7 +236,14 @@ public class VisitSchedulingService {
             if (candidate.isBefore(windowEnd) && !candidate.isBefore(today)) {
                 // Ensure admin has MIN_DAYS_AHEAD to act.
                 LocalDate earliest = today.plusDays(MIN_DAYS_AHEAD);
-                return candidate.isBefore(earliest) ? earliest : candidate;
+                LocalDate placeholder = candidate.isBefore(earliest) ? earliest : candidate;
+                // Visits run on weekdays: a Saturday or Sunday placeholder moves to the Monday.
+                switch (placeholder.getDayOfWeek()) {
+                    case SATURDAY -> placeholder = placeholder.plusDays(2);
+                    case SUNDAY -> placeholder = placeholder.plusDays(1);
+                    default -> { }
+                }
+                return placeholder.isBefore(windowEnd) ? placeholder : null;
             }
         }
         return null;
