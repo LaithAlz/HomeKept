@@ -1,9 +1,8 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -13,27 +12,15 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -42,28 +29,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * checklist-completion deduction), the delta against the prior snapshot, and
  * {@code GET /api/app/health-score}. Runs against real Postgres via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class HealthScoreIntegrationTest {
+class HealthScoreIntegrationTest extends AbstractIntegrationTest {
 
     private static final String URL = "/api/app/health-score";
-    private static final String LOGIN_URL = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired FlagRepository flagRepository;
     @Autowired HealthScoreService healthScoreService;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds        = new ArrayList<>();
 
     private Subscriber subscriber;
     private String customerToken;
@@ -75,34 +51,15 @@ class HealthScoreIntegrationTest {
         User customer = userRepository.save(new User(
                 "hs-cust-" + nano + "@test.local", passwordEncoder.encode("Cust1234!"),
                 "Health", "Customer", Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customer.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Health Rd", null, "Mississauga", "L5L 1A1", "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         subscriber = subscriberRepository.save(new Subscriber(
                 customer.getId(), property.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(subscriber.getId());
 
         customerToken = loginAs(customer.getEmail(), "Cust1234!");
         adminToken = loginAsNewAdmin();
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM health_score_snapshot WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM flag WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-        for (Long id : createdPropertyIds) propertyRepository.deleteById(id);
-        createdPropertyIds.clear();
-        for (Long id : createdUserIds) userRepository.deleteById(id);
-        createdUserIds.clear();
     }
 
     // ── Rubric ──────────────────────────────────────────────────────────────────
@@ -198,30 +155,12 @@ class HealthScoreIntegrationTest {
         return new Cookie("hk_access", token);
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "hs-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email, passwordEncoder.encode("Admin1234!"),
                 "Admin", "Test", Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Admin1234!");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie '" + name + "' not found"));
     }
 }

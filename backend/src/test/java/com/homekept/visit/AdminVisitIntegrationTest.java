@@ -1,9 +1,8 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -13,22 +12,15 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,28 +50,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Anonymous → 401.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AdminVisitIntegrationTest {
+class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     private static final String CREATE_URL = "/api/admin/visits";
     private static final String LIST_URL   = "/api/admin/visits";
     private static final String PATCH_URL  = "/api/admin/visits/{id}";
-    private static final String LOGIN_URL  = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdUserIds       = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
 
     /** ADMIN user for admin endpoint tests. */
     private User adminUser;
@@ -89,7 +70,6 @@ class AdminVisitIntegrationTest {
     private Subscriber targetSubscriber;
 
     /** A CUSTOMER user for role-gating tests. */
-    private User customerUser;
     private String customerToken;
 
     @BeforeEach
@@ -102,7 +82,6 @@ class AdminVisitIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Visit",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(adminUser.getId());
         adminToken = loginAs(adminUser.getEmail(), "Test1234!");
 
         // Target customer subscriber.
@@ -111,49 +90,22 @@ class AdminVisitIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Target", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(targetUser.getId());
 
         Property targetProp = propertyRepository.save(new Property(
                 nano + " Target Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(targetProp.getId());
 
         targetSubscriber = subscriberRepository.save(new Subscriber(
                 targetUser.getId(), targetProp.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(targetSubscriber.getId());
 
         // CUSTOMER user for role-gating tests.
-        customerUser = userRepository.save(new User(
+        User customerUser = userRepository.save(new User(
                 "admin-visit-customer-" + nano + "@test.local",
                 passwordEncoder.encode("Test1234!"),
                 "Customer", "Role",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
     }
 
     // ── GET /api/admin/visits — list ─────────────────────────────────────────
@@ -290,8 +242,7 @@ class AdminVisitIntegrationTest {
                 .andExpect(jsonPath("$.durationMinutes").value(120))
                 .andReturn();
 
-        Long visitId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long visitId = idFrom(result);
 
         Visit persisted = visitRepository.findById(visitId).orElseThrow();
         assertThat(persisted.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
@@ -321,8 +272,7 @@ class AdminVisitIntegrationTest {
                 .andExpect(jsonPath("$.services[0].source").value("TEMPLATE"))
                 .andReturn();
 
-        Long visitId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long visitId = idFrom(result);
 
         List<VisitService> services = visitServiceRepository.findByVisitIdOrderByIdAsc(visitId);
         assertThat(services).hasSize(1);
@@ -350,8 +300,7 @@ class AdminVisitIntegrationTest {
                 .andExpect(jsonPath("$.technicianId").value(techId))
                 .andReturn();
 
-        Long visitId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long visitId = idFrom(result);
         Visit persisted = visitRepository.findById(visitId).orElseThrow();
         assertThat(persisted.getTechnicianId()).isEqualTo(techId);
     }
@@ -445,8 +394,7 @@ class AdminVisitIntegrationTest {
                 .andExpect(jsonPath("$.status").value("SCHEDULED"))
                 .andReturn();
 
-        Long newVisitId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long newVisitId = idFrom(result);
 
         // Old visit must now be RESCHEDULED.
         Visit old = visitRepository.findById(original.getId()).orElseThrow();
@@ -474,8 +422,7 @@ class AdminVisitIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        Long newVisitId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
+        Long newVisitId = idFrom(result);
 
         List<VisitService> newServices = visitServiceRepository.findByVisitIdOrderByIdAsc(newVisitId);
         assertThat(newServices).hasSize(1);
@@ -608,22 +555,5 @@ class AdminVisitIntegrationTest {
             throw new IllegalStateException("No standing-item services found in catalog seed");
         }
         return id;
-    }
-
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
     }
 }

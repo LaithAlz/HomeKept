@@ -1,11 +1,6 @@
 package com.homekept;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
-import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -35,13 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       while foundingMonthlyPriceCents remains 12900 (price not hidden, just availability toggled)</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class CatalogIntegrationTest {
-
-    @Autowired
-    MockMvc mockMvc;
+class CatalogIntegrationTest extends AbstractIntegrationTest {
 
     private static final String PLANS_URL = "/api/catalog/plans";
     private static final String PICKS_URL = "/api/catalog/picks";

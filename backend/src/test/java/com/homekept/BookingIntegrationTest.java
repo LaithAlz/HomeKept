@@ -7,20 +7,11 @@ import com.homekept.booking.BookingStatus;
 import com.homekept.booking.WalkthroughBooking;
 import com.homekept.booking.WalkthroughBookingRepository;
 import com.homekept.identity.Role;
-import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
-import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.ArrayList;
@@ -55,21 +46,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Flyway V3 + JPA validate boots (implicit — context load passes)</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, RecordingAnalyticsConfig.class})
-class BookingIntegrationTest {
+class BookingIntegrationTest extends AbstractIntegrationTest {
 
-    @Autowired MockMvc mockMvc;
     @Autowired WalkthroughBookingRepository bookingRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired BookingRateLimiter rateLimiter;
     @Autowired RecordingAnalyticsService recording;
 
     private static final String WALKTHROUGH_URL  = "/api/bookings/walkthrough";
     private static final String ADMIN_BOOKINGS_URL = "/api/admin/bookings";
-    private static final String LOGIN_URL = "/api/auth/login";
 
     private static final String VALID_BODY = """
             {
@@ -87,27 +71,11 @@ class BookingIntegrationTest {
             }
             """;
 
-    /** Track created entities for cleanup. */
-    private final List<Long> createdBookingIds = new ArrayList<>();
-    private final List<Long> createdUserIds = new ArrayList<>();
-
     @BeforeEach
     void setUp() {
         // Reset rate limiter for the test IP (MockMvc uses 127.0.0.1)
         rateLimiter.reset("127.0.0.1");
         recording.clear();
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long id : createdBookingIds) {
-            bookingRepository.deleteById(id);
-        }
-        createdBookingIds.clear();
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── POST /api/bookings/walkthrough ────────────────────────────────────────
@@ -122,9 +90,7 @@ class BookingIntegrationTest {
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andReturn();
 
-        // Extract created id for cleanup and verify it's in the DB
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         WalkthroughBooking saved = bookingRepository.findById(id).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(BookingStatus.PENDING);
@@ -166,9 +132,7 @@ class BookingIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andReturn();
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         // With an anon id supplied, walkthrough_booked is attributed to it (so the later
         // activation alias can stitch this lead to the eventual user).
@@ -205,9 +169,7 @@ class BookingIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andReturn();
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         assertThat(recording.anonymousEvents()).anySatisfy(e -> {
             assertThat(e.event()).isEqualTo(AnalyticsEvent.WALKTHROUGH_BOOKED);
@@ -239,9 +201,7 @@ class BookingIntegrationTest {
                         .content(body))
                 .andExpect(status().isCreated())
                 .andReturn();
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         assertThat(recording.anonymousEvents()).anySatisfy(e -> {
             assertThat(e.event()).isEqualTo(AnalyticsEvent.WALKTHROUGH_BOOKED);
@@ -273,8 +233,7 @@ class BookingIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         WalkthroughBooking saved = bookingRepository.findById(id).orElseThrow();
         assertThat(saved.getLeadSource().name()).isEqualTo("NEXTDOOR");
@@ -400,8 +359,7 @@ class BookingIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
     }
 
     @Test
@@ -466,8 +424,7 @@ class BookingIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
     }
 
     // ── GET /api/admin/bookings — auth / role gate ────────────────────────────
@@ -503,8 +460,7 @@ class BookingIntegrationTest {
                         .content(VALID_BODY))
                 .andExpect(status().isCreated())
                 .andReturn();
-        Long bookingId = ((Number) com.jayway.jsonpath.JsonPath.read(createResult.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(bookingId);
+        Long bookingId = idFrom(createResult);
 
         String adminToken = loginAs(Role.ADMIN);
 
@@ -527,9 +483,8 @@ class BookingIntegrationTest {
                             .content(VALID_BODY))
                     .andExpect(status().isCreated())
                     .andReturn();
-            Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
+            Long id = idFrom(result);
             ids.add(id);
-            createdBookingIds.add(id);
         }
 
         String adminToken = loginAs(Role.ADMIN);
@@ -710,7 +665,7 @@ class BookingIntegrationTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Creates a booking via the public API and tracks the id for cleanup.
+     * Creates a booking via the public API.
      */
     private Long createBookingViaApi() throws Exception {
         MvcResult result = mockMvc.perform(post(WALKTHROUGH_URL)
@@ -718,35 +673,6 @@ class BookingIntegrationTest {
                         .content(VALID_BODY))
                 .andExpect(status().isCreated())
                 .andReturn();
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
-        return id;
-    }
-
-    /**
-     * Creates a user with the given role and logs in, returning the access token value.
-     */
-    private String loginAs(Role role) throws Exception {
-        String email = "test-" + role.name().toLowerCase() + "-" + System.nanoTime() + "@test.local";
-        String password = "Test1234!";
-        User user = userRepository.save(
-                new User(email, passwordEncoder.encode(password), "Test", "User", role, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
-
-        MvcResult loginResult = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        return extractCookieValue(loginResult.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
+        return idFrom(result);
     }
 }

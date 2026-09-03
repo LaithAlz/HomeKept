@@ -1,10 +1,9 @@
 package com.homekept.visit;
 
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.FlakyStorageServiceConfig;
-import com.homekept.TestcontainersConfiguration;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -14,26 +13,15 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -45,26 +33,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * the visit detail (including the other, successfully-signed photo) still returns 200,
  * rather than the whole request 500ing.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, FlakyStorageServiceConfig.class})
-class AppVisitPhotoPartialFailureIntegrationTest {
+@Import(FlakyStorageServiceConfig.class)
+class AppVisitPhotoPartialFailureIntegrationTest extends AbstractIntegrationTest {
 
     private static final String DETAIL_URL = "/api/app/visits/{id}";
-    private static final String LOGIN_URL  = "/api/auth/login";
 
-    @Autowired MockMvc mockMvc;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitPhotoRepository visitPhotoRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
-    @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdUserIds       = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
 
     private Subscriber customerSubscriber;
     private String customerToken;
@@ -78,43 +55,16 @@ class AppVisitPhotoPartialFailureIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Flaky", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Flaky Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         customerSubscriber = subscriberRepository.save(new Subscriber(
                 customerUser.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(customerSubscriber.getId());
 
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // visit_photo cascades from visit (ON DELETE CASCADE) — deleting visit is enough.
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
     }
 
     @Test
@@ -143,20 +93,4 @@ class AppVisitPhotoPartialFailureIntegrationTest {
                 .andExpect(jsonPath("$.photos[0].url").value(FlakyStorageServiceConfig.FAKE_DOWNLOAD_URL));
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
-    }
 }

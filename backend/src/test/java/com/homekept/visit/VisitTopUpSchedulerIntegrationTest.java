@@ -1,10 +1,9 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -13,15 +12,10 @@ import com.homekept.subscription.BillingCycle;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,46 +41,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  * data alone, since all of its guard clauses fail gracefully (log + return), not with
  * exceptions.
  */
-@SpringBootTest
-@Import(TestcontainersConfiguration.class)
-class VisitTopUpSchedulerIntegrationTest {
+class VisitTopUpSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired VisitTopUpScheduler visitTopUpScheduler;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
-
-    @AfterEach
-    void tearDown() {
-        // visit_service → visit (ON DELETE CASCADE) but visit → subscriber ON DELETE RESTRICT,
-        // so delete visits (and their service rows) before the subscriber.
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
-    }
 
     // ── ACTIVE subscribers get topped up ────────────────────────────────────────
 
@@ -177,12 +138,10 @@ class VisitTopUpSchedulerIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Test", "TopUp",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Top-Up St", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         Long planTierId = jdbc.queryForObject(
                 "SELECT id FROM plan_tier WHERE code = ?", Long.class, planCode.name());
@@ -193,7 +152,6 @@ class VisitTopUpSchedulerIntegrationTest {
         Subscriber sub = new Subscriber(user.getId(), property.getId(), status, BillingCycle.MONTHLY);
         sub.setPlanTierId(planTierId);
         sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
         return sub;
     }
 }

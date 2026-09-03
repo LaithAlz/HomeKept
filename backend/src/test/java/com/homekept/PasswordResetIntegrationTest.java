@@ -9,28 +9,19 @@ import com.homekept.identity.PasswordResetTokenRepository;
 import com.homekept.identity.PasswordResetTokenService;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Base64;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -66,14 +57,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       the outbound SendGrid send is configured (#115, #120)</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, FakeEmailSenderConfig.class})
-class PasswordResetIntegrationTest {
+class PasswordResetIntegrationTest extends AbstractIntegrationTest {
 
     private static final String FORGOT_URL  = "/api/auth/forgot";
     private static final String RESET_URL   = "/api/auth/reset";
-    private static final String LOGIN_URL   = "/api/auth/login";
     private static final String REFRESH_URL = "/api/auth/refresh";
 
     // Must match src/test/resources/application.yml app.jwt.signing-key — used to hand-craft
@@ -81,30 +68,15 @@ class PasswordResetIntegrationTest {
     // hand-signing fixture payloads with the test webhook secret).
     private static final String TEST_SIGNING_KEY = "test-only-not-a-real-signing-key-placeholder-xx";
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired PasswordResetTokenRepository tokenRepository;
     @Autowired PasswordResetTokenService tokenService;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired ForgotPasswordRateLimiter forgotPasswordRateLimiter;
     @Autowired RecordingEmailSender email;
-
-    private final List<Long> createdUserIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
         email.reset();
         forgotPasswordRateLimiter.reset("127.0.0.1");
-        createdUserIds.clear();
-    }
-
-    @AfterEach
-    void tearDown() {
-        // password_reset_tokens and refresh_tokens are ON DELETE CASCADE.
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── POST /api/auth/forgot ─────────────────────────────────────────────────
@@ -380,11 +352,9 @@ class PasswordResetIntegrationTest {
     }
 
     private User createTestUserWithStatus(String email, String rawPassword, UserStatus status) {
-        User user = userRepository.save(
+        return userRepository.save(
                 new User(email, passwordEncoder.encode(rawPassword), "Test", "User",
                         Role.CUSTOMER, status));
-        createdUserIds.add(user.getId());
-        return user;
     }
 
     /** Times a POST /api/auth/forgot round-trip in milliseconds, wall-clock. */
@@ -395,14 +365,6 @@ class PasswordResetIntegrationTest {
                         .content("{\"email\":\"" + email + "\"}"))
                 .andExpect(status().isAccepted());
         return (System.nanoTime() - start) / 1_000_000;
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
     }
 
     /** Extracts the raw token query param from a {@code /reset-password?token=...} link. */

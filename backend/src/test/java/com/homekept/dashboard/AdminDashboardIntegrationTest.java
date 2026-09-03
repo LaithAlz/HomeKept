@@ -1,12 +1,10 @@
 package com.homekept.dashboard;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.booking.BookingRateLimiter;
-import com.homekept.booking.WalkthroughBookingRepository;
 import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -19,23 +17,15 @@ import com.homekept.visit.Visit;
 import com.homekept.visit.VisitRepository;
 import com.homekept.visit.VisitType;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -62,30 +52,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>A new future SCHEDULED visit increases {@code upcomingVisits} by 1.</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AdminDashboardIntegrationTest {
+class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
 
     private static final String DASHBOARD_URL   = "/api/admin/dashboard";
-    private static final String LOGIN_URL       = "/api/auth/login";
     private static final String WALKTHROUGH_URL = "/api/bookings/walkthrough";
 
-    @Autowired MockMvc mockMvc;
-    @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
-    @Autowired WalkthroughBookingRepository bookingRepository;
     @Autowired BookingRateLimiter bookingRateLimiter;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdUserIds       = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdVisitIds      = new ArrayList<>();
-    private final List<Long> createdBookingIds    = new ArrayList<>();
 
     private String adminToken;
     private String customerToken;
@@ -100,7 +76,6 @@ class AdminDashboardIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Dash",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(adminUser.getId());
         adminToken = loginAs(adminUser.getEmail(), "Test1234!");
 
         User customerUser = userRepository.save(new User(
@@ -108,42 +83,7 @@ class AdminDashboardIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Customer", "Dash",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
         customerToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long id : createdVisitIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id = ?", id);
-        }
-        for (Long id : createdVisitIds) {
-            visitRepository.deleteById(id);
-        }
-        createdVisitIds.clear();
-
-        for (Long id : createdBookingIds) {
-            bookingRepository.deleteById(id);
-        }
-        createdBookingIds.clear();
-
-        for (Long id : createdSubscriberIds) {
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", id);
-        }
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── Role gating ───────────────────────────────────────────────────────────
@@ -219,10 +159,9 @@ class AdminDashboardIntegrationTest {
 
         Subscriber sub = seedActiveSubscriber(essentialPlanTierId(), false);
 
-        Visit visit = visitRepository.save(new Visit(
+        visitRepository.save(new Visit(
                 sub.getId(), sub.getPropertyId(), null,
                 Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
-        createdVisitIds.add(visit.getId());
 
         long after = readLong("$.upcomingVisits");
         assertThat(after).isEqualTo(baseline + 1);
@@ -256,20 +195,16 @@ class AdminDashboardIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Dash", "Subscriber",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Dashboard Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         Subscriber sub = new Subscriber(user.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
         sub.setPlanTierId(planTierId);
         sub.setFoundingRate(foundingRate);
-        sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
-        return sub;
+        return subscriberRepository.save(sub);
     }
 
     private void createPendingBooking() throws Exception {
@@ -288,31 +223,9 @@ class AdminDashboardIntegrationTest {
                 }
                 """.formatted(System.nanoTime());
 
-        MvcResult result = mockMvc.perform(post(WALKTHROUGH_URL)
+        mockMvc.perform(post(WALKTHROUGH_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isCreated())
-                .andReturn();
-
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
-    }
-
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
+                .andExpect(status().isCreated());
     }
 }

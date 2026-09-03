@@ -2,7 +2,6 @@ package com.homekept;
 
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -12,21 +11,13 @@ import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.MvcResult;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,32 +36,21 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link StripeWebhookIntegrationTest} — so these tests assert the response still reports
  * the <em>current</em> status (the request is accepted, not yet applied).
  *
- * <p>Runs against a real Postgres via Testcontainers. Teardown follows the FK-safe order
- * subscription_event → subscriber → property → user.
+ * <p>Runs against a real Postgres via Testcontainers.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import({TestcontainersConfiguration.class, FakeStripeServiceConfig.class})
-class SubscriptionSelfServeIntegrationTest {
+@Import(FakeStripeServiceConfig.class)
+class SubscriptionSelfServeIntegrationTest extends AbstractIntegrationTest {
 
     private static final String PAUSE_URL  = "/api/app/subscription/pause";
     private static final String RESUME_URL = "/api/app/subscription/resume";
     private static final String CANCEL_URL = "/api/app/subscription/cancel";
-    private static final String LOGIN_URL  = "/api/auth/login";
 
     private static final String STRIPE_SUB_ID = "sub_test_selfserve_1";
 
-    @Autowired MockMvc mockMvc;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
     @Autowired FakeStripeServiceConfig.RecordingStripeService recordingStripe;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds        = new ArrayList<>();
 
     private User customerUser;
     private Subscriber customerSubscriber;
@@ -86,12 +66,10 @@ class SubscriptionSelfServeIntegrationTest {
                 passwordEncoder.encode("Test1234!"),
                 "Test", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customerUser.getId());
 
         Property prop = propertyRepository.save(new Property(
                 nano + " Self Serve Ave", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(prop.getId());
 
         // ACTIVE subscriber with a Stripe subscription id — the default billed state.
         customerSubscriber = new Subscriber(
@@ -100,28 +78,8 @@ class SubscriptionSelfServeIntegrationTest {
         customerSubscriber.setStripeCustomerId("cus_test_selfserve_1");
         customerSubscriber.setStripeSubscriptionId(STRIPE_SUB_ID);
         customerSubscriber = subscriberRepository.save(customerSubscriber);
-        createdSubscriberIds.add(customerSubscriber.getId());
 
         customerAccessToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long id : createdSubscriberIds) {
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", id);
-        }
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── pause ─────────────────────────────────────────────────────────────────
@@ -273,32 +231,14 @@ class SubscriptionSelfServeIntegrationTest {
         customerSubscriber = subscriberRepository.save(customerSubscriber);
     }
 
-    private String loginAs(String email, String password) throws Exception {
-        MvcResult result = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-        return extractCookieValue(result.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
     private String loginAsNewAdmin() throws Exception {
         long nano = System.nanoTime();
         String email = "selfserve-admin-" + nano + "@test.local";
-        User admin = userRepository.save(new User(
+        userRepository.save(new User(
                 email,
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Test",
                 Role.ADMIN, UserStatus.ACTIVE));
-        createdUserIds.add(admin.getId());
         return loginAs(email, "Test1234!");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie '" + name + "' not found in Set-Cookie headers"));
     }
 }

@@ -1,10 +1,9 @@
 package com.homekept.visit;
 
-import com.homekept.TestcontainersConfiguration;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -13,17 +12,12 @@ import com.homekept.subscription.BillingCycle;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,9 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@link VisitSchedulingService#nextOccurrenceInWindow} that the service itself uses,
  * so the test never hardcodes absolute dates.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Import(TestcontainersConfiguration.class)
-class VisitSchedulingIntegrationTest {
+class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
 
     private static final ZoneId TORONTO = ZoneId.of("America/Toronto");
     private static final int STANDING_ITEMS_PER_VISIT = 4;
@@ -58,38 +50,7 @@ class VisitSchedulingIntegrationTest {
     @Autowired VisitTemplateRepository visitTemplateRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
-    @Autowired PasswordEncoder passwordEncoder;
     @Autowired JdbcTemplate jdbc;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
-
-    @AfterEach
-    void tearDown() {
-        // visit_service → visit (ON DELETE CASCADE handles visit_service when visit deleted)
-        // but visit → subscriber ON DELETE RESTRICT, so delete visits first.
-        for (Long subId : createdSubscriberIds) {
-            jdbc.update("DELETE FROM visit_service WHERE visit_id IN (SELECT id FROM visit WHERE subscriber_id = ?)", subId);
-            jdbc.update("DELETE FROM visit WHERE subscriber_id = ?", subId);
-            jdbc.update("DELETE FROM subscription_event WHERE subscriber_id = ?", subId);
-        }
-        for (Long subId : createdSubscriberIds) {
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long propId : createdPropertyIds) {
-            propertyRepository.deleteById(propId);
-        }
-        createdPropertyIds.clear();
-
-        for (Long userId : createdUserIds) {
-            userRepository.deleteById(userId);
-        }
-        createdUserIds.clear();
-    }
 
     // ── ESSENTIAL tier ────────────────────────────────────────────────────────
 
@@ -383,12 +344,10 @@ class VisitSchedulingIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Test", "Scheduling",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Scheduling St", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         Long planTierId = jdbc.queryForObject(
                 "SELECT id FROM plan_tier WHERE code = ?", Long.class, planCode.name());
@@ -400,7 +359,6 @@ class VisitSchedulingIntegrationTest {
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
         sub.setPlanTierId(planTierId);
         sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
         return sub;
     }
 
@@ -415,18 +373,15 @@ class VisitSchedulingIntegrationTest {
                 passwordEncoder.encode("placeholder"),
                 "Test", "NoPlan",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " NoPlan St", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         Subscriber sub = new Subscriber(user.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
         // planTierId intentionally left null
         sub = subscriberRepository.save(sub);
-        createdSubscriberIds.add(sub.getId());
         return sub;
     }
 }

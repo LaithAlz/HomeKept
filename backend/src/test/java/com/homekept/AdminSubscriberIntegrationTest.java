@@ -3,28 +3,18 @@ package com.homekept;
 import com.homekept.booking.BookingRateLimiter;
 import com.homekept.booking.WalkthroughBookingRepository;
 import com.homekept.identity.Role;
-import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
-import com.homekept.identity.UserStatus;
 import com.homekept.property.PropertyRepository;
 import com.homekept.subscription.ActivationRateLimiter;
 import com.homekept.subscription.ActivationTokenRepository;
 import com.homekept.subscription.ActivationTokenService;
 import com.homekept.subscription.SubscriberRepository;
 import jakarta.servlet.http.Cookie;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,77 +42,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       until set, and reflect a subsequent {@code PATCH /api/admin/properties/{propertyId}/sku}</li>
  * </ul>
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
-class AdminSubscriberIntegrationTest {
+class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
 
     private static final String WALKTHROUGH_URL    = "/api/bookings/walkthrough";
     private static final String ADMIN_INVITE_URL   = "/api/admin/bookings/%d/activation-invite";
     private static final String ADMIN_SUBSCRIBERS  = "/api/admin/subscribers";
     private static final String ADMIN_PROPERTY_SKU_URL = "/api/admin/properties/%d/sku";
-    private static final String LOGIN_URL          = "/api/auth/login";
     private static final String COMPLETE_URL       = "/api/activation/complete";
 
-    @Autowired MockMvc mockMvc;
     @Autowired WalkthroughBookingRepository bookingRepository;
     @Autowired ActivationTokenRepository tokenRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired UserRepository userRepository;
     @Autowired ActivationTokenService activationTokenService;
     @Autowired ActivationRateLimiter activationRateLimiter;
     @Autowired BookingRateLimiter bookingRateLimiter;
-    @Autowired PasswordEncoder passwordEncoder;
-
-    private final List<Long> createdBookingIds    = new ArrayList<>();
-    private final List<Long> createdTokenIds      = new ArrayList<>();
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds       = new ArrayList<>();
 
     @BeforeEach
     void resetRateLimiters() {
         bookingRateLimiter.reset("127.0.0.1");
         activationRateLimiter.reset("127.0.0.1");
-    }
-
-    @AfterEach
-    void tearDown() {
-        // Break the circular booking↔token / booking→subscriber FKs first, then delete in
-        // dependency order (see ActivationIntegrationTest.tearDown for the rationale).
-        for (Long id : createdBookingIds) {
-            bookingRepository.findById(id).ifPresent(b -> {
-                b.setConvertedToSubscriberId(null);
-                b.setActivationTokenId(null);
-                bookingRepository.save(b);
-            });
-        }
-
-        for (Long id : createdTokenIds) {
-            tokenRepository.deleteById(id);
-        }
-        createdTokenIds.clear();
-
-        for (Long id : createdSubscriberIds) {
-            subscriberRepository.deleteById(id);
-        }
-        createdSubscriberIds.clear();
-
-        for (Long id : createdBookingIds) {
-            bookingRepository.deleteById(id);
-        }
-        createdBookingIds.clear();
-
-        for (Long id : createdPropertyIds) {
-            propertyRepository.deleteById(id);
-        }
-        createdPropertyIds.clear();
-
-        for (Long id : createdUserIds) {
-            userRepository.deleteById(id);
-        }
-        createdUserIds.clear();
     }
 
     // ── POST /api/admin/bookings/{id}/activation-invite — role gating ─────────
@@ -137,11 +76,6 @@ class AdminSubscriberIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("INVITE_SENT"))
                 .andReturn();
-        // Track the token row for cleanup.
-        var booking = bookingRepository.findById(bookingId).orElseThrow();
-        if (booking.getActivationTokenId() != null) {
-            createdTokenIds.add(booking.getActivationTokenId());
-        }
     }
 
     @Test
@@ -179,9 +113,6 @@ class AdminSubscriberIntegrationTest {
         // The booking must have activation_token_id set.
         var booking = bookingRepository.findById(bookingId).orElseThrow();
         assertThat(booking.getActivationTokenId()).isNotNull();
-
-        // Track for cleanup.
-        createdTokenIds.add(booking.getActivationTokenId());
     }
 
     // ── GET /api/admin/subscribers — role gating ──────────────────────────────
@@ -309,8 +240,7 @@ class AdminSubscriberIntegrationTest {
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
                 .andReturn();
-        Long propertyId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                detail.getResponse().getContentAsString(), "$.property.propertyId")).longValue();
+        Long propertyId = idFrom(detail, "$.property.propertyId");
 
         mockMvc.perform(patch(ADMIN_PROPERTY_SKU_URL.formatted(propertyId))
                         .cookie(new Cookie("hk_access", adminToken))
@@ -363,7 +293,7 @@ class AdminSubscriberIntegrationTest {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Creates a walk-through booking via the public API and tracks it for cleanup.
+     * Creates a walk-through booking via the public API.
      */
     private Long createBookingViaApi(String fullName, String email) throws Exception {
         String body = """
@@ -387,9 +317,7 @@ class AdminSubscriberIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        Long id = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.id")).longValue();
-        createdBookingIds.add(id);
+        Long id = idFrom(result);
 
         // Advance to PERFORMED so the activation flow can convert it (PERFORMED → CONVERTED).
         var booking = bookingRepository.findById(id).orElseThrow();
@@ -400,14 +328,13 @@ class AdminSubscriberIntegrationTest {
 
     /**
      * Runs the full activation flow (book → mint token → complete) and returns the
-     * subscriber id. All created rows are tracked for cleanup.
+     * subscriber id.
      */
     private Long createSubscriberViaActivation(String email, String fullName) throws Exception {
         Long bookingId = createBookingViaApi(fullName, email);
         activationRateLimiter.reset("127.0.0.1");
 
         ActivationTokenService.MintResult mint = activationTokenService.mint(bookingId);
-        createdTokenIds.add(mint.tokenId());
 
         activationRateLimiter.reset("127.0.0.1");
 
@@ -417,47 +344,14 @@ class AdminSubscriberIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        Long userId = ((Number) com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$.userId")).longValue();
-        createdUserIds.add(userId);
+        Long userId = idFrom(result, "$.userId");
 
         var subscriber = subscriberRepository.findByUserId(userId).orElseThrow();
-        createdSubscriberIds.add(subscriber.getId());
-        if (subscriber.getPropertyId() != null) {
-            createdPropertyIds.add(subscriber.getPropertyId());
-        }
 
         // Reset rate limiter for subsequent calls from tests.
         activationRateLimiter.reset("127.0.0.1");
         bookingRateLimiter.reset("127.0.0.1");
 
         return subscriber.getId();
-    }
-
-    /**
-     * Creates a user with the given role and logs in, returning the access token value.
-     */
-    private String loginAs(Role role) throws Exception {
-        String email = "test-" + role.name().toLowerCase() + "-" + System.nanoTime() + "@test.local";
-        String password = "Test1234!";
-        User user = userRepository.save(
-                new User(email, passwordEncoder.encode(password), "Test", "User", role, UserStatus.ACTIVE));
-        createdUserIds.add(user.getId());
-
-        MvcResult loginResult = mockMvc.perform(post(LOGIN_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}"))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        return extractCookieValue(loginResult.getResponse().getHeaders("Set-Cookie"), "hk_access");
-    }
-
-    private String extractCookieValue(List<String> setCookieHeaders, String name) {
-        return setCookieHeaders.stream()
-                .filter(h -> h.startsWith(name + "="))
-                .map(h -> h.split(";")[0].substring(name.length() + 1))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("Cookie not found: " + name));
     }
 }

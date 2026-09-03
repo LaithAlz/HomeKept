@@ -1,8 +1,7 @@
 package com.homekept.notification;
 
-import com.homekept.FakeEmailSenderConfig;
+import com.homekept.AbstractIntegrationTest;
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
-import com.homekept.TestcontainersConfiguration;
 import com.homekept.booking.BookingDayOfWeek;
 import com.homekept.booking.BookingNotifier;
 import com.homekept.booking.LeadSource;
@@ -11,7 +10,6 @@ import com.homekept.booking.WalkthroughBooking;
 import com.homekept.identity.PasswordResetNotifier;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
-import com.homekept.identity.UserRepository;
 import com.homekept.identity.UserStatus;
 import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
@@ -28,18 +26,13 @@ import com.homekept.visit.Visit;
 import com.homekept.visit.VisitReportNotifier;
 import com.homekept.visit.VisitRepository;
 import com.homekept.visit.VisitType;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,9 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Runs against real Postgres via Testcontainers.
  */
-@SpringBootTest
-@Import({TestcontainersConfiguration.class, FakeEmailSenderConfig.class})
-class NotificationEmailIntegrationTest {
+class NotificationEmailIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired RecordingEmailSender email;
     @Autowired SubscriptionStartedNotifier subscriptionStartedNotifier;
@@ -64,14 +55,9 @@ class NotificationEmailIntegrationTest {
     @Autowired BookingNotifier bookingNotifier;
     @Autowired PasswordResetNotifier passwordResetNotifier;
 
-    @Autowired UserRepository userRepository;
     @Autowired PropertyRepository propertyRepository;
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired VisitRepository visitRepository;
-
-    private final List<Long> createdSubscriberIds = new ArrayList<>();
-    private final List<Long> createdPropertyIds   = new ArrayList<>();
-    private final List<Long> createdUserIds        = new ArrayList<>();
 
     private String customerEmail;
     private Subscriber subscriber;
@@ -86,34 +72,18 @@ class NotificationEmailIntegrationTest {
         User customer = userRepository.save(new User(
                 customerEmail, "x", "Nora", "Customer",
                 Role.CUSTOMER, UserStatus.ACTIVE));
-        createdUserIds.add(customer.getId());
 
         Property property = propertyRepository.save(new Property(
                 nano + " Notify Ln", null, "Mississauga", "L5L 1A1",
                 "L5L", null, null, PropertyType.DETACHED));
-        createdPropertyIds.add(property.getId());
 
         subscriber = subscriberRepository.save(new Subscriber(
                 customer.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
-        createdSubscriberIds.add(subscriber.getId());
 
         visit = visitRepository.save(new Visit(
                 subscriber.getId(), property.getId(), null,
                 Instant.now().plus(7, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
-    }
-
-    @AfterEach
-    void tearDown() {
-        for (Long subId : createdSubscriberIds) {
-            visitRepository.findById(visit.getId()).ifPresent(v -> visitRepository.deleteById(v.getId()));
-            subscriberRepository.deleteById(subId);
-        }
-        createdSubscriberIds.clear();
-        for (Long id : createdPropertyIds) propertyRepository.deleteById(id);
-        createdPropertyIds.clear();
-        for (Long id : createdUserIds) userRepository.deleteById(id);
-        createdUserIds.clear();
     }
 
     @Test
