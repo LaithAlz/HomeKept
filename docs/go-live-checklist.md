@@ -10,9 +10,8 @@ used to live here (config-binding fixes #120/#121, the reminders migration #89, 
 the visit `photos[]` contract) are all **done** — see "Already handled in code" at the bottom.
 
 ## 1. Accounts and infrastructure (issue #12)
-- [ ] **Domain**: `homekept.ca`. Both apps must share the registrable domain because auth cookies
-      are `SameSite=Lax` — put the backend on `api.homekept.ca` and the frontend on
-      `app.homekept.ca` (or the apex).
+- [x] **Domain**: `homekept.ca`. Both apps share the registrable domain (auth cookies are
+      `SameSite=Lax`): backend on `api.homekept.ca`, frontend on the apex `homekept.ca`.
 - [ ] **Render** — the Spring Boot backend is already deployed here. Serve it at
       **`api.homekept.ca`** (CNAME to Render), never the raw `*.onrender.com`.
 - [ ] **Cloudflare** — deploy the TanStack Start frontend. From `frontend/`:
@@ -30,7 +29,8 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
       fails closed).
 
 **Also set:**
-- [ ] `FRONTEND_BASE_URL=https://app.homekept.ca`, `CORS_ALLOWED_ORIGIN_0=https://app.homekept.ca`.
+- [x] `FRONTEND_BASE_URL=https://homekept.ca`, `CORS_ALLOWED_ORIGIN_1=https://homekept.ca` (the apex,
+      not `app.homekept.ca`, which has no DNS record: every email link is built from this value).
 - [ ] `APP_SECURE_COOKIES=true`, `APP_DEV_MODE=false`, `APP_TIMEZONE=America/Toronto`.
 - [ ] `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD` — the first admin. **Use a strong password and
       rotate off any weak dev value.** The seeder is idempotent (only creates if absent).
