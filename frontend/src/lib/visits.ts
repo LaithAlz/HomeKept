@@ -87,17 +87,41 @@ function visitsPath({ status, limit, cursor }: ListVisitsParams): string {
   return `/api/app/visits${qs({ status, limit, cursor })}`;
 }
 
-/** GET /api/app/visits — cursor-paginated, newest/soonest first. */
-function useVisits(params: ListVisitsParams = {}): UseQueryResult<AppVisitListItem[]> {
+/** GET /api/app/visits — cursor-paginated, ordered by scheduledFor descending. */
+function useVisits<T = AppVisitListItem[]>(
+  params: ListVisitsParams = {},
+  select?: (data: AppVisitListItem[]) => T,
+): UseQueryResult<T> {
   return useQuery({
     queryKey: ["app-visits", params],
     queryFn: () => get<AppVisitListItem[]>(visitsPath(params)),
+    select,
   });
 }
 
-/** The subscriber's next scheduled visit (list capped to one row). */
+/**
+ * The subscriber's next scheduled visit: the SCHEDULED visit with the smallest
+ * `scheduledFor` that isn't already in the past.
+ *
+ * `GET /api/app/visits` orders by `scheduledFor` descending, so for a subscriber
+ * with several SCHEDULED visits (e.g. Premier's monthly cadence), a naive
+ * `limit: 1` would return the FARTHEST-future visit, not the soonest one. Fetch
+ * the (unlimited/default-paged) SCHEDULED set instead and pick the minimum
+ * client-side; falls back to an empty array (no next visit) if none remain.
+ */
 export function useNextVisit(): UseQueryResult<AppVisitListItem[]> {
-  return useVisits({ status: "SCHEDULED", limit: 1 });
+  // limit 100 is the API maximum; a subscriber has at most a year of scheduled visits.
+  return useVisits({ status: "SCHEDULED", limit: 100 }, (visits) => {
+    const now = Date.now();
+    const upcoming = visits.filter(
+      (v) => v.status === "SCHEDULED" && new Date(v.scheduledFor).getTime() >= now,
+    );
+    if (upcoming.length === 0) return [];
+    const soonest = upcoming.reduce((min, v) =>
+      new Date(v.scheduledFor).getTime() < new Date(min.scheduledFor).getTime() ? v : min,
+    );
+    return [soonest];
+  });
 }
 
 /** Recent completed visits, newest first — used for the activity feed and past-visits list. */

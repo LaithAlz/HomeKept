@@ -286,7 +286,7 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
     <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:gap-8">
       {/* Calendar block */}
       <div
-        className="flex w-full max-w-[140px] flex-col overflow-hidden rounded-2xl border border-border text-center"
+        className="flex w-full max-w-[140px] flex-col self-start overflow-hidden rounded-2xl border border-border text-center"
         aria-label={`${weekday}, ${month} ${day}`}
       >
         <div className="bg-accent py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-accent-foreground">
