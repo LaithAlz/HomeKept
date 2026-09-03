@@ -1,6 +1,7 @@
 package com.homekept.subscription;
 
 import com.homekept.catalog.PlanTier;
+import com.homekept.common.Hashing;
 import com.homekept.config.AppProperties;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
@@ -14,11 +15,6 @@ import com.stripe.param.common.EmptyParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 
 /**
  * Real Stripe API implementation of {@link StripeService}.
@@ -104,7 +100,7 @@ public class StripeServiceImpl implements StripeService {
                         .build();
 
         // Deterministic idempotency key: customer id + return URL.
-        String idempotencyKey = sha256Hex("portal:" + stripeCustomerId + ":"
+        String idempotencyKey = Hashing.sha256Hex("portal:" + stripeCustomerId + ":"
                 + appProperties.stripe().portalReturnUrl());
 
         RequestOptions options = RequestOptions.builder()
@@ -207,20 +203,5 @@ public class StripeServiceImpl implements StripeService {
             case MONTHLY -> plan.getStripePriceIdMonthly();
             case ANNUAL  -> plan.getStripePriceIdAnnual();
         };
-    }
-
-    /**
-     * Produces a deterministic SHA-256 hex digest of the input string.
-     * Used to build idempotency keys that are safe to pass to Stripe (max 255 chars).
-     */
-    static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is guaranteed by the JDK spec — never thrown in practice.
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

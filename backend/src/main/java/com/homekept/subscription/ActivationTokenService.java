@@ -1,5 +1,6 @@
 package com.homekept.subscription;
 
+import com.homekept.common.Hashing;
 import com.homekept.config.AppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,8 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
@@ -73,7 +72,7 @@ public class ActivationTokenService {
 
         String payload = "bookingId=" + bookingId + "&nonce=" + nonce + "&exp=" + expEpoch;
         String rawToken = buildSignedToken(payload);
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
 
         ActivationToken token = new ActivationToken(bookingId, hash, expiresAt);
         ActivationToken saved = tokenRepository.save(token);
@@ -112,7 +111,7 @@ public class ActivationTokenService {
         }
 
         // 4. Look up in DB by hash
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         ActivationToken token = tokenRepository.findByTokenHash(hash).orElse(null);
         if (token == null) {
             return ValidationResult.invalid("INVALID");
@@ -150,7 +149,7 @@ public class ActivationTokenService {
         // Atomic single-use gate: only one concurrent caller can flip consumed_at from NULL.
         // The loser of the race updates 0 rows and is rejected — single-use is DB-enforced,
         // not dependent on a read-then-write window.
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         int updated = tokenRepository.consumeIfUnconsumed(hash, Instant.now());
         if (updated == 0) {
             throw new InvalidActivationTokenException("USED");
@@ -233,16 +232,6 @@ public class ActivationTokenService {
         byte[] bytes = new byte[16];
         secureRandom.nextBytes(bytes);
         return HexFormat.of().formatHex(bytes);
-    }
-
-    static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 
     // ── Result types ──────────────────────────────────────────────────────────

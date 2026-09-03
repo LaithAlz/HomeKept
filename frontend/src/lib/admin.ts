@@ -176,7 +176,6 @@ export interface AdminSubscriberDetail {
   pausedAt?: string;
   cancelledAt?: string;
   property?: AdminSubscriberPropertySummary;
-  visits: unknown[];
 }
 
 /** `GET /api/admin/subscribers?cursor=&limit=` — cursor-paginated, newest first. */

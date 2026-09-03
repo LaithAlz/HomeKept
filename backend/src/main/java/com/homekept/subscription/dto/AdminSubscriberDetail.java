@@ -3,7 +3,6 @@ package com.homekept.subscription.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
-import java.util.List;
 
 /**
  * Full detail response for {@code GET /api/admin/subscribers/{id}}.
@@ -11,9 +10,6 @@ import java.util.List;
  * <p>No PII — IDs, enums, integer cents, booleans, and timestamps only.
  * Property access notes are NEVER decrypted here — only {@code hasAccessNotes} is exposed.
  * Stripe IDs are internal references (not PII per arch doc §5.2).
- *
- * <p>{@code visits} is always an empty list for now — this endpoint does not yet populate
- * it from the visit domain. The field is present so the frontend shape is stable.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminSubscriberDetail(
@@ -31,6 +27,5 @@ public record AdminSubscriberDetail(
         Instant startedAt,
         Instant pausedAt,
         Instant cancelledAt,
-        AdminSubscriberPropertySummary property,
-        List<Object> visits
+        AdminSubscriberPropertySummary property
 ) {}

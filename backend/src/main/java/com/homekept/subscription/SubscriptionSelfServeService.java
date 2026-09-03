@@ -1,5 +1,6 @@
 package com.homekept.subscription;
 
+import com.homekept.common.Hashing;
 import com.homekept.subscription.dto.SubscriptionActionResponse;
 import tools.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -39,18 +40,18 @@ public class SubscriptionSelfServeService {
     /** Stripe event_type recorded for the churn reason. */
     private static final String CANCELLATION_REQUESTED = "CANCELLATION_REQUESTED";
 
-    private final SubscriberRepository subscriberRepository;
+    private final SubscriberQueryService subscriberQueryService;
     private final SubscriptionEventRepository subscriptionEventRepository;
     private final SubscriberStateMachine stateMachine;
     private final StripeService stripeService;
     private final ObjectMapper objectMapper;
 
-    public SubscriptionSelfServeService(SubscriberRepository subscriberRepository,
+    public SubscriptionSelfServeService(SubscriberQueryService subscriberQueryService,
                                         SubscriptionEventRepository subscriptionEventRepository,
                                         SubscriberStateMachine stateMachine,
                                         StripeService stripeService,
                                         ObjectMapper objectMapper) {
-        this.subscriberRepository = subscriberRepository;
+        this.subscriberQueryService = subscriberQueryService;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.stateMachine = stateMachine;
         this.stripeService = stripeService;
@@ -151,9 +152,7 @@ public class SubscriptionSelfServeService {
      * @throws NoBillingAccountException   if no Stripe subscription id is set yet (409)
      */
     private Subscriber requireBilledSubscriber(Long userId) {
-        Subscriber subscriber = subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
+        Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         if (subscriber.getStripeSubscriptionId() == null
                 || subscriber.getStripeSubscriptionId().isBlank()) {
@@ -176,7 +175,7 @@ public class SubscriptionSelfServeService {
      * response and silently skip the second toggle.
      */
     private String idempotencyKey(String action, Subscriber subscriber) {
-        return StripeServiceImpl.sha256Hex(action + ":" + subscriber.getId() + ":"
+        return Hashing.sha256Hex(action + ":" + subscriber.getId() + ":"
                 + subscriber.getStripeSubscriptionId() + ":" + Instant.now().getEpochSecond());
     }
 

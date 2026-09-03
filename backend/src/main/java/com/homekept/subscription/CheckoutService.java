@@ -5,6 +5,7 @@ import com.homekept.analytics.AnalyticsService;
 import com.homekept.catalog.CatalogService;
 import com.homekept.catalog.PlanCode;
 import com.homekept.catalog.PlanTier;
+import com.homekept.common.Hashing;
 import com.homekept.subscription.dto.CheckoutSessionResponse;
 import com.homekept.subscription.dto.PortalSessionResponse;
 import org.slf4j.Logger;
@@ -31,15 +32,18 @@ public class CheckoutService {
     private static final Logger log = LoggerFactory.getLogger(CheckoutService.class);
 
     private final SubscriberRepository subscriberRepository;
+    private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final StripeService stripeService;
     private final AnalyticsService analytics;
 
     public CheckoutService(SubscriberRepository subscriberRepository,
+                           SubscriberQueryService subscriberQueryService,
                            CatalogService catalogService,
                            StripeService stripeService,
                            AnalyticsService analytics) {
         this.subscriberRepository = subscriberRepository;
+        this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.stripeService = stripeService;
         this.analytics = analytics;
@@ -69,9 +73,7 @@ public class CheckoutService {
     public CheckoutSessionResponse createCheckoutSession(Long userId, PlanCode planCode,
                                                          BillingCycle billingCycle,
                                                          boolean foundingRate) {
-        Subscriber subscriber = subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
+        Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         // Only a brand-new, unpaid subscription may check out. CANCELLED is terminal (a
         // returning customer is a NEW subscriber row — see SubscriberStatus), and an
@@ -123,7 +125,7 @@ public class CheckoutService {
 
         // Deterministic idempotency key: same subscriber + plan + cycle always produces
         // the same key, so a retry of an in-flight checkout returns the same session URL.
-        String idempotencyKey = StripeServiceImpl.sha256Hex(
+        String idempotencyKey = Hashing.sha256Hex(
                 "checkout:" + subscriber.getId() + ":" + planCode.name() + ":" + billingCycle.name()
                         + ":" + grantFounding);
 
@@ -131,16 +133,12 @@ public class CheckoutService {
                 subscriber.getId(), planCode, billingCycle, grantFounding);
 
         // Analytics (arch doc §5.7) — attributed to the customer, enum/flag props only, no
-        // PII. capture is commit-gated + best-effort; wrap so it can never break checkout.
-        try {
-            Map<String, Object> props = new LinkedHashMap<>();
-            props.put("plan_code", planCode.name());
-            props.put("billing_cycle", billingCycle.name());
-            props.put("founding_rate", grantFounding);
-            analytics.capture(userId, AnalyticsEvent.CHECKOUT_STARTED, props);
-        } catch (RuntimeException e) {
-            log.warn("analytics_checkout_started_failed subscriberId={}: {}", subscriber.getId(), e.toString());
-        }
+        // PII. capture() is itself commit-gated and best-effort.
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("plan_code", planCode.name());
+        props.put("billing_cycle", billingCycle.name());
+        props.put("founding_rate", grantFounding);
+        analytics.capture(userId, AnalyticsEvent.CHECKOUT_STARTED, props);
 
         String checkoutUrl = stripeService.createCheckoutSession(
                 subscriber, plan, billingCycle, grantFounding, idempotencyKey);
@@ -161,9 +159,7 @@ public class CheckoutService {
      */
     @Transactional(readOnly = true)
     public PortalSessionResponse createPortalSession(Long userId) {
-        Subscriber subscriber = subscriberRepository.findByUserId(userId)
-                .orElseThrow(() -> new SubscriberNotFoundException(
-                        "No subscriber row found for userId=" + userId));
+        Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         if (subscriber.getStripeCustomerId() == null || subscriber.getStripeCustomerId().isBlank()) {
             throw new NoBillingAccountException(

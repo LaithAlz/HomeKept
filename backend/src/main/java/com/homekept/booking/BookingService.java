@@ -10,6 +10,7 @@ import com.homekept.booking.dto.WalkthroughBookingResponse;
 import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
+import com.homekept.common.Pagination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -138,21 +139,18 @@ public class BookingService {
         // wizard's anonymous distinct id when present (folded into the user at activation via
         // alias); otherwise a booking-scoped synthetic id so the lead still counts. Props are
         // the lead source, the city (a bounded form value), and the property type — no PII
-        // (name/email/street are never sent). Best-effort, commit-gated.
-        try {
-            String distinctId = usableClientAnonId(saved.getPosthogDistinctId()) != null
-                    ? saved.getPosthogDistinctId()
-                    : "booking_" + saved.getId();
-            Map<String, Object> props = new LinkedHashMap<>();
-            props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
-            // Bound to the service-area set — a direct API call bypassing the dropdown can't
-            // put free text into analytics; anything else is bucketed to "Other".
-            props.put("city", SERVICE_AREA_CITIES.contains(saved.getCity()) ? saved.getCity() : "Other");
-            props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
-            analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
-        } catch (RuntimeException e) {
-            log.warn("analytics_walkthrough_booked_failed bookingId={}: {}", saved.getId(), e.toString());
-        }
+        // (name/email/street are never sent). capture() is itself best-effort and commit-gated.
+        String distinctId = usableClientAnonId(saved.getPosthogDistinctId()) != null
+                ? saved.getPosthogDistinctId()
+                : "booking_" + saved.getId();
+        Map<String, Object> props = new LinkedHashMap<>();
+        props.put("lead_source", saved.getLeadSource() != null ? saved.getLeadSource().name() : null);
+        // Bound to the service-area set — a direct API call bypassing the dropdown can't
+        // put free text into analytics; anything else is bucketed to "Other".
+        String city = saved.getCity();
+        props.put("city", city != null && SERVICE_AREA_CITIES.contains(city) ? city : "Other");
+        props.put("property_type", saved.getPropertyType() != null ? saved.getPropertyType().name() : null);
+        analytics.captureAnonymous(distinctId, AnalyticsEvent.WALKTHROUGH_BOOKED, props);
 
         return new WalkthroughBookingResponse(saved.getId(), saved.getStatus().name());
     }
@@ -170,7 +168,7 @@ public class BookingService {
      */
     @Transactional(readOnly = true)
     public List<AdminBookingListItem> listBookings(String status, Long cursor, Integer limit) {
-        int pageSize = resolveLimit(limit);
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
         List<WalkthroughBooking> bookings;
@@ -355,13 +353,6 @@ public class BookingService {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private int resolveLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(limit, 100);
-    }
 
     /**
      * Returns the client-supplied analytics distinct id if it is safe to feed into PostHog's

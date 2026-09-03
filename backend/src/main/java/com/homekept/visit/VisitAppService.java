@@ -1,6 +1,7 @@
 package com.homekept.visit;
 
 import com.homekept.catalog.CatalogService;
+import com.homekept.common.Pagination;
 import com.homekept.storage.StorageService;
 import com.homekept.storage.StorageUnavailableException;
 import com.homekept.subscription.SubscriberQueryService;
@@ -99,7 +100,7 @@ public class VisitAppService {
     @Transactional(readOnly = true)
     public List<AppVisitListItem> listVisits(Long userId, String status, Long cursor, Integer limit) {
         Long subscriberId = resolveSubscriberId(userId);
-        int pageSize = resolveLimit(limit);
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
         List<Visit> visits;
@@ -309,12 +310,5 @@ public class VisitAppService {
         } catch (IllegalArgumentException e) {
             throw new InvalidVisitRequestException("Invalid status value: " + status);
         }
-    }
-
-    private int resolveLimit(Integer limit) {
-        if (limit == null || limit <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(limit, 100);
     }
 }

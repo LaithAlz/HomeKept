@@ -1,16 +1,14 @@
 package com.homekept.identity;
 
+import com.homekept.common.Hashing;
 import com.homekept.config.AppProperties;
 import com.homekept.identity.exception.TokenException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 
 /**
  * Manages opaque refresh tokens. Responsibilities:
@@ -46,7 +44,7 @@ public class RefreshTokenService {
     @Transactional
     public String createToken(User user) {
         String rawToken = generateRawToken();
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         Instant expiresAt = Instant.now().plusSeconds(refreshTokenExpirySeconds);
         tokenRepository.save(new RefreshToken(user, hash, expiresAt));
         return rawToken;
@@ -62,7 +60,7 @@ public class RefreshTokenService {
      */
     @Transactional
     public String rotate(String rawToken) {
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         RefreshToken existing = tokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new TokenException(TokenException.Reason.NOT_FOUND));
 
@@ -91,7 +89,7 @@ public class RefreshTokenService {
      */
     @Transactional(readOnly = true)
     public User getUserForToken(String rawToken) {
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         RefreshToken token = tokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new TokenException(TokenException.Reason.NOT_FOUND));
         if (!token.isValid()) {
@@ -119,19 +117,5 @@ public class RefreshTokenService {
         byte[] bytes = new byte[32]; // 256 bits
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-    }
-
-    /**
-     * SHA-256 hex digest. This is what gets persisted in the database.
-     * Package-accessible for testing and for the token lookup logic.
-     */
-    public static String sha256Hex(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = digest.digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 not available", e);
-        }
     }
 }

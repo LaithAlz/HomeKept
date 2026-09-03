@@ -151,19 +151,14 @@ public class ActivationService {
         // 8b. Analytics (arch doc §5.7) — the funnel conversion event, attributed to the new
         // user, plus an alias that folds the wizard's anonymous distinct id into that user so
         // the acquisition funnel (walkthrough_booked -> activation_completed) stitches across
-        // the signup boundary. days_since_walkthrough is a count, no PII. Best-effort +
-        // commit-gated, wrapped so analytics can never roll back the activation.
-        try {
-            long daysSinceWalkthrough = d.walkthroughAt() != null
-                    ? Math.max(0L, ChronoUnit.DAYS.between(d.walkthroughAt(), Instant.now()))
-                    : 0L;
-            analytics.capture(user.getId(), AnalyticsEvent.ACTIVATION_COMPLETED,
-                    Map.of("days_since_walkthrough", daysSinceWalkthrough));
-            analytics.alias(d.posthogDistinctId(), user.getId());
-        } catch (RuntimeException e) {
-            log.warn("analytics_activation_completed_failed userId={} bookingId={}: {}",
-                    user.getId(), bookingId, e.toString());
-        }
+        // the signup boundary. days_since_walkthrough is a count, no PII. capture()/alias() are
+        // themselves best-effort and commit-gated.
+        long daysSinceWalkthrough = d.walkthroughAt() != null
+                ? Math.max(0L, ChronoUnit.DAYS.between(d.walkthroughAt(), Instant.now()))
+                : 0L;
+        analytics.capture(user.getId(), AnalyticsEvent.ACTIVATION_COMPLETED,
+                Map.of("days_since_walkthrough", daysSinceWalkthrough));
+        analytics.alias(d.posthogDistinctId(), user.getId());
 
         // 9. Issue auth tokens so the subscriber is immediately signed in
         TokenPair pair = authService.issueTokensFor(user);

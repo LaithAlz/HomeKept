@@ -1,6 +1,7 @@
 package com.homekept;
 
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
+import com.homekept.common.Hashing;
 import com.homekept.identity.AuthController;
 import com.homekept.identity.ForgotPasswordRateLimiter;
 import com.homekept.identity.PasswordResetToken;
@@ -26,11 +27,9 @@ import org.springframework.test.web.servlet.MvcResult;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,7 +154,7 @@ class PasswordResetIntegrationTest {
         assertThat(tokenRepository.findByTokenHash(rawToken)).isEmpty();
 
         // The hash of the raw token must be exactly what's persisted, tied to this user.
-        String hash = sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         PasswordResetToken stored = tokenRepository.findByTokenHash(hash).orElseThrow();
         assertThat(stored.getUser().getId()).isEqualTo(user.getId());
         assertThat(stored.isConsumed()).isFalse();
@@ -332,7 +331,7 @@ class PasswordResetIntegrationTest {
         String rawToken = buildSignedToken(payload);
 
         PasswordResetToken expiredToken = new PasswordResetToken(
-                user, sha256Hex(rawToken), Instant.now().minusSeconds(60));
+                user, Hashing.sha256Hex(rawToken), Instant.now().minusSeconds(60));
         tokenRepository.save(expiredToken);
 
         mockMvc.perform(post(RESET_URL)
@@ -432,9 +431,4 @@ class PasswordResetIntegrationTest {
         return encodedPayload + "." + hmac;
     }
 
-    private String sha256Hex(String input) throws Exception {
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        byte[] hashBytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-        return HexFormat.of().formatHex(hashBytes);
-    }
 }

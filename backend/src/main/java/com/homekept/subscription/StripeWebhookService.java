@@ -271,16 +271,13 @@ public class StripeWebhookService {
         // comes from THIS session's metadata, not subscriber.getBillingCycle(): the subscriber
         // row still holds its default (MONTHLY) until the later customer.subscription.updated
         // syncs it, so reading the entity here would misreport every ANNUAL checkout.
-        // Best-effort + commit-gated, wrapped so it can never roll back the activation.
-        final String activatedPlanCode = planCode;
-        final String billedCycle = session.getMetadata().get("billingCycle");
-        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_ACTIVATED, () -> {
-            Map<String, Object> props = new LinkedHashMap<>();
-            props.put("plan_code", activatedPlanCode);
-            props.put("billing_cycle", billedCycle);
-            props.put("founding_rate", subscriber.isFoundingRate());
-            return props;
-        });
+        // capture() is itself best-effort and commit-gated, so it can never roll back the
+        // activation.
+        Map<String, Object> activatedProps = new LinkedHashMap<>();
+        activatedProps.put("plan_code", planCode);
+        activatedProps.put("billing_cycle", session.getMetadata().get("billingCycle"));
+        activatedProps.put("founding_rate", subscriber.isFoundingRate());
+        analytics.capture(subscriber.getUserId(), AnalyticsEvent.SUBSCRIPTION_ACTIVATED, activatedProps);
     }
 
     /**
@@ -292,13 +289,8 @@ public class StripeWebhookService {
         Subscription sub = deserialize(event, Subscription.class);
         if (sub == null) return;
 
-        Optional<Subscriber> subscriberOpt =
-                subscriberRepository.findByStripeSubscriptionId(sub.getId());
-        if (subscriberOpt.isEmpty()) {
-            log.warn("webhook_subscriber_not_found stripeSubscriptionId={} stripeEventId={}",
-                    sub.getId(), event.getId());
-            return;
-        }
+        Optional<Subscriber> subscriberOpt = resolveSubscriberFromSubscription(sub.getId(), event.getId());
+        if (subscriberOpt.isEmpty()) return;
         Subscriber subscriber = subscriberOpt.get();
 
         // Sync period dates.
@@ -340,13 +332,8 @@ public class StripeWebhookService {
         Subscription sub = deserialize(event, Subscription.class);
         if (sub == null) return;
 
-        Optional<Subscriber> subscriberOpt =
-                subscriberRepository.findByStripeSubscriptionId(sub.getId());
-        if (subscriberOpt.isEmpty()) {
-            log.warn("webhook_subscriber_not_found stripeSubscriptionId={} stripeEventId={}",
-                    sub.getId(), event.getId());
-            return;
-        }
+        Optional<Subscriber> subscriberOpt = resolveSubscriberFromSubscription(sub.getId(), event.getId());
+        if (subscriberOpt.isEmpty()) return;
         Subscriber subscriber = subscriberOpt.get();
 
         if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.CANCELLED)) {
@@ -355,8 +342,17 @@ public class StripeWebhookService {
             return;
         }
 
+        // Resolved BEFORE the state mutation below: if this plan-code lookup faults, nothing
+        // has been written yet, so the exception can propagate to a clean 500 (Stripe retries)
+        // instead of risking an UnexpectedRollbackException on an already-applied cancellation
+        // (a mid-transaction failure here would otherwise mark the transaction rollback-only
+        // without the caller knowing, undoing the state change on commit).
+        String cancelledPlanCode = subscriber.getPlanTierId() != null
+                ? catalogService.getPlanCode(subscriber.getPlanTierId()) : null;
+        Instant cancelledAt = Instant.now();
+
         subscriber.setStatus(SubscriberStatus.CANCELLED);
-        subscriber.setCancelledAt(Instant.now());
+        subscriber.setCancelledAt(cancelledAt);
         subscriberRepository.save(subscriber);
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         // Best-effort email — never throws, so it can't roll back the cancellation.
@@ -365,16 +361,11 @@ public class StripeWebhookService {
 
         // Analytics (arch doc §5.7) — plan_code + months_subscribed only (the reason enum is
         // deferred until a cancel-reason is persisted; the free-text detail never leaves the
-        // DB). Prop-gathering (incl. the plan-code lookup) runs inside the guarded helper so
-        // it can never roll back the cancellation.
-        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_CANCELLED, () -> {
-            Map<String, Object> props = new LinkedHashMap<>();
-            props.put("plan_code", subscriber.getPlanTierId() != null
-                    ? catalogService.getPlanCode(subscriber.getPlanTierId()) : null);
-            props.put("months_subscribed",
-                    monthsBetween(subscriber.getStartedAt(), subscriber.getCancelledAt()));
-            return props;
-        });
+        // DB). capture() is itself best-effort and commit-gated.
+        Map<String, Object> cancelledProps = new LinkedHashMap<>();
+        cancelledProps.put("plan_code", cancelledPlanCode);
+        cancelledProps.put("months_subscribed", monthsBetween(subscriber.getStartedAt(), cancelledAt));
+        analytics.capture(subscriber.getUserId(), AnalyticsEvent.SUBSCRIPTION_CANCELLED, cancelledProps);
     }
 
     /**
@@ -448,13 +439,8 @@ public class StripeWebhookService {
         Subscription sub = deserialize(event, Subscription.class);
         if (sub == null) return;
 
-        Optional<Subscriber> subscriberOpt =
-                subscriberRepository.findByStripeSubscriptionId(sub.getId());
-        if (subscriberOpt.isEmpty()) {
-            log.warn("webhook_subscriber_not_found stripeSubscriptionId={} stripeEventId={}",
-                    sub.getId(), event.getId());
-            return;
-        }
+        Optional<Subscriber> subscriberOpt = resolveSubscriberFromSubscription(sub.getId(), event.getId());
+        if (subscriberOpt.isEmpty()) return;
         Subscriber subscriber = subscriberOpt.get();
 
         if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.PAUSED)) {
@@ -469,8 +455,8 @@ public class StripeWebhookService {
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         log.info("subscription_paused subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
 
-        // Analytics (arch doc §5.7) — no props. Best-effort + commit-gated.
-        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_PAUSED, () -> Map.of());
+        // Analytics (arch doc §5.7) — no props. capture() is best-effort + commit-gated.
+        analytics.capture(subscriber.getUserId(), AnalyticsEvent.SUBSCRIPTION_PAUSED, Map.of());
     }
 
     /**
@@ -482,13 +468,8 @@ public class StripeWebhookService {
         Subscription sub = deserialize(event, Subscription.class);
         if (sub == null) return;
 
-        Optional<Subscriber> subscriberOpt =
-                subscriberRepository.findByStripeSubscriptionId(sub.getId());
-        if (subscriberOpt.isEmpty()) {
-            log.warn("webhook_subscriber_not_found stripeSubscriptionId={} stripeEventId={}",
-                    sub.getId(), event.getId());
-            return;
-        }
+        Optional<Subscriber> subscriberOpt = resolveSubscriberFromSubscription(sub.getId(), event.getId());
+        if (subscriberOpt.isEmpty()) return;
         Subscriber subscriber = subscriberOpt.get();
 
         if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.ACTIVE)) {
@@ -503,40 +484,11 @@ public class StripeWebhookService {
         persistEvent(subscriber.getId(), event.getType(), rawPayload, event.getId());
         log.info("subscription_resumed subscriberId={} stripeEventId={}", subscriber.getId(), event.getId());
 
-        // Analytics (arch doc §5.7) — no props. Best-effort + commit-gated.
-        captureSubscriptionEvent(subscriber, AnalyticsEvent.SUBSCRIPTION_RESUMED, () -> Map.of());
+        // Analytics (arch doc §5.7) — no props. capture() is best-effort + commit-gated.
+        analytics.capture(subscriber.getUserId(), AnalyticsEvent.SUBSCRIPTION_RESUMED, Map.of());
     }
 
     // ── Utilities ─────────────────────────────────────────────────────────────
-
-    /**
-     * Emits a subscription analytics event (arch doc §5.7), attributed to the subscriber's
-     * user id. Best-effort: both the property-gathering ({@code propsSupplier}, which for the
-     * cancelled event runs a plan-code {@code SELECT}) and the {@code capture} are wrapped, so
-     * an analytics failure is logged and swallowed rather than returned to the caller.
-     * {@code capture} is itself commit-gated, so a rolled-back webhook transaction emits no
-     * event.
-     *
-     * <p>Caveat on the one supplier that reads the DB (cancelled): the read runs inside the
-     * webhook transaction, so if it faulted, Spring could mark the transaction rollback-only
-     * and the swallowed exception would not clear that flag — the outer commit would then throw
-     * {@code UnexpectedRollbackException} and the state change would be undone. This is the same
-     * risk the pre-existing activation path already carries (it too resolves the plan code
-     * in-transaction), it only fires when the connection is already faulted (a primary-key
-     * lookup otherwise cannot throw), and it self-heals: the controller lets the 500 through,
-     * Stripe retries, and the idempotency ledger rolled back with the state change so the
-     * retry re-processes cleanly. The suppliers that read no DB (activated reuses a local,
-     * paused/resumed have none) cannot roll anything back.
-     */
-    private void captureSubscriptionEvent(Subscriber subscriber, String event,
-                                          java.util.function.Supplier<Map<String, Object>> propsSupplier) {
-        try {
-            analytics.capture(subscriber.getUserId(), event, propsSupplier.get());
-        } catch (RuntimeException e) {
-            log.warn("analytics_capture_failed event={} subscriberId={}: {}",
-                    event, subscriber.getId(), e.toString());
-        }
-    }
 
     /**
      * Whole months between two instants (floored, never negative). Returns 0 if either bound
@@ -597,6 +549,23 @@ public class StripeWebhookService {
         log.warn("webhook_subscriber_not_found stripeEventId={} subscription={} customer={}",
                 stripeEventId, invoice.getSubscription(), invoice.getCustomer());
         return Optional.empty();
+    }
+
+    /**
+     * Resolves the subscriber for a {@code customer.subscription.*} event by its Stripe
+     * subscription id, logging a warning (with the event id, never PII) and returning empty
+     * if none is found — the shared "look up, warn, bail" step used by the updated / deleted /
+     * paused / resumed handlers.
+     */
+    private Optional<Subscriber> resolveSubscriberFromSubscription(String stripeSubscriptionId,
+                                                                    String stripeEventId) {
+        Optional<Subscriber> subscriberOpt =
+                subscriberRepository.findByStripeSubscriptionId(stripeSubscriptionId);
+        if (subscriberOpt.isEmpty()) {
+            log.warn("webhook_subscriber_not_found stripeSubscriptionId={} stripeEventId={}",
+                    stripeSubscriptionId, stripeEventId);
+        }
+        return subscriberOpt;
     }
 
     /**

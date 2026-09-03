@@ -169,24 +169,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Curated booking validation failure — invalid enum values, squareFootageRange, etc.
-     * The message on {@link InvalidBookingRequestException} is safe to return verbatim
-     * (it is set by the service using only whitelisted, pre-canned strings).
+     * Curated validation failure — invalid enum values, squareFootageRange, a too-short
+     * password, etc. The message on each of these exceptions is safe to return verbatim
+     * (each is set by its throwing service using only whitelisted, pre-canned strings).
      */
-    @ExceptionHandler(InvalidBookingRequestException.class)
-    public ResponseEntity<ErrorEnvelope> handleInvalidBookingRequest(InvalidBookingRequestException ex,
-                                                                      HttpServletRequest request) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
-    }
-
-    /**
-     * Activation request validation failure (e.g. password too short).
-     * The message is a pre-canned safe string set by {@code ActivationService}.
-     */
-    @ExceptionHandler(InvalidActivationRequestException.class)
-    public ResponseEntity<ErrorEnvelope> handleInvalidActivationRequest(InvalidActivationRequestException ex,
-                                                                         HttpServletRequest request) {
+    @ExceptionHandler({
+            InvalidBookingRequestException.class,
+            InvalidActivationRequestException.class,
+            InvalidPasswordResetRequestException.class,
+            InvalidVisitRequestException.class
+    })
+    public ResponseEntity<ErrorEnvelope> handleInvalidRequest(RuntimeException ex,
+                                                              HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
     }
@@ -202,17 +196,6 @@ public class GlobalExceptionHandler {
                                                                        HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_TOKEN", "Activation link is invalid or has expired", requestId(request)));
-    }
-
-    /**
-     * Password reset request validation failure (e.g. password too short).
-     * The message is a pre-canned safe string set by {@code AuthService}.
-     */
-    @ExceptionHandler(InvalidPasswordResetRequestException.class)
-    public ResponseEntity<ErrorEnvelope> handleInvalidPasswordResetRequest(InvalidPasswordResetRequestException ex,
-                                                                            HttpServletRequest request) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
     }
 
     /**
@@ -303,32 +286,12 @@ public class GlobalExceptionHandler {
                 .body(ErrorEnvelope.of("SUBSCRIBER_NOT_ACTIVE", ex.getMessage(), requestId(request)));
     }
 
-    /** Invalid visit request parameters — 400. */
-    @ExceptionHandler(InvalidVisitRequestException.class)
-    public ResponseEntity<ErrorEnvelope> handleInvalidVisitRequest(InvalidVisitRequestException ex,
-                                                                   HttpServletRequest request) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorEnvelope.of("INVALID_REQUEST", ex.getMessage(), requestId(request)));
-    }
-
     /** Reschedule request not found (or not owned by the customer) — 404. */
     @ExceptionHandler(RescheduleRequestNotFoundException.class)
     public ResponseEntity<ErrorEnvelope> handleRescheduleNotFound(RescheduleRequestNotFoundException ex,
                                                                   HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorEnvelope.of("NOT_FOUND", "Reschedule request not found", requestId(request)));
-    }
-
-    /**
-     * Reschedule request conflicts with current state — 409. The message is a pre-canned
-     * safe string set by {@code RescheduleService} (visit not schedulable, duplicate pending
-     * request, or already-resolved request).
-     */
-    @ExceptionHandler(RescheduleRequestConflictException.class)
-    public ResponseEntity<ErrorEnvelope> handleRescheduleConflict(RescheduleRequestConflictException ex,
-                                                                  HttpServletRequest request) {
-        return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
     }
 
     /** Illegal subscription lifecycle transition (pause/resume/cancel) — 409 Conflict. */
@@ -352,10 +315,17 @@ public class GlobalExceptionHandler {
                 .body(ErrorEnvelope.of("NO_BILLING_ACCOUNT", ex.getMessage(), requestId(request)));
     }
 
-    /** Technician profile already exists for this user — 409. */
-    @ExceptionHandler(TechnicianAlreadyExistsException.class)
-    public ResponseEntity<ErrorEnvelope> handleTechnicianAlreadyExists(TechnicianAlreadyExistsException ex,
-                                                                       HttpServletRequest request) {
+    /**
+     * Generic conflict with a pre-canned safe message: a technician profile that already
+     * exists for this user, or a reschedule request that conflicts with the visit's current
+     * state (not schedulable, duplicate pending request, already-resolved request) — 409.
+     */
+    @ExceptionHandler({
+            TechnicianAlreadyExistsException.class,
+            RescheduleRequestConflictException.class
+    })
+    public ResponseEntity<ErrorEnvelope> handleConflict(RuntimeException ex,
+                                                        HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
     }

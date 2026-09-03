@@ -1,5 +1,6 @@
 package com.homekept;
 
+import com.homekept.common.Hashing;
 import com.homekept.identity.RefreshTokenRepository;
 import com.homekept.identity.RefreshTokenService;
 import com.homekept.identity.Role;
@@ -42,7 +43,7 @@ class RefreshTokenServiceTest {
         var stored = refreshTokenRepository.findByTokenHash(rawToken);
         assertThat(stored).isEmpty(); // raw token not stored
 
-        String hash = RefreshTokenService.sha256Hex(rawToken);
+        String hash = Hashing.sha256Hex(rawToken);
         var byHash = refreshTokenRepository.findByTokenHash(hash);
         assertThat(byHash).isPresent();
         assertThat(byHash.get().isValid()).isTrue();
@@ -58,13 +59,13 @@ class RefreshTokenServiceTest {
         assertThat(secondToken).isNotEqualTo(firstToken);
 
         // Old token must be revoked
-        String firstHash = RefreshTokenService.sha256Hex(firstToken);
+        String firstHash = Hashing.sha256Hex(firstToken);
         var firstRecord = refreshTokenRepository.findByTokenHash(firstHash);
         assertThat(firstRecord).isPresent();
         assertThat(firstRecord.get().isRevoked()).isTrue();
 
         // New token must be valid
-        String secondHash = RefreshTokenService.sha256Hex(secondToken);
+        String secondHash = Hashing.sha256Hex(secondToken);
         var secondRecord = refreshTokenRepository.findByTokenHash(secondHash);
         assertThat(secondRecord).isPresent();
         assertThat(secondRecord.get().isValid()).isTrue();
@@ -102,8 +103,8 @@ class RefreshTokenServiceTest {
 
         refreshTokenService.revokeAll(user.getId());
 
-        String hash1 = RefreshTokenService.sha256Hex(token1);
-        String hash2 = RefreshTokenService.sha256Hex(token2);
+        String hash1 = Hashing.sha256Hex(token1);
+        String hash2 = Hashing.sha256Hex(token2);
         assertThat(refreshTokenRepository.findByTokenHash(hash1).get().isRevoked()).isTrue();
         assertThat(refreshTokenRepository.findByTokenHash(hash2).get().isRevoked()).isTrue();
     }
