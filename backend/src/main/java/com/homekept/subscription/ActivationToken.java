@@ -68,20 +68,10 @@ public class ActivationToken {
     }
 
     public Long getId() { return id; }
-    public Long getBookingId() { return bookingId; }
-    public String getTokenHash() { return tokenHash; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getConsumedAt() { return consumedAt; }
     public boolean isConsumed() { return consumedAt != null; }
     public boolean isExpired() { return Instant.now().isAfter(expiresAt); }
-
-    /**
-     * Marks the token as consumed. Callers must verify the token is not already
-     * consumed or expired before calling this.
-     */
-    public void consume() {
-        this.consumedAt = Instant.now();
-    }
 
     public Instant getCreatedAt() { return createdAt; }
 }

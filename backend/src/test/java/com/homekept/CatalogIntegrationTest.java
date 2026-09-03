@@ -30,8 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>Standing items are excluded from picks (is_free_with_every_visit = true)</li>
  *   <li>A protected endpoint (GET /api/auth/me) still requires auth — allowlist not over-opened</li>
  *   <li>Flyway V2 + JPA validate boots cleanly (implicit — if the test context starts, it passed)</li>
- *   <li>COMPLETE returns foundingRateAvailable=true with the default FoundingRateAvailability (slots open)</li>
- *   <li>When FoundingRateAvailability returns false, COMPLETE reports foundingRateAvailable=false
+ *   <li>COMPLETE returns foundingRateAvailable=true when founding slots are open</li>
+ *   <li>When founding slots are exhausted, COMPLETE reports foundingRateAvailable=false
  *       while foundingMonthlyPriceCents remains 12900 (price not hidden, just availability toggled)</li>
  * </ul>
  */
@@ -256,11 +256,11 @@ class CatalogIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ── FoundingRateAvailability seam — default provider (slots open) ─────────
+    // ── FoundingRateAvailability seam — slots open ─────────────────────────────
 
     @Test
-    void plans_complete_foundingRateAvailable_whenDefaultProviderReturnsTrue() throws Exception {
-        // DefaultFoundingRateAvailability returns true (0 founding subscribers < 15).
+    void plans_complete_foundingRateAvailable_whenSlotsOpen() throws Exception {
+        // FoundingRateAvailabilityImpl returns true (0 founding subscribers < 15).
         // COMPLETE has a founding price seeded → foundingRateAvailable must be true.
         // foundingMonthlyPriceCents must still be 12900 regardless of slot availability.
         mockMvc.perform(get(PLANS_URL))
@@ -272,6 +272,5 @@ class CatalogIntegrationTest {
 
     // The founding-rate "slots exhausted" scenario is covered by FoundingRateIntegrationTest,
     // which inserts 15 real founding subscribers and asserts COMPLETE's foundingRateAvailable
-    // flips to false. (The former stub-bean test here conflicted with the now-@Primary
-    // FoundingRateAvailabilityImpl — two @Primary beans of the same type.)
+    // flips to false.
 }

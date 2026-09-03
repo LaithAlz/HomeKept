@@ -110,7 +110,7 @@ public class PasswordResetTokenService {
      * @return validation outcome
      */
     @Transactional(readOnly = true)
-    public ValidationResult validate(String rawToken) {
+    private ValidationResult validate(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return ValidationResult.invalid("INVALID");
         }
@@ -149,7 +149,7 @@ public class PasswordResetTokenService {
             return ValidationResult.invalid("EXPIRED");
         }
 
-        return ValidationResult.valid(fields.userId(), token.getId());
+        return ValidationResult.valid(fields.userId());
     }
 
     /**
@@ -278,12 +278,12 @@ public class PasswordResetTokenService {
 
     public record MintResult(Long tokenId, String rawToken) {}
 
-    public record ValidationResult(boolean valid, Long userId, Long tokenId, String reason) {
-        static ValidationResult valid(Long userId, Long tokenId) {
-            return new ValidationResult(true, userId, tokenId, null);
+    public record ValidationResult(boolean valid, Long userId, String reason) {
+        static ValidationResult valid(Long userId) {
+            return new ValidationResult(true, userId, null);
         }
         static ValidationResult invalid(String reason) {
-            return new ValidationResult(false, null, null, reason);
+            return new ValidationResult(false, null, reason);
         }
     }
 

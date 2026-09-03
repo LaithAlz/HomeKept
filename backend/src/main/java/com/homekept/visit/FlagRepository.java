@@ -9,9 +9,6 @@ import java.util.List;
  */
 public interface FlagRepository extends JpaRepository<Flag, Long> {
 
-    /** Returns all flags for a subscriber, newest first. */
-    List<Flag> findBySubscriberIdOrderByCreatedAtDesc(Long subscriberId);
-
     /** Returns all flags for a subscriber with a given status. */
     List<Flag> findBySubscriberIdAndStatusOrderByCreatedAtDesc(Long subscriberId, FlagStatus status);
 }

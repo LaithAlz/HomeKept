@@ -71,8 +71,6 @@ public class VisitTemplate {
     public Long getId() { return id; }
     public int getMonth() { return month; }
     public String getName() { return name; }
-    public PlanCode getMinTier() { return minTier; }
-    public String getDescription() { return description; }
     public Instant getCreatedAt() { return createdAt; }
     public List<VisitTemplateService> getServices() { return services; }
 }

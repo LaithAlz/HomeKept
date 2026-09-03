@@ -21,12 +21,6 @@ public interface TodoItemRepository extends JpaRepository<TodoItem, Long> {
     Optional<TodoItem> findByIdAndSubscriberId(Long id, Long subscriberId);
 
     /**
-     * Returns todo items for a subscriber with a given status.
-     * Used to fold OPEN items into scheduled visits.
-     */
-    List<TodoItem> findBySubscriberIdAndStatusOrderByCreatedAtAsc(Long subscriberId, TodoItemStatus status);
-
-    /**
      * Returns OPEN or SCHEDULED todo items for a subscriber that are linked to a visit.
      * Used for the technician day-sheet (todos to be worked on during the visit).
      */

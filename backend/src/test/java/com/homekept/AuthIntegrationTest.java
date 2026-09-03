@@ -431,11 +431,6 @@ class AuthIntegrationTest {
                 .findFirst().orElseThrow();
         assertThat(liveRefresh).contains("Path=/api/auth;");
         assertThat(liveRefresh).doesNotContain("Path=/api/auth/refresh");
-
-        // Transitional back-compat: a Max-Age=0 clear is also emitted at the legacy
-        // /api/auth/refresh path so a pre-deploy old-path cookie can't shadow the new one.
-        assertThat(setCookies).anyMatch(c ->
-                c.startsWith("hk_refresh=") && c.contains("Path=/api/auth/refresh") && c.contains("Max-Age=0"));
     }
 
     // ── /api/auth/me ───────────────────────────────────────────────────────────

@@ -6,8 +6,8 @@ import java.time.Instant;
  * Notification seam for the 24h-before visit reminder (#89), triggered by
  * {@code com.homekept.notification.ReminderScheduler} for SCHEDULED visits.
  *
- * <p>Pattern: plain {@code @Component} default + later {@code @Primary} real impl — see
- * {@link VisitReportNotifier}.
+ * <p>{@link DefaultVisitReminderNotifier} sends the real email via {@code EmailSender}
+ * (SendGrid).
  */
 public interface VisitReminderNotifier {
 

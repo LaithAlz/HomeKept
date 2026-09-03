@@ -6,8 +6,8 @@ package com.homekept.subscription;
  * <p>Called by {@link StripeWebhookService} when a {@code checkout.session.completed}
  * event (mode=subscription) successfully activates a subscriber.
  *
- * <p>The real implementation (SendGrid welcome email) is built in the notification slice.
- * The default implementation {@link DefaultSubscriptionStartedNotifier} logs only.
+ * <p>{@link DefaultSubscriptionStartedNotifier} sends the real welcome email via
+ * {@code EmailSender} (SendGrid).
  */
 public interface SubscriptionStartedNotifier {
 

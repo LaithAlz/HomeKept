@@ -128,7 +128,7 @@ public class ActivationTokenService {
             return ValidationResult.invalid("EXPIRED");
         }
 
-        return ValidationResult.valid(fields.bookingId(), token.getId());
+        return ValidationResult.valid(fields.bookingId());
     }
 
     /**
@@ -249,12 +249,12 @@ public class ActivationTokenService {
 
     public record MintResult(Long tokenId, String rawToken) {}
 
-    public record ValidationResult(boolean valid, Long bookingId, Long tokenId, String reason) {
-        static ValidationResult valid(Long bookingId, Long tokenId) {
-            return new ValidationResult(true, bookingId, tokenId, null);
+    public record ValidationResult(boolean valid, Long bookingId, String reason) {
+        static ValidationResult valid(Long bookingId) {
+            return new ValidationResult(true, bookingId, null);
         }
         static ValidationResult invalid(String reason) {
-            return new ValidationResult(false, null, null, reason);
+            return new ValidationResult(false, null, reason);
         }
     }
 

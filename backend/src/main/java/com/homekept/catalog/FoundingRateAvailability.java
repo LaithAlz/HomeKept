@@ -9,10 +9,9 @@ package com.homekept.catalog;
  *   <li>This method returns {@code true} — fewer than 15 founding subscribers exist.</li>
  * </ol>
  *
- * <p>The subscription slice (issue #55) replaces {@link DefaultFoundingRateAvailability}
- * with a real implementation that counts {@code subscriber.founding_rate = true} rows.
- * Until that domain exists this interface lives in {@code com.homekept.catalog} because
- * only the catalog response currently consumes it.
+ * <p>Implemented by {@link com.homekept.subscription.FoundingRateAvailabilityImpl}, which
+ * counts {@code subscriber.founding_rate = true} rows. This interface lives in
+ * {@code com.homekept.catalog} because only the catalog response currently consumes it.
  */
 public interface FoundingRateAvailability {
 

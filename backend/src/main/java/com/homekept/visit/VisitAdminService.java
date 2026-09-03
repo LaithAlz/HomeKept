@@ -47,7 +47,6 @@ public class VisitAdminService {
 
     private static final Logger log = LoggerFactory.getLogger(VisitAdminService.class);
 
-    static final int DEFAULT_DURATION_MINUTES = 120;
     private static final int DEFAULT_PAGE_SIZE = 20;
 
     private final VisitRepository visitRepository;
@@ -98,7 +97,7 @@ public class VisitAdminService {
                 subscriber.getPropertyId(),
                 null,   // no template — admin-created visits are not template-driven
                 request.scheduledFor(),
-                request.durationMinutes() != null ? request.durationMinutes() : DEFAULT_DURATION_MINUTES,
+                request.durationMinutes(),
                 VisitType.ROUTINE
         );
 

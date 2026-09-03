@@ -58,12 +58,4 @@ public class NotificationLog {
         this.targetType = targetType;
         this.targetId = targetId;
     }
-
-    // ── Getters ────────────────────────────────────────────────────────────────
-
-    public Long getId() { return id; }
-    public NotificationType getNotificationType() { return notificationType; }
-    public NotificationTargetType getTargetType() { return targetType; }
-    public Long getTargetId() { return targetId; }
-    public Instant getSentAt() { return sentAt; }
 }

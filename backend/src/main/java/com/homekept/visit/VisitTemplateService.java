@@ -41,7 +41,5 @@ public class VisitTemplateService {
 
     // ── Getters ───────────────────────────────────────────────────────────────
 
-    public VisitTemplate getVisitTemplate() { return visitTemplate; }
     public Service getService() { return service; }
-    public int getSortOrder() { return sortOrder; }
 }

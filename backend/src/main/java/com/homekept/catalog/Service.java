@@ -82,7 +82,6 @@ public class Service {
     public Integer getALaCartePriceCents() { return aLaCartePriceCents; }
     public String getDescription() { return description; }
     public boolean isFreeWithEveryVisit() { return isFreeWithEveryVisit; }
-    public boolean isActive() { return active; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

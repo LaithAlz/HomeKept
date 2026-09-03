@@ -12,6 +12,4 @@ public class InvalidPasswordResetTokenException extends RuntimeException {
         super("Password reset token is " + reason.toLowerCase());
         this.reason = reason;
     }
-
-    public String getReason() { return reason; }
 }

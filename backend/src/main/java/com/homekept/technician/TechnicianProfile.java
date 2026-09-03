@@ -90,17 +90,8 @@ public class TechnicianProfile {
     public Long getId() { return id; }
     public Long getUserId() { return userId; }
     public String getEmployeeStatus() { return employeeStatus; }
-    public void setEmployeeStatus(String employeeStatus) { this.employeeStatus = employeeStatus; }
     public LocalDate getHireDate() { return hireDate; }
-    public void setHireDate(LocalDate hireDate) { this.hireDate = hireDate; }
     public Integer getFullyLoadedHourlyCostCents() { return fullyLoadedHourlyCostCents; }
-    public void setFullyLoadedHourlyCostCents(Integer fullyLoadedHourlyCostCents) {
-        this.fullyLoadedHourlyCostCents = fullyLoadedHourlyCostCents;
-    }
-    public String getVehicleInfo() { return vehicleInfo; }
-    public void setVehicleInfo(String vehicleInfo) { this.vehicleInfo = vehicleInfo; }
-    public String getNotes() { return notes; }
-    public void setNotes(String notes) { this.notes = notes; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

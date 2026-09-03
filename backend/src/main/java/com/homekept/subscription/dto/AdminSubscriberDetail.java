@@ -12,8 +12,8 @@ import java.util.List;
  * Property access notes are NEVER decrypted here — only {@code hasAccessNotes} is exposed.
  * Stripe IDs are internal references (not PII per arch doc §5.2).
  *
- * <p>{@code visits} is an empty list at MVP (visit domain not yet built);
- * the field is present so the frontend shape is stable.
+ * <p>{@code visits} is always an empty list for now — this endpoint does not yet populate
+ * it from the visit domain. The field is present so the frontend shape is stable.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminSubscriberDetail(

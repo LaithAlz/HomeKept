@@ -142,8 +142,6 @@ public class Subscriber {
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public Instant getPausedAt() { return pausedAt; }
     public void setPausedAt(Instant pausedAt) { this.pausedAt = pausedAt; }
-    public Instant getPausedUntil() { return pausedUntil; }
-    public void setPausedUntil(Instant pausedUntil) { this.pausedUntil = pausedUntil; }
     public Instant getCancelledAt() { return cancelledAt; }
     public void setCancelledAt(Instant cancelledAt) { this.cancelledAt = cancelledAt; }
     public Instant getCreatedAt() { return createdAt; }

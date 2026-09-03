@@ -71,8 +71,5 @@ public class RefreshToken {
 
     public Long getId() { return id; }
     public User getUser() { return user; }
-    public String getTokenHash() { return tokenHash; }
-    public Instant getExpiresAt() { return expiresAt; }
-    public Instant getRevokedAt() { return revokedAt; }
     public Instant getCreatedAt() { return createdAt; }
 }
