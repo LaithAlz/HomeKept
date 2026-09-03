@@ -14,7 +14,7 @@
  */
 
 import { useEffect } from "react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ApiError, get, post } from "@/lib/api";
 
 export type Role = "CUSTOMER" | "TECHNICIAN" | "ADMIN";
