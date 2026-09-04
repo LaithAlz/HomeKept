@@ -19,7 +19,7 @@ the same commit): "Add forgot/reset password flow; fix api.ts empty-body 2xx han
 (#98) (#116)". Backend and frontend both at that state. Migrations present on disk: V1
 through V9.
 
-**Since this snapshot (not yet reconciled below):** V11__remove_essential_and_founding.sql
+**Since this snapshot (not yet reconciled below):** V12__remove_essential_and_founding.sql
 (Sep 2026) discontinued the ESSENTIAL tier and deleted the founding-member rate concept
 entirely (not deprecated) — catalog, checkout, webhook, admin, DTOs, analytics props, and
 DB columns (`plan_tier.founding_monthly_price_cents`, `plan_tier.stripe_price_id_founding`,
@@ -28,7 +28,7 @@ are all gone. COMPLETE is now the base tier at $169/mo ($1,690/yr); its Stripe p
 `null` pending the founder creating new Stripe prices, and checkout fails closed with 409
 `PLAN_NOT_PURCHASABLE` in the meantime. `backend/api-contract.md` and
 `backend/homekept-backend-architecture.md` reflect the current state; the tables below (§3,
-§10) still describe the pre-V11 schema and are not yet reconciled.
+§10) still describe the pre-V12 schema and are not yet reconciled.
 
 ---
 

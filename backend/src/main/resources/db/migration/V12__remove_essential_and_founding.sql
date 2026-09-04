@@ -1,4 +1,4 @@
--- V11__remove_essential_and_founding.sql
+-- V12__remove_essential_and_founding.sql
 -- Repositioning (Sep 2026): the ESSENTIAL tier is discontinued entirely, and the
 -- founding-member rate concept is DELETED (not deprecated) — catalog, checkout,
 -- webhook, admin, DTOs, analytics props, DB columns, tests, docs. Zero real

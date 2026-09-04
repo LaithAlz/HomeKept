@@ -17,7 +17,7 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 - [ ] **Cloudflare** — deploy the TanStack Start frontend. From `frontend/`:
       `bun run build && wrangler deploy` (worker config in `wrangler.jsonc`). Build with
       `VITE_API_URL=https://api.homekept.ca` (and `VITE_PUBLIC_POSTHOG_KEY=…` if using analytics).
-- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V11 on boot.
+- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V12 on boot.
 
 ## 2. Secrets (set in the prod environment, never in git)
 
@@ -46,10 +46,10 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 
 Order matters here — do these in sequence, not in parallel:
 
-- [ ] **First, deploy the V11 build** (the one that includes
-      `V11__remove_essential_and_founding.sql`). V11 nulls out COMPLETE's Stripe price ids
+- [ ] **First, deploy the V12 build** (the one that includes
+      `V12__remove_essential_and_founding.sql`). V12 nulls out COMPLETE's Stripe price ids
       on every deploy that runs it for the first time — running the script below before this
-      migration has landed means V11 just nulls them right back out again.
+      migration has landed means V12 just nulls them right back out again.
 - [ ] **Then** create the live **Products + Prices**: PREMIER's live prices already exist in
       production and are unchanged by the repositioning — you only need to create 2 new
       recurring prices for **COMPLETE** (monthly $169 / annual $1,690), matching

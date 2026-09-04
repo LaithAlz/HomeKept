@@ -3,8 +3,8 @@
 -- WHEN: run this once against the PRODUCTION database, AFTER you have created the
 -- live Complete Products/Prices in the Stripe Dashboard (go-live checklist, step 3).
 --
--- IMPORTANT — run this AFTER the V11 build is deployed. Running it before means V11's
--- migration nulls the ids right back out (V11__remove_essential_and_founding.sql clears
+-- IMPORTANT — run this AFTER the V12 build is deployed. Running it before means V12's
+-- migration nulls the ids right back out (V12__remove_essential_and_founding.sql clears
 -- plan_tier.stripe_price_id_monthly / stripe_price_id_annual for COMPLETE on every deploy
 -- that includes it, since it hasn't run yet on this database).
 --
@@ -16,8 +16,8 @@
 -- (e.g. `psql "$DB_URL" -f docs/stripe-price-ids.sql`) and review the SELECT
 -- output before you COMMIT.
 --
--- The amounts are the seeded COMPLETE prices as of V11__remove_essential_and_founding.sql,
--- which is now the price authority for COMPLETE (not V2__catalog.sql — V11 repriced it as
+-- The amounts are the seeded COMPLETE prices as of V12__remove_essential_and_founding.sql,
+-- which is now the price authority for COMPLETE (not V2__catalog.sql — V12 repriced it as
 -- part of the Sep 2026 repositioning). DO NOT change the amounts here — this script only
 -- records which Stripe Price maps to which billing cycle.
 --

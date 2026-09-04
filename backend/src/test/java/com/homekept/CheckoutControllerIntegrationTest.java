@@ -79,7 +79,7 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Restores COMPLETE's Stripe price ids after every test — V11 cleared them to NULL
+     * Restores COMPLETE's Stripe price ids after every test — V12 cleared them to NULL
      * pending the founder's new Stripe prices, so most tests here stamp placeholder ids
      * back in via {@link #stampCompletePriceIds()} to exercise the happy path; this
      * undoes that so state never leaks between tests (plan_tier is seed data, not
@@ -93,7 +93,7 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     /**
      * COMPLETE's Stripe price ids were cleared to NULL by
-     * V11__remove_essential_and_founding.sql (pending the founder's new Stripe prices).
+     * V12__remove_essential_and_founding.sql (pending the founder's new Stripe prices).
      * Tests that exercise the checkout happy path stamp placeholder ids back in first.
      */
     private void stampCompletePriceIds() {
@@ -148,7 +148,7 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createCheckoutSession_planWithNoStripePriceId_returns409PlanNotPurchasable() throws Exception {
-        // COMPLETE's price ids are NULL after V11 (pending the founder's new Stripe
+        // COMPLETE's price ids are NULL after V12 (pending the founder's new Stripe
         // prices) — checkout must fail closed, never reach Stripe, never charge the old
         // $149 price.
         mockMvc.perform(post(CHECKOUT_SESSION_URL)

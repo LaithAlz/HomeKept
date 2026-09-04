@@ -23,7 +23,7 @@ import java.util.List;
  *
  * <p>Pricing is in integer cents — never floats. Stripe price IDs are set by the founder
  * once Stripe products are created (issue #21); they are nullable until then — most
- * recently COMPLETE's, cleared by V11__remove_essential_and_founding.sql pending new
+ * recently COMPLETE's, cleared by V12__remove_essential_and_founding.sql pending new
  * Stripe prices at the repositioned amount.
  *
  * <p>See arch doc §2.3 and docs/pricing-and-visits.md for canonical numbers.

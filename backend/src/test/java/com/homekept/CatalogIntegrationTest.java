@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Integration tests for the catalog vertical slice.
  *
- * <p>Runs against a real Postgres via Testcontainers. Flyway runs V1, V2, and V11
+ * <p>Runs against a real Postgres via Testcontainers. Flyway runs V1, V2, and V12
  * migrations on startup; JPA validates against the resulting schema (ddl-auto: validate).
  *
  * <p>Covers:
@@ -22,14 +22,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>GET /api/catalog/plans reachable without auth (public)</li>
  *   <li>Returns 2 tiers in correct order (COMPLETE, PREMIER)</li>
  *   <li>Exact prices and inclusions per the repositioned docs/pricing-and-visits.md
- *       (V11__remove_essential_and_founding.sql)</li>
+ *       (V12__remove_essential_and_founding.sql)</li>
  *   <li>Services array populated from plan_tier_service seed</li>
  *   <li>GET /api/catalog/picks reachable without auth</li>
  *   <li>Picks grouped by BASIC/MEDIUM/PREMIUM with correct à la carte prices</li>
  *   <li>Pick counts match the seed (5 BASIC, 5 MEDIUM, 4 PREMIUM)</li>
  *   <li>Standing items are excluded from picks (is_free_with_every_visit = true)</li>
  *   <li>A protected endpoint (GET /api/auth/me) still requires auth — allowlist not over-opened</li>
- *   <li>Flyway V2 + V11 + JPA validate boots cleanly (implicit — if the test context starts, it passed)</li>
+ *   <li>Flyway V2 + V12 + JPA validate boots cleanly (implicit — if the test context starts, it passed)</li>
  * </ul>
  */
 class CatalogIntegrationTest extends AbstractIntegrationTest {
@@ -63,7 +63,7 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[1].code").value("PREMIER"));
     }
 
-    // ── COMPLETE — exact values per V11__remove_essential_and_founding.sql ───
+    // ── COMPLETE — exact values per V12__remove_essential_and_founding.sql ───
 
     @Test
     void plans_complete_exactPrices() throws Exception {
@@ -103,11 +103,11 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[1].maxPremiumPicksPerYear").value(3));
     }
 
-    // ── Stripe price ids — V11 nulled COMPLETE's, PREMIER untouched ──────────
+    // ── Stripe price ids — V12 nulled COMPLETE's, PREMIER untouched ──────────
 
     @Test
-    void planTier_stripePriceIds_completeNulledByV11_premierUnchanged() {
-        // V11__remove_essential_and_founding.sql cleared COMPLETE's old $149 Stripe price
+    void planTier_stripePriceIds_completeNulledByV12_premierUnchanged() {
+        // V12__remove_essential_and_founding.sql cleared COMPLETE's old $149 Stripe price
         // ids to NULL (they pointed at the retired price) — this is what makes checkout
         // fail closed with PLAN_NOT_PURCHASABLE until the founder fills in new ones via
         // docs/stripe-price-ids.sql.
@@ -116,7 +116,7 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
         assertThat(complete.get("stripe_price_id_monthly")).isNull();
         assertThat(complete.get("stripe_price_id_annual")).isNull();
 
-        // PREMIER was never touched by V11. This fresh test database has not run
+        // PREMIER was never touched by V12. This fresh test database has not run
         // docs/stripe-price-ids.sql (that only ever runs against production), so PREMIER's
         // ids are still NULL here too — but if a fixture ever starts seeding real ids,
         // this assertion flips to "both present" rather than silently passing either way.

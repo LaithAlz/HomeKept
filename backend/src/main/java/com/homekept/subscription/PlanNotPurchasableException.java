@@ -3,7 +3,7 @@ package com.homekept.subscription;
 /**
  * Thrown when a checkout is requested for a plan/billing-cycle combination that has no
  * Stripe price id configured yet (e.g. COMPLETE's prices were cleared by
- * V11__remove_essential_and_founding.sql pending the founder creating new Stripe prices
+ * V12__remove_essential_and_founding.sql pending the founder creating new Stripe prices
  * at the repositioned amount).
  *
  * <p>Fails closed: checkout must never fall through to Stripe with a blank price id, and
