@@ -11,6 +11,7 @@ import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
 import com.homekept.common.Pagination;
+import com.homekept.subscription.ActivationTokenService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,15 +64,18 @@ public class BookingService {
     private final WalkthroughBookingStateMachine stateMachine;
     private final BookingNotifier bookingNotifier;
     private final AnalyticsService analytics;
+    private final ActivationTokenService activationTokenService;
 
     public BookingService(WalkthroughBookingRepository bookingRepository,
                           WalkthroughBookingStateMachine stateMachine,
                           BookingNotifier bookingNotifier,
-                          AnalyticsService analytics) {
+                          AnalyticsService analytics,
+                          ActivationTokenService activationTokenService) {
         this.bookingRepository = bookingRepository;
         this.stateMachine = stateMachine;
         this.bookingNotifier = bookingNotifier;
         this.analytics = analytics;
+        this.activationTokenService = activationTokenService;
     }
 
     // ── Public submission ─────────────────────────────────────────────────────
@@ -190,8 +195,13 @@ public class BookingService {
                     : bookingRepository.findAllByOrderByIdDesc(pageable);
         }
 
+        // Batched in one grouped query (never per-row) — the invite indicator must not turn the
+        // pipeline list into an N+1 across the subscription domain's activation_token table.
+        List<Long> bookingIds = bookings.stream().map(WalkthroughBooking::getId).toList();
+        Map<Long, Instant> invitedAtByBookingId = activationTokenService.latestInviteAtByBookingIds(bookingIds);
+
         return bookings.stream()
-                .map(AdminBookingListItem::from)
+                .map(b -> AdminBookingListItem.from(b, invitedAtByBookingId.get(b.getId())))
                 .collect(Collectors.toList());
     }
 
@@ -232,7 +242,10 @@ public class BookingService {
         }
 
         WalkthroughBooking saved = bookingRepository.save(booking);
-        return AdminBookingDetail.from(saved);
+        Instant invitedAt = activationTokenService
+                .latestInviteAtByBookingIds(Collections.singletonList(saved.getId()))
+                .get(saved.getId());
+        return AdminBookingDetail.from(saved, invitedAt);
     }
 
     /**

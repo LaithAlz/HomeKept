@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -15,6 +17,22 @@ public interface ActivationTokenRepository extends JpaRepository<ActivationToken
 
     /** Finds a token by its SHA-256 hash (the value stored in the DB). */
     Optional<ActivationToken> findByTokenHash(String tokenHash);
+
+    /**
+     * Returns, for each requested booking id that has at least one activation token, the
+     * booking id and the {@code created_at} of its most recently minted token — one row per
+     * booking id, resolved in a single grouped query (no N+1 when batching across a page of
+     * bookings).
+     */
+    @Query("SELECT t.bookingId AS bookingId, MAX(t.createdAt) AS latestCreatedAt "
+            + "FROM ActivationToken t WHERE t.bookingId IN :bookingIds GROUP BY t.bookingId")
+    List<LatestInviteAt> findLatestCreatedAtByBookingIdIn(@Param("bookingIds") Collection<Long> bookingIds);
+
+    /** Projection for {@link #findLatestCreatedAtByBookingIdIn}. */
+    interface LatestInviteAt {
+        Long getBookingId();
+        Instant getLatestCreatedAt();
+    }
 
     /**
      * Atomically consumes the token: sets {@code consumed_at} only if it is still null.

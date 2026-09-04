@@ -24,9 +24,15 @@ public record AdminBookingListItem(
         List<String> dayPreferences,
         String leadSource,
         Instant scheduledFor,
-        Instant createdAt
+        Instant createdAt,
+        Instant invitedAt
 ) {
-    public static AdminBookingListItem from(WalkthroughBooking b) {
+    /**
+     * @param invitedAt the most recent activation invite's {@code created_at}, resolved by the
+     *                  caller via the subscription domain's {@code ActivationTokenService}
+     *                  (never queried here); {@code null} until an invite has been sent
+     */
+    public static AdminBookingListItem from(WalkthroughBooking b, Instant invitedAt) {
         return new AdminBookingListItem(
                 b.getId(),
                 b.getStatus().name(),
@@ -43,7 +49,8 @@ public record AdminBookingListItem(
                         .collect(Collectors.toList()),
                 b.getLeadSource().name(),
                 b.getScheduledFor(),
-                b.getCreatedAt()
+                b.getCreatedAt(),
+                invitedAt
         );
     }
 }

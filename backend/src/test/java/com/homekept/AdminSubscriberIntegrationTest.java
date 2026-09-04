@@ -33,6 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <ul>
  *   <li>POST /api/admin/bookings/{id}/activation-invite — as ADMIN → 200; as CUSTOMER → 403; anonymous → 401</li>
  *   <li>POST activation-invite — verifies token row is created and booking.activationTokenId is set</li>
+ *   <li>GET /api/admin/bookings — {@code invitedAt} is null until an invite is sent for that
+ *       booking, and non-null (only) for the booking an invite was sent to</li>
  *   <li>GET /api/admin/subscribers — as ADMIN → 200; as CUSTOMER → 403; anonymous → 401</li>
  *   <li>GET /api/admin/subscribers — cursor pagination newest-first</li>
  *   <li>GET /api/admin/subscribers/{id} — as ADMIN → 200 with property summary; hasAccessNotes present</li>
@@ -45,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
 
     private static final String WALKTHROUGH_URL    = "/api/bookings/walkthrough";
+    private static final String ADMIN_BOOKINGS     = "/api/admin/bookings";
     private static final String ADMIN_INVITE_URL   = "/api/admin/bookings/%d/activation-invite";
     private static final String ADMIN_SUBSCRIBERS  = "/api/admin/subscribers";
     private static final String ADMIN_PROPERTY_SKU_URL = "/api/admin/properties/%d/sku";
@@ -113,6 +116,33 @@ class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
         // The booking must have activation_token_id set.
         var booking = bookingRepository.findById(bookingId).orElseThrow();
         assertThat(booking.getActivationTokenId()).isNotNull();
+    }
+
+    @Test
+    void listBookings_showsInvitedAtOnlyForBookingWithSentInvite() throws Exception {
+        Long invitedBookingId = createBookingViaApi("Wren Ashby", "wren-invited@test.local");
+        Long uninvitedBookingId = createBookingViaApi("Sable Doyle", "sable-uninvited@test.local");
+        String adminToken = loginAs(Role.ADMIN);
+
+        mockMvc.perform(post(ADMIN_INVITE_URL.formatted(invitedBookingId))
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(get(ADMIN_BOOKINGS + "?limit=50")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<java.util.Map<String, Object>> invitedRows = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + invitedBookingId + ")]");
+        List<java.util.Map<String, Object>> uninvitedRows = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + uninvitedBookingId + ")]");
+
+        assertThat(invitedRows).hasSize(1);
+        assertThat(invitedRows.get(0).get("invitedAt")).isNotNull();
+        assertThat(uninvitedRows).hasSize(1);
+        assertThat(uninvitedRows.get(0).get("invitedAt")).isNull();
     }
 
     // ── GET /api/admin/subscribers — role gating ──────────────────────────────
