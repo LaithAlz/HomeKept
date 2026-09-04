@@ -1,5 +1,7 @@
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { zodValidator } from "@tanstack/zod-adapter";
+import { z } from "zod";
 import { Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,7 +36,12 @@ import {
 } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 
+const searchSchema = z.object({
+  id: z.coerce.number().int().positive().optional(),
+});
+
 export const Route = createFileRoute("/admin/subscribers")({
+  validateSearch: zodValidator(searchSchema),
   head: () => ({
     meta: [{ title: "Subscribers — HomeKept Admin" }, { name: "robots", content: "noindex" }],
   }),
@@ -43,10 +50,15 @@ export const Route = createFileRoute("/admin/subscribers")({
 
 function SubscribersPage() {
   const { data: subscribers, isLoading, isError, refetch } = useAdminSubscribers({ limit: 100 });
+  const { id: deepLinkedId } = Route.useSearch();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [plan, setPlan] = useState<string>("all");
-  const [openId, setOpenId] = useState<number | null>(null);
+  // Deep-linked from the dashboard (`/admin/subscribers?id=N`, see admin.index.tsx):
+  // opens that subscriber's detail sheet on load. Read once at mount — the sheet's
+  // own onOpenChange handles closing, and re-syncing on every search change would
+  // reopen a sheet the admin just dismissed if the URL still carries the id.
+  const [openId, setOpenId] = useState<number | null>(deepLinkedId ?? null);
 
   const rows = useMemo(() => {
     if (!subscribers) return [];

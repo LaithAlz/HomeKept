@@ -91,7 +91,11 @@ export function useAdminBookings(options?: { status?: BookingStatus; limit?: num
   });
 }
 
-/** `PATCH /api/admin/bookings/{id}` — status transition (validated server-side). */
+/**
+ * `PATCH /api/admin/bookings/{id}` — status transition (validated server-side).
+ * Also invalidates the dashboard aggregate: a booking's status change can move
+ * it in or out of the "pending walk-throughs" count.
+ */
 export function usePatchBooking() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -99,6 +103,7 @@ export function usePatchBooking() {
       patch<AdminBookingDetail>(`/api/admin/bookings/${id}`, request),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
     },
   });
 }
@@ -116,7 +121,8 @@ export function useSendActivationInvite() {
  * booking wizard uses (see `@/lib/booking`), invoked here so staff can log a
  * walk-through taken by phone or in person (the admin "New booking" sheet).
  * Invalidates every `["admin", "bookings", ...]` list query so the new
- * PENDING booking appears in the pipeline immediately.
+ * PENDING booking appears in the pipeline immediately, and the dashboard
+ * aggregate so the "pending walk-throughs" metric/badge stays in sync too.
  */
 export function useCreateWalkthroughBooking() {
   const queryClient = useQueryClient();
@@ -124,6 +130,7 @@ export function useCreateWalkthroughBooking() {
     mutationFn: (request: WalkthroughBookingRequest) => submitWalkthroughBooking(request),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
     },
   });
 }
@@ -265,6 +272,55 @@ export function useAdminRescheduleRequests() {
   });
 }
 
+/** Request body for `POST /api/admin/reschedule-requests/{id}/confirm`. */
+export interface AdminConfirmRescheduleRequest {
+  scheduledFor: string;
+  adminNote?: string;
+}
+
+/**
+ * Both mutations below resolve a PENDING reschedule request and, on confirm,
+ * reschedule the underlying visit (RESCHEDULED old + new SCHEDULED row, per
+ * `RescheduleService`). Either way the request leaves the PENDING queue, the
+ * visit list may change, and the dashboard's `upcomingVisits`/badge counts can
+ * shift — so both invalidate all three query keys.
+ */
+function invalidateAfterRescheduleResolution(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["admin", "reschedule-requests"] });
+  void queryClient.invalidateQueries({ queryKey: ["admin", "visits"] });
+  void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+}
+
+/**
+ * `POST /api/admin/reschedule-requests/{id}/confirm` — reschedules the visit to
+ * `scheduledFor` (typically one of the customer's proposed times) and marks the
+ * request CONFIRMED. 404 if the request is missing; 409 if it's already resolved
+ * or the visit is no longer reschedulable.
+ */
+export function useConfirmRescheduleRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, request }: { id: number; request: AdminConfirmRescheduleRequest }) =>
+      post<AdminRescheduleRequestListItem>(`/api/admin/reschedule-requests/${id}/confirm`, request),
+    onSuccess: () => invalidateAfterRescheduleResolution(queryClient),
+  });
+}
+
+/**
+ * `POST /api/admin/reschedule-requests/{id}/decline` — marks the request DECLINED
+ * with a required `adminNote`. 404 if missing; 409 if already resolved.
+ */
+export function useDeclineRescheduleRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, adminNote }: { id: number; adminNote: string }) =>
+      post<AdminRescheduleRequestListItem>(`/api/admin/reschedule-requests/${id}/decline`, {
+        adminNote,
+      }),
+    onSuccess: () => invalidateAfterRescheduleResolution(queryClient),
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* Visits                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -300,6 +356,48 @@ export function useAdminVisits(options?: {
   return useQuery({
     queryKey: ["admin", "visits", status ?? "all", cursor ?? null, limit ?? null],
     queryFn: () => get<AdminVisitListItem[]>(`/api/admin/visits${qs({ status, cursor, limit })}`),
+  });
+}
+
+/**
+ * Request body for `PATCH /api/admin/visits/{id}` — mirrors
+ * `AdminPatchVisitRequest.java` field-for-field. All fields optional; apply
+ * only what's present:
+ *   - `scheduledFor` → reschedule (old visit marked RESCHEDULED, a new
+ *     SCHEDULED visit is created at the new time with the same services).
+ *   - `status: "CANCELLED"` → cancel, via the visit state machine.
+ *   - `technicianUserId` → assign/reassign the technician (the user's
+ *     `userId`, not a `technician_profile` id — see `useAdminTechnicians`).
+ * Supplying both `scheduledFor` and `status: "CANCELLED"` is rejected by the
+ * backend with a 400 (ambiguous intent).
+ */
+export interface AdminPatchVisitRequest {
+  status?: "CANCELLED";
+  scheduledFor?: string;
+  technicianUserId?: number;
+}
+
+/** Response body for `PATCH /api/admin/visits/{id}` — the updated (or newly created, on reschedule) visit. */
+export interface AdminVisitResponse extends AdminVisitListItem {
+  visitTemplateId: number | null;
+  completionNotes: string | null;
+}
+
+/**
+ * `PATCH /api/admin/visits/{id}` — reschedule / cancel / assign technician (see
+ * `AdminPatchVisitRequest` above). Invalidates the visits list and the dashboard
+ * aggregate so the "upcoming visits" card/badge and any visit-derived counts
+ * stay in sync with the change.
+ */
+export function usePatchAdminVisit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, request }: { id: number; request: AdminPatchVisitRequest }) =>
+      patch<AdminVisitResponse>(`/api/admin/visits/${id}`, request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "visits"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+    },
   });
 }
 
