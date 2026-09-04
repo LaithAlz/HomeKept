@@ -178,7 +178,11 @@ class ActivationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void complete_happyPath_persistsUserWithCustomerRoleAndPendingActivationStatus() throws Exception {
+    void complete_happyPath_persistsUserWithCustomerRoleAndActiveStatus() throws Exception {
+        // The User row only exists once a password has been set, so it must be created
+        // ACTIVE (able to authenticate) rather than PENDING_ACTIVATION — regression test
+        // for the login-lockout bug: a User stuck in PENDING_ACTIVATION can never log in
+        // again once its activation-issued cookies expire (see AuthService.login).
         Long bookingId = createBookingViaApi("Chidi Okeke", "chidi-complete@test.local");
         ActivationTokenService.MintResult mint = activationTokenService.mint(bookingId);
 
@@ -192,8 +196,31 @@ class ActivationIntegrationTest extends AbstractIntegrationTest {
 
         User user = userRepository.findById(userId).orElseThrow();
         assertThat(user.getRole()).isEqualTo(Role.CUSTOMER);
-        assertThat(user.getStatus()).isEqualTo(UserStatus.PENDING_ACTIVATION);
+        assertThat(user.getStatus()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.getEmail()).isEqualTo("chidi-complete@test.local");
+    }
+
+    @Test
+    void complete_thenLogInWithThatPassword_returns200() throws Exception {
+        // The actual regression test: a customer who activates must be able to log back in
+        // with the same password once their activation-issued session lapses. Before the
+        // fix, ActivationService.complete created the User as PENDING_ACTIVATION, which
+        // AuthService.login unconditionally rejects — this call would have returned 401
+        // "Invalid email or password" even with the correct credentials.
+        Long bookingId = createBookingViaApi("Login Regression", "login-regression@test.local");
+        ActivationTokenService.MintResult mint = activationTokenService.mint(bookingId);
+
+        mockMvc.perform(post(COMPLETE_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"hunter2pw\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"login-regression@test.local\",\"password\":\"hunter2pw\"}"))
+                .andExpect(status().isOk())
+                .andExpect(cookie().exists("hk_access"))
+                .andExpect(cookie().exists("hk_refresh"));
     }
 
     @Test

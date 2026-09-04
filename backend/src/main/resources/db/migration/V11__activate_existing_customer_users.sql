@@ -1,0 +1,14 @@
+-- V11__activate_existing_customer_users.sql
+-- Repairs accounts locked out by a missing state transition.
+--
+-- ActivationService.complete created every customer User with status
+-- PENDING_ACTIVATION, and User.setStatus had zero callers anywhere in the
+-- application, so nothing ever moved them to ACTIVE. AuthService.login and
+-- AuthService.refresh both reject non-ACTIVE users, and resetPassword refuses
+-- to issue cookies for them, so a customer could use the app only until the
+-- session issued at activation lapsed, and could never sign in again.
+--
+-- Every users row currently PENDING_ACTIVATION is therefore an activated
+-- customer who already chose a password. Flip them to ACTIVE. New accounts are
+-- created ACTIVE by the same change that adds this migration.
+UPDATE users SET status = 'ACTIVE' WHERE status = 'PENDING_ACTIVATION';

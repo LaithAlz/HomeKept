@@ -86,7 +86,8 @@ public class ActivationService {
      *   <li>Validates the password length.</li>
      *   <li>Validates and consumes the token (single-use).</li>
      *   <li>Loads the booking activation data.</li>
-     *   <li>Creates the {@code User} (CUSTOMER, PENDING_ACTIVATION).</li>
+     *   <li>Creates the {@code User} (CUSTOMER, ACTIVE) — the row only exists once a
+     *       password has been set, so it must be able to authenticate immediately.</li>
      *   <li>Creates the {@code Property} from booking data.</li>
      *   <li>Creates the {@code Subscriber} (PENDING_ACTIVATION, MONTHLY).</li>
      *   <li>Links the property to the subscriber.</li>
@@ -116,10 +117,13 @@ public class ActivationService {
         // 3. Load booking data (crosses into booking domain via service)
         BookingActivationData d = bookingService.getActivationData(bookingId);
 
-        // 4. Create the user account
+        // 4. Create the user account. ACTIVE, not PENDING_ACTIVATION: this row only exists
+        //    once the person has chosen a password, so it must be able to authenticate.
+        //    Service entitlement (paying/serviceable) is tracked separately on Subscriber,
+        //    which starts PENDING_ACTIVATION below and flips ACTIVE on Stripe checkout.
         var user = authService.createUser(
                 d.email(), rawPassword, d.firstName(), d.lastName(),
-                Role.CUSTOMER, UserStatus.PENDING_ACTIVATION);
+                Role.CUSTOMER, UserStatus.ACTIVE);
         log.info("Activation user created userId={} bookingId={}", user.getId(), bookingId);
 
         // 5. Create the property from booking address data

@@ -329,11 +329,15 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
         for (int i = 0; i < count; i++) {
             long nano = System.nanoTime();
 
+            // ACTIVE, not PENDING_ACTIVATION: a Subscriber row only ever exists once
+            // ActivationService.complete has run, which now creates the User ACTIVE (a
+            // password has already been set) — these stub rows represent real activated
+            // founding subscribers occupying a cap slot.
             User user = userRepository.save(new User(
                     "founding-checkout-" + nano + "@test.local",
                     passwordEncoder.encode("placeholder"),
                     "Founding", "Stub",
-                    Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
+                    Role.CUSTOMER, UserStatus.ACTIVE));
 
             Property property = propertyRepository.save(new Property(
                     nano + " Founding Checkout St", null, "Mississauga", "L5L 1A1",

@@ -484,11 +484,16 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
     private Subscriber seedSubscriberWithStatus(String email, SubscriberStatus status) {
         long nano = System.nanoTime();
 
+        // ACTIVE, not PENDING_ACTIVATION: a Subscriber row only ever exists once
+        // ActivationService.complete has run, which now creates the User ACTIVE (a
+        // password has already been set) regardless of the Subscriber's own status —
+        // Subscriber.status (the "status" param above) is the separate state machine
+        // these webhook tests exercise.
         User user = userRepository.save(new User(
                 email + "." + nano,
                 passwordEncoder.encode("placeholder"),
                 "Test", "Webhook",
-                Role.CUSTOMER, UserStatus.PENDING_ACTIVATION));
+                Role.CUSTOMER, UserStatus.ACTIVE));
 
         Property property = propertyRepository.save(new Property(
                 nano + " Webhook St", null, "Mississauga", "L5L 1A1",
