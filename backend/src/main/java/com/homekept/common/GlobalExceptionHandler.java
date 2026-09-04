@@ -294,14 +294,18 @@ public class GlobalExceptionHandler {
                 .body(ErrorEnvelope.of("NOT_FOUND", "Reschedule request not found", requestId(request)));
     }
 
-    /** Illegal subscription lifecycle transition (pause/resume/cancel) — 409 Conflict. */
+    /**
+     * Illegal subscription lifecycle transition (pause/resume/cancel), or a curated
+     * non-transition conflict under the same code (e.g. a duplicate cancel request) — 409
+     * Conflict. Uses {@code ex.getMessage()} directly: both constructors of
+     * {@link IllegalSubscriptionStateException} already build the exact message to surface
+     * (see its javadoc).
+     */
     @ExceptionHandler(IllegalSubscriptionStateException.class)
     public ResponseEntity<ErrorEnvelope> handleIllegalSubscriptionState(IllegalSubscriptionStateException ex,
                                                                          HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
-                        "Subscription status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
-                        requestId(request)));
+                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION", ex.getMessage(), requestId(request)));
     }
 
     /**

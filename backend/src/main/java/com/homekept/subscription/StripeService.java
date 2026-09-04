@@ -96,6 +96,21 @@ public interface StripeService {
     void cancelSubscriptionAtPeriodEnd(String stripeSubscriptionId, String idempotencyKey);
 
     /**
+     * Cancels a subscription immediately (Stripe {@code Subscription.cancel}, no proration
+     * or refund params — Stripe's default behaviour applies).
+     *
+     * <p>Stripe emits {@code customer.subscription.deleted} right away, which the webhook
+     * handler uses to transition the subscriber to CANCELLED. Local state is not changed
+     * here — this is an admin-only action; the customer self-serve cancel only ever
+     * schedules cancellation at period end ({@link #cancelSubscriptionAtPeriodEnd}).
+     *
+     * @param stripeSubscriptionId the Stripe subscription id (sub_...)
+     * @param idempotencyKey       deterministic key for this cancel attempt
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    void cancelSubscriptionNow(String stripeSubscriptionId, String idempotencyKey);
+
+    /**
      * Constructs and verifies a Stripe webhook event from the raw HTTP body and signature.
      *
      * <p>Delegates to {@code com.stripe.net.Webhook.constructEvent(...)} using the

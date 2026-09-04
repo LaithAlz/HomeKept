@@ -85,6 +85,9 @@ public class SubscriptionEvent {
 
     public Long getId() { return id; }
     public Long getSubscriberId() { return subscriberId; }
+    public String getEventType() { return eventType; }
+    public String getPayload() { return payload; }
+    public SubscriptionEventSource getSource() { return source; }
     public void setProcessedAt(Instant processedAt) { this.processedAt = processedAt; }
     public Instant getCreatedAt() { return createdAt; }
 }

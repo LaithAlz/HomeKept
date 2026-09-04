@@ -1,10 +1,21 @@
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { zodValidator } from "@tanstack/zod-adapter";
 import { z } from "zod";
 import { Search, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,16 +32,23 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
-import { formatCentsCad, formatDateShort } from "@/lib/format";
+import { formatCentsCad, formatDateShort, formatDateTime } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import {
+  useAdminCancelSubscription,
+  useAdminPauseSubscription,
+  useAdminResumeSubscription,
   useAdminSubscriber,
+  useAdminSubscriberEvents,
   useAdminSubscribers,
   useUpdatePropertySku,
   STATUS_LABEL,
   STATUS_TONE,
   PLAN_LABEL,
+  type AdminSubscriberDetail,
+  type AdminSubscriberEvent,
   type AdminSubscriberPropertySummary,
   type AdminUpdateSkuRequest,
 } from "@/lib/admin";
@@ -147,7 +165,6 @@ function SubscribersPage() {
                 <th className="px-2 py-3">Plan</th>
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3 text-right">MRR</th>
-                <th className="px-2 py-3">Founding rate</th>
               </tr>
             </thead>
             <tbody>
@@ -177,14 +194,11 @@ function SubscribersPage() {
                   <td className="px-2 py-3 text-right tabular-nums">
                     {formatCentsCad(s.mrrCents)}
                   </td>
-                  <td className="px-2 py-3 text-muted-foreground">
-                    {s.foundingRate ? "Yes" : "—"}
-                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No subscribers match these filters.
                   </td>
                 </tr>
@@ -251,7 +265,6 @@ function SubscriberDetailSheet({
               <DetailTile label="Billing cycle">
                 {detail.billingCycle === "ANNUAL" ? "Annual" : "Monthly"}
               </DetailTile>
-              <DetailTile label="Founding rate">{detail.foundingRate ? "Yes" : "No"}</DetailTile>
               <DetailTile label="Started">
                 {detail.startedAt ? formatDateShort(detail.startedAt) : "—"}
               </DetailTile>
@@ -289,6 +302,10 @@ function SubscriberDetailSheet({
               )}
             </div>
 
+            <SubscriptionSection detail={detail} />
+
+            <ActivitySection subscriberId={detail.id} />
+
             {detail.property && (
               <div className="rounded-xl border border-border p-3">
                 <div className="text-xs text-muted-foreground">Property</div>
@@ -316,6 +333,423 @@ function SubscriberDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * Maps a subscription-action failure to a safe, pre-written sentence — never the raw
+ * backend message. `NO_BILLING_ACCOUNT` (no Stripe subscription yet) and
+ * `ILLEGAL_STATE_TRANSITION` (the subscription changed since this sheet loaded) are
+ * both expected, recoverable 409s; anything else falls back to a generic retry,
+ * mirroring `billingErrorMessage` in `routes/app.billing.tsx`.
+ */
+function describeSubscriptionActionError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === "NO_BILLING_ACCOUNT") {
+      return "This subscriber has no Stripe subscription yet.";
+    }
+    if (err.code === "ILLEGAL_STATE_TRANSITION") {
+      return "The subscription changed. Refresh and try again.";
+    }
+  }
+  return "Something went wrong on our end. Please try again.";
+}
+
+const CANCEL_REASON_MAX_LENGTH = 500;
+
+type SubscriptionDialogMode = "pause" | "resume" | "cancel";
+
+/**
+ * Staff-initiated pause/resume/cancel controls, gated by the subscriber's current
+ * status per the state machine: ACTIVE can pause or cancel, PAUSED can resume or
+ * cancel, PAYMENT_ISSUE can only cancel (no pause-from-payment-issue transition),
+ * CANCELLED and PENDING_ACTIVATION show no controls.
+ */
+function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
+  const queryClient = useQueryClient();
+  const [dialogMode, setDialogMode] = useState<SubscriptionDialogMode | null>(null);
+  const [reason, setReason] = useState("");
+  const [immediately, setImmediately] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Status stays ACTIVE (or PAUSED, etc.) until the Stripe webhook lands and moves
+  // it to CANCELLED, so the Cancel button would otherwise reappear right after a
+  // successful request and invite a double click. Newest-first events (per
+  // `useAdminSubscriberEvents`), so index 0 is the latest.
+  const { data: events } = useAdminSubscriberEvents(detail.id);
+  // Any earlier request counts, not just the newest event: our own cancel call makes
+  // Stripe emit customer.subscription.updated, which shows up as a newer event.
+  const latestEvent = events?.find((e) => e.type === "CANCELLATION_REQUESTED");
+  const cancellationPending = latestEvent !== undefined && detail.status !== "CANCELLED";
+
+  const pauseMutation = useAdminPauseSubscription(detail.id);
+  const resumeMutation = useAdminResumeSubscription(detail.id);
+  const cancelMutation = useAdminCancelSubscription(detail.id);
+
+  function handleError(err: unknown) {
+    // A changed-elsewhere 409 means the status shown here is already stale —
+    // refetch so the controls reflect reality.
+    if (err instanceof ApiError && err.code === "ILLEGAL_STATE_TRANSITION") {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "subscriber", detail.id] });
+    }
+    setError(describeSubscriptionActionError(err));
+  }
+
+  function openDialog(mode: SubscriptionDialogMode) {
+    pauseMutation.reset();
+    resumeMutation.reset();
+    cancelMutation.reset();
+    setError(null);
+    setReason("");
+    setImmediately(false);
+    setDialogMode(mode);
+  }
+
+  const pending = pauseMutation.isPending || resumeMutation.isPending || cancelMutation.isPending;
+
+  function closeDialog() {
+    if (pending) return;
+    setDialogMode(null);
+  }
+
+  function confirmPause() {
+    setError(null);
+    pauseMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Subscription paused.");
+        setDialogMode(null);
+      },
+      onError: handleError,
+    });
+  }
+
+  function confirmResume() {
+    setError(null);
+    resumeMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast.success("Subscription resumed.");
+        setDialogMode(null);
+      },
+      onError: handleError,
+    });
+  }
+
+  function confirmCancel() {
+    setError(null);
+    cancelMutation.mutate(
+      { reason: reason.trim(), immediately },
+      {
+        onSuccess: () => {
+          toast.success("Cancellation requested.");
+          setDialogMode(null);
+          setReason("");
+          setImmediately(false);
+        },
+        onError: handleError,
+      },
+    );
+  }
+
+  const showPause = detail.status === "ACTIVE" && !cancellationPending;
+  const showResume = detail.status === "PAUSED";
+  const showCancel =
+    (detail.status === "ACTIVE" ||
+      detail.status === "PAUSED" ||
+      detail.status === "PAYMENT_ISSUE") &&
+    !cancellationPending;
+  const showNoBillingNote = detail.status === "PENDING_ACTIVATION";
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <h3 className="font-display text-sm font-bold">Subscription</h3>
+
+      {(showPause || showResume || showCancel) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {showPause && (
+            <Button size="sm" variant="secondary" onClick={() => openDialog("pause")}>
+              Pause
+            </Button>
+          )}
+          {showResume && (
+            <Button size="sm" onClick={() => openDialog("resume")}>
+              Resume
+            </Button>
+          )}
+          {showCancel && (
+            <Button size="sm" variant="destructive" onClick={() => openDialog("cancel")}>
+              Cancel
+            </Button>
+          )}
+        </div>
+      )}
+
+      {cancellationPending && latestEvent && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Cancellation requested {formatDateTime(latestEvent.occurredAt)}. Waiting for Stripe to end
+          the subscription.
+        </p>
+      )}
+
+      {showNoBillingNote && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          No billing yet. The customer hasn't checked out.
+        </p>
+      )}
+
+      {showCancel && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          The customer gets the cancellation email when Stripe ends the subscription.
+        </p>
+      )}
+
+      {error && !dialogMode && (
+        <p role="alert" className="mt-2 text-xs text-destructive">
+          {error}
+        </p>
+      )}
+
+      <SubscriptionActionDialog
+        mode={dialogMode}
+        onOpenChange={(open) => !open && closeDialog()}
+        currentPeriodEnd={detail.currentPeriodEnd}
+        reason={reason}
+        onReasonChange={setReason}
+        immediately={immediately}
+        onImmediatelyChange={setImmediately}
+        onConfirm={
+          dialogMode === "cancel"
+            ? confirmCancel
+            : dialogMode === "resume"
+              ? confirmResume
+              : confirmPause
+        }
+        pending={pending}
+        error={error}
+      />
+    </div>
+  );
+}
+
+interface SubscriptionActionDialogProps {
+  mode: SubscriptionDialogMode | null;
+  onOpenChange: (open: boolean) => void;
+  currentPeriodEnd?: string;
+  reason: string;
+  onReasonChange: (value: string) => void;
+  immediately: boolean;
+  onImmediatelyChange: (value: boolean) => void;
+  onConfirm: () => void;
+  pending: boolean;
+  error: string | null;
+}
+
+/** Shared confirm dialog for the pause/resume/cancel actions, switched by `mode`. */
+function SubscriptionActionDialog({
+  mode,
+  onOpenChange,
+  currentPeriodEnd,
+  reason,
+  onReasonChange,
+  immediately,
+  onImmediatelyChange,
+  onConfirm,
+  pending,
+  error,
+}: SubscriptionActionDialogProps) {
+  const baseId = useId();
+  const titleId = `${baseId}-title`;
+  const descId = `${baseId}-desc`;
+  const errorId = `${baseId}-error`;
+  const reasonId = `${baseId}-reason`;
+  const immediatelyId = `${baseId}-immediately`;
+
+  const isCancel = mode === "cancel";
+  const isPause = mode === "pause";
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    onConfirm();
+  }
+
+  return (
+    <Dialog
+      open={mode !== null}
+      onOpenChange={(next) => {
+        if (pending) return;
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent aria-labelledby={titleId} aria-describedby={descId} className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle id={titleId}>
+            {isCancel
+              ? "Cancel this subscription?"
+              : isPause
+                ? "Pause this subscription?"
+                : "Resume this subscription?"}
+          </DialogTitle>
+          <DialogDescription id={descId}>
+            {isCancel
+              ? "This records who requested the cancellation and why, then asks Stripe to end the subscription."
+              : isPause
+                ? "Visits stop and billing pauses while the subscription is paused."
+                : "Visits and billing resume for this subscriber."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit}>
+          {isCancel && (
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor={reasonId}>Reason</Label>
+                <Textarea
+                  id={reasonId}
+                  value={reason}
+                  onChange={(e) =>
+                    onReasonChange(e.target.value.slice(0, CANCEL_REASON_MAX_LENGTH))
+                  }
+                  maxLength={CANCEL_REASON_MAX_LENGTH}
+                  required
+                  disabled={pending}
+                  rows={3}
+                  aria-describedby={error ? errorId : undefined}
+                  className="mt-1"
+                />
+                <p className="mt-1 text-right text-xs text-muted-foreground">
+                  {reason.length}/{CANCEL_REASON_MAX_LENGTH}
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id={immediatelyId}
+                    checked={immediately}
+                    onCheckedChange={(checked) => onImmediatelyChange(checked === true)}
+                    disabled={pending}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor={immediatelyId} className="text-sm font-normal">
+                    Cancel immediately. Access ends now and Stripe issues no refund for unused time.
+                    Leave unchecked to let access run to{" "}
+                    {currentPeriodEnd
+                      ? formatDateShort(currentPeriodEnd)
+                      : "the end of the current period"}
+                    .
+                  </Label>
+                </div>
+                {immediately && (
+                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                    If a refund is owed, issue it in the Stripe dashboard after cancelling.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p id={errorId} role="alert" className="mt-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <DialogFooter className="mt-6">
+            <DialogClose asChild>
+              <Button type="button" variant="outline" disabled={pending}>
+                Never mind
+              </Button>
+            </DialogClose>
+            <Button
+              type="submit"
+              variant={isCancel ? "destructive" : "default"}
+              disabled={pending || (isCancel && reason.trim().length === 0)}
+              aria-busy={pending}
+            >
+              {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {isCancel
+                ? "Cancel subscription"
+                : isPause
+                  ? "Pause subscription"
+                  : "Resume subscription"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const EVENT_SOURCE_LABEL: Record<string, string> = {
+  STRIPE_WEBHOOK: "Stripe",
+  MANUAL: "Manual",
+  SYSTEM: "System",
+};
+
+/**
+ * `CANCELLATION_REQUESTED` -> "Cancellation requested": lowercase, underscores AND
+ * dots to spaces, capitalize first letter. Stripe event types are dot-separated
+ * (e.g. `customer.subscription.deleted` -> "Customer subscription deleted"); our
+ * own event types are underscore-separated — one humanizer covers both.
+ */
+function humanizeEventType(type: string): string {
+  const lower = type.toLowerCase().replace(/[_.]/g, " ");
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Extra detail appended to a `CANCELLATION_REQUESTED` row: who asked, and whether access ended immediately. */
+function cancellationRequestedDetail(event: AdminSubscriberEvent): string | null {
+  if (event.type !== "CANCELLATION_REQUESTED") return null;
+  const parts: string[] = [];
+  if (event.by === "ADMIN") parts.push("Requested by staff");
+  else if (event.by === "CUSTOMER") parts.push("Requested by the customer");
+  if (event.immediate) parts.push("Access ended immediately");
+  return parts.length > 0 ? parts.join(". ") : null;
+}
+
+function ActivitySection({ subscriberId }: { subscriberId: number }) {
+  const { data: events, isLoading, isError, refetch } = useAdminSubscriberEvents(subscriberId);
+
+  return (
+    <div className="rounded-xl border border-border p-3">
+      <h3 className="font-display text-sm font-bold">Activity</h3>
+
+      {isLoading && <PanelLoading label="Loading activity." className="mt-3 p-0" />}
+
+      {isError && !isLoading && (
+        <PanelError
+          label="We couldn't load activity."
+          onRetry={() => void refetch()}
+          className="mt-3 p-0"
+        />
+      )}
+
+      {events && events.length === 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">No activity yet.</p>
+      )}
+
+      {events && events.length > 0 && (
+        <ul className="mt-3 space-y-3">
+          {events.map((event) => {
+            const detail = cancellationRequestedDetail(event);
+            return (
+              <li key={event.id} className="text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{humanizeEventType(event.type)}</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {EVENT_SOURCE_LABEL[event.source] ?? event.source}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {formatDateTime(event.occurredAt)}
+                </div>
+                {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+                {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

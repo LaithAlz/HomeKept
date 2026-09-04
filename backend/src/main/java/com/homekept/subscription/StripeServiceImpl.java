@@ -9,6 +9,7 @@ import com.stripe.model.Event;
 import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
+import com.stripe.param.SubscriptionCancelParams;
 import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.param.common.EmptyParam;
@@ -146,6 +147,23 @@ public class StripeServiceImpl implements StripeService {
                 .setCancelAtPeriodEnd(true)
                 .build();
         updateSubscription(stripeSubscriptionId, params, idempotencyKey, "cancel_at_period_end");
+    }
+
+    @Override
+    public void cancelSubscriptionNow(String stripeSubscriptionId, String idempotencyKey) {
+        RequestOptions options = RequestOptions.builder()
+                .setIdempotencyKey(idempotencyKey)
+                .build();
+        try {
+            Subscription subscription = Subscription.retrieve(stripeSubscriptionId);
+            // No proration/refund params — Stripe's default cancel behaviour applies.
+            subscription.cancel(SubscriptionCancelParams.builder().build(), options);
+            log.info("Stripe subscription action=cancel_now stripeSubscriptionId={}", stripeSubscriptionId);
+        } catch (StripeException e) {
+            log.error("Stripe subscription action=cancel_now failed stripeSubscriptionId={} stripeCode={}",
+                    stripeSubscriptionId, e.getCode());
+            throw new RuntimeException("Stripe subscription cancel_now failed", e);
+        }
     }
 
     /**

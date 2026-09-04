@@ -48,15 +48,17 @@ public class FakeStripeServiceConfig {
     /** Hand fake that records subscription-lifecycle calls for assertions. */
     public static class RecordingStripeService implements StripeService {
 
-        public final List<String> pausedSubscriptionIds    = new ArrayList<>();
-        public final List<String> resumedSubscriptionIds   = new ArrayList<>();
-        public final List<String> cancelledSubscriptionIds = new ArrayList<>();
+        public final List<String> pausedSubscriptionIds        = new ArrayList<>();
+        public final List<String> resumedSubscriptionIds       = new ArrayList<>();
+        public final List<String> cancelledSubscriptionIds     = new ArrayList<>();
+        public final List<String> cancelledNowSubscriptionIds  = new ArrayList<>();
 
         /** Clears all recorded calls — call in @BeforeEach. */
         public void reset() {
             pausedSubscriptionIds.clear();
             resumedSubscriptionIds.clear();
             cancelledSubscriptionIds.clear();
+            cancelledNowSubscriptionIds.clear();
         }
 
         @Override
@@ -84,6 +86,11 @@ public class FakeStripeServiceConfig {
         @Override
         public void cancelSubscriptionAtPeriodEnd(String stripeSubscriptionId, String idempotencyKey) {
             cancelledSubscriptionIds.add(stripeSubscriptionId);
+        }
+
+        @Override
+        public void cancelSubscriptionNow(String stripeSubscriptionId, String idempotencyKey) {
+            cancelledNowSubscriptionIds.add(stripeSubscriptionId);
         }
 
         /**
