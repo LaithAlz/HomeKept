@@ -45,14 +45,6 @@ public final class AnalyticsEvent {
     /** A customer started a Stripe checkout. Props: {@code plan_code}, {@code billing_cycle}. */
     public static final String CHECKOUT_STARTED = "checkout_started";
 
-    /**
-     * A checkout was blocked before reaching Stripe because the plan had no price id
-     * configured for the requested cycle (fail-closed — see {@code PlanNotPurchasableException}).
-     * Props: {@code plan_code}, {@code billing_cycle}, {@code reason} (currently always
-     * {@code "no_price"}).
-     */
-    public static final String CHECKOUT_BLOCKED = "checkout_blocked";
-
     /** A subscription went live (checkout.session.completed webhook). Props: {@code plan_code}, {@code billing_cycle}. */
     public static final String SUBSCRIPTION_ACTIVATED = "subscription_activated";
 

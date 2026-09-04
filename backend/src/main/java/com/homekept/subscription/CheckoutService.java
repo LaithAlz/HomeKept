@@ -93,19 +93,14 @@ public class CheckoutService {
             case MONTHLY -> plan.getStripePriceIdMonthly();
             case ANNUAL  -> plan.getStripePriceIdAnnual();
         };
-        if (priceId == null || priceId.isBlank()) {
+        // Hand-filled price ids can carry pasted whitespace; trim before the guard so a
+        // padded id neither passes as "present" nor reaches Stripe.
+        priceId = priceId == null ? null : priceId.trim();
+        if (priceId == null || priceId.isEmpty()) {
+            // The warning is the operational signal: this method's transaction rolls back
+            // on the throw, and analytics events are commit-gated, so no event would fire.
             log.warn("checkout_blocked_no_price subscriberId={} planCode={} billingCycle={}",
                     subscriber.getId(), planCode, billingCycle);
-
-            // Analytics (arch doc §5.7) — enum/flag props only, no PII. capture() is itself
-            // commit-gated and best-effort. Lets the funnel show blocked checkouts, not just
-            // silent 409s in the client.
-            Map<String, Object> blockedProps = new LinkedHashMap<>();
-            blockedProps.put("plan_code", planCode.name());
-            blockedProps.put("billing_cycle", billingCycle.name());
-            blockedProps.put("reason", "no_price");
-            analytics.capture(userId, AnalyticsEvent.CHECKOUT_BLOCKED, blockedProps);
-
             throw new PlanNotPurchasableException();
         }
 

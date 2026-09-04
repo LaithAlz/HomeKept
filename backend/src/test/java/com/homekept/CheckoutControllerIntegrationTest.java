@@ -158,14 +158,6 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("PLAN_NOT_PURCHASABLE"));
 
-        // The block is not silent — it shows up in the funnel as checkout_blocked.
-        assertThat(recording.events()).anySatisfy(e -> {
-            assertThat(e.event()).isEqualTo(AnalyticsEvent.CHECKOUT_BLOCKED);
-            assertThat(e.distinctId()).isEqualTo(customerUser.getId());
-            assertThat(e.props()).containsEntry("plan_code", "COMPLETE");
-            assertThat(e.props()).containsEntry("billing_cycle", "MONTHLY");
-            assertThat(e.props()).containsEntry("reason", "no_price");
-        });
     }
 
     @Test

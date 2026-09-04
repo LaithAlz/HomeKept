@@ -117,11 +117,13 @@ function usePlanCheckout(billing: "monthly" | "annual") {
       let message = GENERIC_CHECKOUT_ERROR;
       if (err instanceof ApiError) {
         if (err.status === 429) {
-          message = "You've reached the limit for checkout attempts. Please try again in a few minutes.";
-        } else if (err.status === 409) {
-          // e.g. PLAN_NOT_PURCHASABLE — the backend's message is a pre-canned safe
-          // string ("This plan can't be purchased yet."), not a generic retry prompt.
+          message =
+            "You've reached the limit for checkout attempts. Please try again in a few minutes.";
+        } else if (err.code === "PLAN_NOT_PURCHASABLE") {
+          // Pre-canned safe string from the backend ("This plan can't be purchased yet.").
           message = err.message;
+        } else if (err.code === "ILLEGAL_STATE_TRANSITION") {
+          message = "Your account can't start a new plan right now. Check Billing or contact us.";
         }
       }
       setState((s) => ({ ...s, [tier.id]: { status: "idle", error: message } }));
