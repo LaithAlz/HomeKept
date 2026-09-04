@@ -48,6 +48,7 @@ import {
   STATUS_TONE,
   PLAN_LABEL,
   type AdminSubscriberDetail,
+  type AdminSubscriberEvent,
   type AdminSubscriberPropertySummary,
   type AdminUpdateSkuRequest,
 } from "@/lib/admin";
@@ -371,6 +372,15 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   const [immediately, setImmediately] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Status stays ACTIVE (or PAUSED, etc.) until the Stripe webhook lands and moves
+  // it to CANCELLED, so the Cancel button would otherwise reappear right after a
+  // successful request and invite a double click. Newest-first events (per
+  // `useAdminSubscriberEvents`), so index 0 is the latest.
+  const { data: events } = useAdminSubscriberEvents(detail.id);
+  const latestEvent = events?.[0];
+  const cancellationPending =
+    latestEvent?.type === "CANCELLATION_REQUESTED" && detail.status !== "CANCELLED";
+
   const pauseMutation = useAdminPauseSubscription(detail.id);
   const resumeMutation = useAdminResumeSubscription(detail.id);
   const cancelMutation = useAdminCancelSubscription(detail.id);
@@ -439,10 +449,13 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
     );
   }
 
-  const showPause = detail.status === "ACTIVE";
+  const showPause = detail.status === "ACTIVE" && !cancellationPending;
   const showResume = detail.status === "PAUSED";
   const showCancel =
-    detail.status === "ACTIVE" || detail.status === "PAUSED" || detail.status === "PAYMENT_ISSUE";
+    (detail.status === "ACTIVE" ||
+      detail.status === "PAUSED" ||
+      detail.status === "PAYMENT_ISSUE") &&
+    !cancellationPending;
   const showNoBillingNote = detail.status === "PENDING_ACTIVATION";
 
   return (
@@ -467,6 +480,13 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
             </Button>
           )}
         </div>
+      )}
+
+      {cancellationPending && latestEvent && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Cancellation requested {formatDateTime(latestEvent.occurredAt)}. Waiting for Stripe to end
+          the subscription.
+        </p>
       )}
 
       {showNoBillingNote && (
@@ -569,7 +589,7 @@ function SubscriptionActionDialog({
           </DialogTitle>
           <DialogDescription id={descId}>
             {isCancel
-              ? "This starts the cancellation. The subscriber keeps a record of who requested it and why."
+              ? "This records who requested the cancellation and why, then asks Stripe to end the subscription."
               : isPause
                 ? "Visits stop and billing pauses while the subscription is paused."
                 : "Visits and billing resume for this subscriber."}
@@ -599,21 +619,29 @@ function SubscriptionActionDialog({
                 </p>
               </div>
 
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  id={immediatelyId}
-                  checked={immediately}
-                  onCheckedChange={(checked) => onImmediatelyChange(checked === true)}
-                  disabled={pending}
-                  className="mt-0.5"
-                />
-                <Label htmlFor={immediatelyId} className="text-sm font-normal">
-                  Cancel immediately (ends access now; otherwise access runs to{" "}
-                  {currentPeriodEnd
-                    ? formatDateShort(currentPeriodEnd)
-                    : "the end of the current period"}
-                  )
-                </Label>
+              <div>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id={immediatelyId}
+                    checked={immediately}
+                    onCheckedChange={(checked) => onImmediatelyChange(checked === true)}
+                    disabled={pending}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor={immediatelyId} className="text-sm font-normal">
+                    Cancel immediately. Access ends now and Stripe issues no refund for unused time.
+                    Leave unchecked to let access run to{" "}
+                    {currentPeriodEnd
+                      ? formatDateShort(currentPeriodEnd)
+                      : "the end of the current period"}
+                    .
+                  </Label>
+                </div>
+                {immediately && (
+                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                    If a refund is owed, issue it in the Stripe dashboard after cancelling.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -651,14 +679,30 @@ function SubscriptionActionDialog({
 }
 
 const EVENT_SOURCE_LABEL: Record<string, string> = {
-  STRIPE: "Stripe",
+  STRIPE_WEBHOOK: "Stripe",
   MANUAL: "Manual",
+  SYSTEM: "System",
 };
 
-/** `CANCELLATION_REQUESTED` -> "Cancellation requested": lowercase, underscores to spaces, capitalize first letter. */
+/**
+ * `CANCELLATION_REQUESTED` -> "Cancellation requested": lowercase, underscores AND
+ * dots to spaces, capitalize first letter. Stripe event types are dot-separated
+ * (e.g. `customer.subscription.deleted` -> "Customer subscription deleted"); our
+ * own event types are underscore-separated — one humanizer covers both.
+ */
 function humanizeEventType(type: string): string {
-  const lower = type.toLowerCase().replace(/_/g, " ");
+  const lower = type.toLowerCase().replace(/[_.]/g, " ");
   return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Extra detail appended to a `CANCELLATION_REQUESTED` row: who asked, and whether access ended immediately. */
+function cancellationRequestedDetail(event: AdminSubscriberEvent): string | null {
+  if (event.type !== "CANCELLATION_REQUESTED") return null;
+  const parts: string[] = [];
+  if (event.by === "ADMIN") parts.push("Requested by staff");
+  else if (event.by === "CUSTOMER") parts.push("Requested by the customer");
+  if (event.immediate) parts.push("Access ended immediately");
+  return parts.length > 0 ? parts.join(". ") : null;
 }
 
 function ActivitySection({ subscriberId }: { subscriberId: number }) {
@@ -684,20 +728,24 @@ function ActivitySection({ subscriberId }: { subscriberId: number }) {
 
       {events && events.length > 0 && (
         <ul className="mt-3 space-y-3">
-          {events.map((event) => (
-            <li key={event.id} className="text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium">{humanizeEventType(event.type)}</span>
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                  {EVENT_SOURCE_LABEL[event.source] ?? event.source}
-                </span>
-              </div>
-              <div className="mt-0.5 text-xs text-muted-foreground">
-                {formatDateTime(event.occurredAt)}
-              </div>
-              {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
-            </li>
-          ))}
+          {events.map((event) => {
+            const detail = cancellationRequestedDetail(event);
+            return (
+              <li key={event.id} className="text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{humanizeEventType(event.type)}</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                    {EVENT_SOURCE_LABEL[event.source] ?? event.source}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  {formatDateTime(event.occurredAt)}
+                </div>
+                {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+                {event.note && <p className="mt-1 text-xs text-muted-foreground">{event.note}</p>}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

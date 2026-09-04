@@ -17,7 +17,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.core.JacksonException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -150,8 +152,10 @@ public class SubscriptionAdminService {
     /**
      * Cancels a subscriber's subscription, either at period end or immediately, and records
      * the reason as a {@code MANUAL} {@link SubscriptionEvent} (payload
-     * {@code {"reason": ..., "by": "ADMIN"}}) BEFORE calling Stripe. The event and the Stripe
-     * call share one transaction (see {@link SubscriptionSelfServeService#cancelSubscriber}).
+     * {@code {"reason": ..., "by": "ADMIN", "byUserId": ..., "immediate": true|false}})
+     * BEFORE calling Stripe. The event and the Stripe call share one transaction (see
+     * {@link SubscriptionSelfServeService#cancelSubscriber}), which also rejects a duplicate
+     * request (a cancellation already pending for this subscriber) with 409.
      *
      * <p>The CANCELLED status transition itself is applied later by the
      * {@code customer.subscription.deleted} webhook, not here — see that class's javadoc.
@@ -159,18 +163,20 @@ public class SubscriptionAdminService {
      * @param id          subscriber id
      * @param reason      the required admin-supplied reason (churn data)
      * @param immediately {@code false} = cancel at period end; {@code true} = cancel now
+     * @param byUserId    the authenticated admin's user id (JWT principal), for the audit trail
      * @return the current status and period end
      * @throws SubscriberNotFoundException      unknown subscriber id (404)
      * @throws NoBillingAccountException        no Stripe subscription yet (409)
-     * @throws IllegalSubscriptionStateException the subscriber cannot transition to CANCELLED (409)
+     * @throws IllegalSubscriptionStateException the subscriber cannot transition to CANCELLED,
+     *                                            or a cancellation is already pending (409)
      */
     @Transactional
-    public SubscriptionActionResponse cancelSubscriber(Long id, String reason, boolean immediately) {
+    public SubscriptionActionResponse cancelSubscriber(Long id, String reason, boolean immediately, Long byUserId) {
         Subscriber subscriber = requireSubscriber(id);
         selfServeService.requireBilled(subscriber);
 
         SubscriptionActionResponse response = selfServeService.cancelSubscriber(
-                subscriber, selfServeService.serializeReason(reason, "ADMIN"), immediately);
+                subscriber, serializeAdminCancelPayload(reason, byUserId, immediately), immediately);
 
         log.info("subscription_admin_cancel_requested subscriberId={} immediately={}",
                 subscriber.getId(), immediately);
@@ -249,17 +255,39 @@ public class SubscriptionAdminService {
     }
 
     /**
-     * Maps a {@link SubscriptionEvent} row to its admin-console DTO. {@code note} is the
-     * churn reason extracted from the JSONB payload for {@code CANCELLATION_REQUESTED}
-     * events only; every other event type reports {@code null}. The payload is parsed, never
-     * logged (no PII in logs).
+     * Serializes the admin cancel payload: {@code {"reason": ..., "by": "ADMIN", "byUserId":
+     * ..., "immediate": true|false}}. Field order uses a {@link LinkedHashMap} purely for
+     * readable JSON when the payload is inspected directly; JSON object key order carries no
+     * semantic meaning here.
+     */
+    private String serializeAdminCancelPayload(String reason, Long byUserId, boolean immediate) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("reason", reason);
+        fields.put("by", "ADMIN");
+        fields.put("byUserId", byUserId);
+        fields.put("immediate", immediate);
+        return objectMapper.writeValueAsString(fields);
+    }
+
+    /**
+     * Maps a {@link SubscriptionEvent} row to its admin-console DTO. {@code note}, {@code by},
+     * and {@code immediate} are extracted from the JSONB payload for
+     * {@code CANCELLATION_REQUESTED} events only; every other event type reports all three as
+     * {@code null}. Self-serve cancellations never carry an {@code immediate} key (always
+     * at-period-end), so that field stays {@code null} for those rows too. The payload is
+     * parsed, never logged (no PII in logs).
      */
     private SubscriptionEventItem toEventItem(SubscriptionEvent event) {
         String note = null;
+        String by = null;
+        Boolean immediate = null;
         if (CANCELLATION_REQUESTED.equals(event.getEventType()) && event.getPayload() != null) {
             try {
                 JsonNode payload = objectMapper.readTree(event.getPayload());
-                note = payload.path("reason").asText(null);
+                note = payload.path("reason").asString(null);
+                by = payload.path("by").asString(null);
+                JsonNode immediateNode = payload.path("immediate");
+                immediate = immediateNode.isBoolean() ? immediateNode.asBoolean() : null;
             } catch (JacksonException e) {
                 log.warn("subscription_event_payload_unparseable subscriberId={} eventId={}",
                         event.getSubscriberId(), event.getId());
@@ -270,7 +298,9 @@ public class SubscriptionAdminService {
                 event.getEventType(),
                 event.getSource().name(),
                 event.getCreatedAt(),
-                note);
+                note,
+                by,
+                immediate);
     }
 
     private AdminSubscriberListItem toListItem(Subscriber s) {

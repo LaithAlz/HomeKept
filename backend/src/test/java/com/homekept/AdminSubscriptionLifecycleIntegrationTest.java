@@ -50,6 +50,7 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
 
     private Subscriber subscriber;
     private String adminToken;
+    private Long adminUserId;
 
     @BeforeEach
     void seedSubscriber() throws Exception {
@@ -73,7 +74,15 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
         subscriber.setStripeSubscriptionId(STRIPE_SUB_ID);
         subscriber = subscriberRepository.save(subscriber);
 
-        adminToken = loginAs(Role.ADMIN);
+        // Created explicitly (rather than via the generic loginAs(Role.ADMIN) helper) so the
+        // test can assert the audit trail's byUserId against a known id.
+        User adminUser = userRepository.save(new User(
+                "admin-lifecycle-admin-" + nano + "@test.local",
+                passwordEncoder.encode("Test1234!"),
+                "Admin", "Test",
+                Role.ADMIN, UserStatus.ACTIVE));
+        adminUserId = adminUser.getId();
+        adminToken = loginAs(adminUser.getEmail(), "Test1234!");
     }
 
     private String cancelUrl(Long id) { return "/api/admin/subscribers/" + id + "/cancel"; }
@@ -107,8 +116,11 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
                         + "WHERE subscriber_id = ? AND event_type = 'CANCELLATION_REQUESTED'",
                 subscriber.getId());
         assertThat(row.get("source")).isEqualTo("MANUAL");
-        assertThat(String.valueOf(row.get("payload"))).contains("Customer called to cancel");
-        assertThat(String.valueOf(row.get("payload"))).contains("\"by\"").contains("ADMIN");
+        String payload = String.valueOf(row.get("payload"));
+        assertThat(payload).contains("Customer called to cancel");
+        assertThat(payload).contains("\"by\"").contains("ADMIN");
+        assertThat(payload).contains("\"byUserId\"").contains(String.valueOf(adminUserId));
+        assertThat(payload).contains("\"immediate\":false");
     }
 
     @Test
@@ -122,6 +134,44 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
 
         assertThat(recordingStripe.cancelledNowSubscriptionIds).containsExactly(STRIPE_SUB_ID);
         assertThat(recordingStripe.cancelledSubscriptionIds).isEmpty();
+
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT payload::text AS payload FROM subscription_event "
+                        + "WHERE subscriber_id = ? AND event_type = 'CANCELLATION_REQUESTED'",
+                subscriber.getId());
+        assertThat(String.valueOf(row.get("payload"))).contains("\"immediate\":true");
+    }
+
+    @Test
+    void cancel_duplicateRequest_returns409() throws Exception {
+        // First cancel: succeeds, leaves the subscriber ACTIVE (the CANCELLED webhook hasn't
+        // landed) with a pending CANCELLATION_REQUESTED event.
+        mockMvc.perform(post(cancelUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Customer called to cancel\"}"))
+                .andExpect(status().isOk());
+
+        // Second cancel (e.g. a double-click, or a retry after the first immediate-cancel
+        // request errored out client-side): rejected, not resubmitted to Stripe.
+        mockMvc.perform(post(cancelUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Trying again\",\"immediately\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"))
+                .andExpect(jsonPath("$.error.message")
+                        .value("A cancellation has already been requested for this subscriber."));
+
+        // Only the first request reached Stripe.
+        assertThat(recordingStripe.cancelledSubscriptionIds).containsExactly(STRIPE_SUB_ID);
+        assertThat(recordingStripe.cancelledNowSubscriptionIds).isEmpty();
+
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM subscription_event WHERE subscriber_id = ? "
+                        + "AND event_type = 'CANCELLATION_REQUESTED'",
+                Integer.class, subscriber.getId());
+        assertThat(count).isEqualTo(1);
     }
 
     @Test
@@ -176,7 +226,10 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
 
     @Test
     void pause_activeSubscriber_returns200_andCallsStripe() throws Exception {
-        mockMvc.perform(post(pauseUrl(subscriber.getId())).cookie(adminCookie()))
+        mockMvc.perform(post(pauseUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
 
@@ -187,9 +240,20 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
     void pause_whenAlreadyPaused_returns409() throws Exception {
         setStatus(SubscriberStatus.PAUSED);
 
-        mockMvc.perform(post(pauseUrl(subscriber.getId())).cookie(adminCookie()))
+        mockMvc.perform(post(pauseUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
+
+        assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
+    }
+
+    @Test
+    void pause_withoutJsonContentType_returns415() throws Exception {
+        mockMvc.perform(post(pauseUrl(subscriber.getId())).cookie(adminCookie()))
+                .andExpect(status().isUnsupportedMediaType());
 
         assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
     }
@@ -200,7 +264,10 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
     void resume_pausedSubscriber_returns200_andCallsStripe() throws Exception {
         setStatus(SubscriberStatus.PAUSED);
 
-        mockMvc.perform(post(resumeUrl(subscriber.getId())).cookie(adminCookie()))
+        mockMvc.perform(post(resumeUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PAUSED"));
 
@@ -209,7 +276,10 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
 
     @Test
     void resume_whenActive_returns409() throws Exception {
-        mockMvc.perform(post(resumeUrl(subscriber.getId())).cookie(adminCookie()))
+        mockMvc.perform(post(resumeUrl(subscriber.getId()))
+                        .cookie(adminCookie())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
 
@@ -219,11 +289,11 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
     // ── events ──────────────────────────────────────────────────────────────────
 
     @Test
-    void listEvents_returnsCancellationEventNewestFirst_withNote() throws Exception {
+    void listEvents_returnsCancellationEventNewestFirst_withNoteAndActor() throws Exception {
         mockMvc.perform(post(cancelUrl(subscriber.getId()))
                         .cookie(adminCookie())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"Moving out of the service area\"}"))
+                        .content("{\"reason\":\"Moving out of the service area\",\"immediately\":true}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get(eventsUrl(subscriber.getId())).cookie(adminCookie()))
@@ -232,7 +302,9 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
                 .andExpect(jsonPath("$[0].type").value("CANCELLATION_REQUESTED"))
                 .andExpect(jsonPath("$[0].source").value("MANUAL"))
                 .andExpect(jsonPath("$[0].occurredAt").exists())
-                .andExpect(jsonPath("$[0].note").value("Moving out of the service area"));
+                .andExpect(jsonPath("$[0].note").value("Moving out of the service area"))
+                .andExpect(jsonPath("$[0].by").value("ADMIN"))
+                .andExpect(jsonPath("$[0].immediate").value(true));
     }
 
     @Test

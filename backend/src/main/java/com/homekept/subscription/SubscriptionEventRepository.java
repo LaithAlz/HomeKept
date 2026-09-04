@@ -32,4 +32,15 @@ interface SubscriptionEventRepository extends JpaRepository<SubscriptionEvent, L
      * @return events ordered by {@code createdAt} descending
      */
     List<SubscriptionEvent> findBySubscriberIdOrderByCreatedAtDesc(Long subscriberId, Pageable pageable);
+
+    /**
+     * The single most recent event for a subscriber (ties broken by id, since
+     * {@code createdAt} timestamps can collide within the same millisecond in tests/rapid
+     * double-clicks). Used by the cancel duplicate-request guard — see
+     * {@code SubscriptionSelfServeService#cancelSubscriber}.
+     *
+     * @param subscriberId the subscriber id
+     * @return the newest event row, or empty if the subscriber has none yet
+     */
+    Optional<SubscriptionEvent> findTopBySubscriberIdOrderByCreatedAtDescIdDesc(Long subscriberId);
 }

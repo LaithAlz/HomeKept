@@ -14,11 +14,20 @@ import java.time.Instant;
  * @param occurredAt when the event was recorded ({@code created_at})
  * @param note       the churn reason for {@code CANCELLATION_REQUESTED} events, extracted
  *                   from the JSONB payload; {@code null} for every other event type
+ * @param by         who requested a {@code CANCELLATION_REQUESTED} event —
+ *                   {@code "CUSTOMER"} or {@code "ADMIN"}, extracted from the JSONB payload;
+ *                   {@code null} for every other event type
+ * @param immediate  for an admin {@code CANCELLATION_REQUESTED} event, whether it was an
+ *                   immediate cancel ({@code true}) or at period end ({@code false});
+ *                   {@code null} for customer self-serve cancellations (always at period end)
+ *                   and every other event type
  */
 public record SubscriptionEventItem(
         Long id,
         String type,
         String source,
         Instant occurredAt,
-        String note
+        String note,
+        String by,
+        Boolean immediate
 ) {}

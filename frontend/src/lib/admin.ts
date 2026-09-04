@@ -226,9 +226,13 @@ export function useAdminSubscriber(id: number | null) {
 export interface AdminSubscriberEvent {
   id: number;
   type: string;
-  source: "STRIPE" | "MANUAL" | string;
+  source: "STRIPE_WEBHOOK" | "MANUAL" | "SYSTEM" | string;
   occurredAt: string;
   note: string | null;
+  /** Who requested the action, when known (e.g. on `CANCELLATION_REQUESTED`). */
+  by?: "ADMIN" | "CUSTOMER" | null;
+  /** Whether the action took effect immediately, when known (e.g. an immediate cancellation). */
+  immediate?: boolean | null;
 }
 
 /** `GET /api/admin/subscribers/{id}/events` — the subscriber's activity history. */
@@ -282,20 +286,29 @@ export function useAdminCancelSubscription(id: number) {
   });
 }
 
-/** `POST /api/admin/subscribers/{id}/pause` — staff-initiated pause. */
+/**
+ * `POST /api/admin/subscribers/{id}/pause` — staff-initiated pause. Sends `{}` as
+ * the body (not `undefined`) so `post()` sets `Content-Type: application/json` —
+ * the endpoint requires it even though there's nothing meaningful to send.
+ */
 export function useAdminPauseSubscription(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/pause`),
+    mutationFn: () =>
+      post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/pause`, {}),
     onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
   });
 }
 
-/** `POST /api/admin/subscribers/{id}/resume` — staff-initiated resume. */
+/**
+ * `POST /api/admin/subscribers/{id}/resume` — staff-initiated resume. Sends `{}`
+ * as the body for the same reason as pause above.
+ */
 export function useAdminResumeSubscription(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/resume`),
+    mutationFn: () =>
+      post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/resume`, {}),
     onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
   });
 }
