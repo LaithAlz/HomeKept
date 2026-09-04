@@ -118,9 +118,10 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
         assertThat(row.get("source")).isEqualTo("MANUAL");
         String payload = String.valueOf(row.get("payload"));
         assertThat(payload).contains("Customer called to cancel");
-        assertThat(payload).contains("\"by\"").contains("ADMIN");
-        assertThat(payload).contains("\"byUserId\"").contains(String.valueOf(adminUserId));
-        assertThat(payload).contains("\"immediate\":false");
+        Map<String, Object> parsed = com.jayway.jsonpath.JsonPath.read(payload, "$");
+        assertThat(parsed.get("by")).isEqualTo("ADMIN");
+        assertThat(((Number) parsed.get("byUserId")).longValue()).isEqualTo(adminUserId);
+        assertThat(parsed.get("immediate")).isEqualTo(false);
     }
 
     @Test
@@ -139,7 +140,8 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
                 "SELECT payload::text AS payload FROM subscription_event "
                         + "WHERE subscriber_id = ? AND event_type = 'CANCELLATION_REQUESTED'",
                 subscriber.getId());
-        assertThat(String.valueOf(row.get("payload"))).contains("\"immediate\":true");
+        Map<String, Object> parsed = com.jayway.jsonpath.JsonPath.read(String.valueOf(row.get("payload")), "$");
+        assertThat(parsed.get("immediate")).isEqualTo(true);
     }
 
     @Test

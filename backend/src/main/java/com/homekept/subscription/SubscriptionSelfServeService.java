@@ -206,15 +206,13 @@ public class SubscriptionSelfServeService {
             throw new IllegalSubscriptionStateException(subscriber.getStatus(), SubscriberStatus.CANCELLED);
         }
 
-        // Duplicate-request guard: if the subscriber's most recent event is already a pending
-        // cancellation (the CANCELLED webhook hasn't landed yet — status still permits the
-        // transition above), reject the retry instead of writing a second churn row or
-        // resubmitting to Stripe (which would 500 on an immediate-cancel retry).
-        Optional<SubscriptionEvent> mostRecent =
-                subscriptionEventRepository.findTopBySubscriberIdOrderByCreatedAtDescIdDesc(subscriber.getId());
-        if (mostRecent.isPresent()
-                && CANCELLATION_REQUESTED.equals(mostRecent.get().getEventType())
-                && subscriber.getStatus() != SubscriberStatus.CANCELLED) {
+        // Duplicate-request guard: a subscriber can only ever be cancelled once (CANCELLED is
+        // terminal), so any earlier CANCELLATION_REQUESTED row means a request is already
+        // pending at Stripe. Keying on "any prior request" rather than "the newest event"
+        // matters because our own cancel call makes Stripe emit customer.subscription.updated,
+        // which the webhook records as a newer event.
+        if (subscriptionEventRepository.existsBySubscriberIdAndEventType(
+                subscriber.getId(), CANCELLATION_REQUESTED)) {
             throw new IllegalSubscriptionStateException(
                     "A cancellation has already been requested for this subscriber.");
         }

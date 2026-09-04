@@ -42,5 +42,5 @@ interface SubscriptionEventRepository extends JpaRepository<SubscriptionEvent, L
      * @param subscriberId the subscriber id
      * @return the newest event row, or empty if the subscriber has none yet
      */
-    Optional<SubscriptionEvent> findTopBySubscriberIdOrderByCreatedAtDescIdDesc(Long subscriberId);
+    boolean existsBySubscriberIdAndEventType(Long subscriberId, String eventType);
 }

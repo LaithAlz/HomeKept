@@ -377,9 +377,10 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   // successful request and invite a double click. Newest-first events (per
   // `useAdminSubscriberEvents`), so index 0 is the latest.
   const { data: events } = useAdminSubscriberEvents(detail.id);
-  const latestEvent = events?.[0];
-  const cancellationPending =
-    latestEvent?.type === "CANCELLATION_REQUESTED" && detail.status !== "CANCELLED";
+  // Any earlier request counts, not just the newest event: our own cancel call makes
+  // Stripe emit customer.subscription.updated, which shows up as a newer event.
+  const latestEvent = events?.find((e) => e.type === "CANCELLATION_REQUESTED");
+  const cancellationPending = latestEvent !== undefined && detail.status !== "CANCELLED";
 
   const pauseMutation = useAdminPauseSubscription(detail.id);
   const resumeMutation = useAdminResumeSubscription(detail.id);
