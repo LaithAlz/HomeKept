@@ -9,13 +9,7 @@ import java.util.List;
  * Response body for a single tier in {@code GET /api/catalog/plans}.
  *
  * <p>Shape matches the api-contract.md specification exactly. Money fields are integer
- * cents. {@code foundingMonthlyPriceCents} is nullable — only COMPLETE has a founding rate.
- *
- * <p>{@code foundingRateAvailable} is true when BOTH conditions hold:
- * <ol>
- *   <li>This tier has a seeded {@code founding_monthly_price_cents} ({@link PlanTier#hasFoundingPrice()}).</li>
- *   <li>The global founding-slot count is under 15 (passed in from {@link com.homekept.catalog.FoundingRateAvailability}).</li>
- * </ol>
+ * cents.
  */
 public record PlanTierResponse(
         PlanCode code,
@@ -25,8 +19,6 @@ public record PlanTierResponse(
         int visitsPerYear,
         int includedPicksPerYear,
         int maxPremiumPicksPerYear,
-        boolean foundingRateAvailable,
-        Integer foundingMonthlyPriceCents,
         String description,
         List<ServiceSummary> services
 ) {
@@ -34,10 +26,9 @@ public record PlanTierResponse(
      * Maps a {@link PlanTier} entity (with its {@code planTierServices} eagerly loaded)
      * to the API response shape. Entities never cross the controller boundary.
      *
-     * @param tier           the plan tier entity
-     * @param slotsRemaining whether founding slots remain globally (from {@link com.homekept.catalog.FoundingRateAvailability})
+     * @param tier the plan tier entity
      */
-    public static PlanTierResponse from(PlanTier tier, boolean slotsRemaining) {
+    public static PlanTierResponse from(PlanTier tier) {
         List<ServiceSummary> services = tier.getPlanTierServices().stream()
                 .map(pts -> new ServiceSummary(
                         pts.getService().getName(),
@@ -54,8 +45,6 @@ public record PlanTierResponse(
                 tier.getVisitsPerYear(),
                 tier.getIncludedPicksPerYear(),
                 tier.getMaxPremiumPicksPerYear(),
-                tier.hasFoundingPrice() && slotsRemaining,
-                tier.getFoundingMonthlyPriceCents(),
                 tier.getDescription(),
                 services
         );

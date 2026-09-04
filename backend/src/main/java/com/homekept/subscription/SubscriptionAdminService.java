@@ -118,8 +118,6 @@ public class SubscriptionAdminService {
      *   <li>{@code mrrCents} — sum of {@link #computeMrrCents} across ACTIVE subscribers
      *       only (PAUSED/PAYMENT_ISSUE/CANCELLED/PENDING_ACTIVATION are excluded — they
      *       are not currently-paying recurring revenue).</li>
-     *   <li>{@code foundingRateSlotsRemaining} — {@link FoundingRateAvailabilityImpl#FOUNDING_CAP}
-     *       minus the count of founding-rate subscribers (never negative).</li>
      * </ul>
      *
      * @return the subscription metrics slice
@@ -135,17 +133,14 @@ public class SubscriptionAdminService {
                 })
                 .sum();
 
-        long foundingRateSlotsRemaining = Math.max(0,
-                FoundingRateAvailabilityImpl.FOUNDING_CAP - subscriberRepository.countByFoundingRateTrue());
-
-        return new SubscriptionMetrics(activeSubscribers.size(), mrrCents, foundingRateSlotsRemaining);
+        return new SubscriptionMetrics(activeSubscribers.size(), mrrCents);
     }
 
     /**
      * Subscription-domain slice of the admin dashboard aggregate. See
      * {@link #getDashboardMetrics()} for how each field is computed.
      */
-    public record SubscriptionMetrics(long activeSubscribers, int mrrCents, long foundingRateSlotsRemaining) {}
+    public record SubscriptionMetrics(long activeSubscribers, int mrrCents) {}
 
     // ── Subscription lifecycle mutations ────────────────────────────────────────
 
@@ -310,8 +305,7 @@ public class SubscriptionAdminService {
                 s.getId(),
                 s.getStatus().name(),
                 planCode,
-                mrrCents,
-                s.isFoundingRate()
+                mrrCents
         );
     }
 
@@ -343,7 +337,6 @@ public class SubscriptionAdminService {
                 s.getStatus().name(),
                 planCode,
                 mrrCents,
-                s.isFoundingRate(),
                 s.getBillingCycle().name(),
                 s.getStripeCustomerId(),
                 s.getStripeSubscriptionId(),
@@ -359,18 +352,11 @@ public class SubscriptionAdminService {
     /**
      * Computes MRR in integer cents for the given subscriber.
      * Returns {@code null} when no plan tier has been assigned yet (pre-checkout).
-     * Founding-rate subscribers use the founding monthly price when set.
-     * All other cases use the regular monthly price.
+     * Uses the regular monthly price.
      */
     private Integer computeMrrCents(Subscriber s) {
         if (s.getPlanTierId() == null) {
             return null;
-        }
-        if (s.isFoundingRate()) {
-            Integer foundingPrice = catalogService.getFoundingMonthlyPriceCents(s.getPlanTierId());
-            if (foundingPrice != null) {
-                return foundingPrice;
-            }
         }
         return catalogService.getMonthlyPriceCents(s.getPlanTierId());
     }

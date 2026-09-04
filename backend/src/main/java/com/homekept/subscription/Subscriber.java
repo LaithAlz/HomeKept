@@ -26,10 +26,6 @@ import java.time.Instant;
  * <p>{@code planTierId} is nullable at creation: it is set by the Stripe
  * {@code checkout.session.completed} webhook when the subscription is activated.
  * {@code billingCycle} defaults to MONTHLY until checkout sets the actual choice.
- *
- * <p>{@code foundingRate} is capped at 15 globally (counted by
- * {@link com.homekept.subscription.FoundingRateAvailabilityImpl}).
- * {@code foundingRateExpiresAt} is set 12 months from activation.
  */
 @Entity
 @Table(name = "subscriber")
@@ -57,12 +53,6 @@ public class Subscriber {
     @Column(nullable = false, length = 30)
     private SubscriberStatus status;
 
-    @Column(name = "founding_rate", nullable = false)
-    private boolean foundingRate = false;
-
-    @Column(name = "founding_rate_expires_at")
-    private Instant foundingRateExpiresAt;
-
     @Column(name = "stripe_customer_id", length = 255)
     private String stripeCustomerId;
 
@@ -84,9 +74,6 @@ public class Subscriber {
 
     @Column(name = "paused_at")
     private Instant pausedAt;
-
-    @Column(name = "paused_until")
-    private Instant pausedUntil;
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
@@ -124,10 +111,6 @@ public class Subscriber {
      */
     public void setStatus(SubscriberStatus status) { this.status = status; }
 
-    public boolean isFoundingRate() { return foundingRate; }
-    public void setFoundingRate(boolean foundingRate) { this.foundingRate = foundingRate; }
-    public Instant getFoundingRateExpiresAt() { return foundingRateExpiresAt; }
-    public void setFoundingRateExpiresAt(Instant foundingRateExpiresAt) { this.foundingRateExpiresAt = foundingRateExpiresAt; }
     public String getStripeCustomerId() { return stripeCustomerId; }
     public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }

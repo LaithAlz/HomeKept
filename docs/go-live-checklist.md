@@ -43,8 +43,8 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 - [ ] PostHog: `POSTHOG_API_KEY` (backend) + `VITE_PUBLIC_POSTHOG_KEY` (frontend build).
 
 ## 3. Stripe (issue #21) — the biggest external step
-- [ ] Create the live **Products + Prices** matching `docs/pricing-and-visits.md` (7 recurring
-      prices: ESSENTIAL monthly/annual, COMPLETE monthly/annual/founding, PREMIER monthly/annual).
+- [ ] Create the live **Products + Prices** matching `docs/pricing-and-visits.md` (4 recurring
+      prices: COMPLETE monthly/annual, PREMIER monthly/annual).
 - [ ] Wire the real Price IDs into the catalog: fill in and run
       **`docs/stripe-price-ids.sql`** against prod (a fill-in-the-blanks `UPDATE` script).
 - [ ] Add the **webhook endpoint** → `https://api.homekept.ca/api/webhooks/stripe`; copy its

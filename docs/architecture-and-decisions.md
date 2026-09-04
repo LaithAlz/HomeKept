@@ -19,6 +19,17 @@ the same commit): "Add forgot/reset password flow; fix api.ts empty-body 2xx han
 (#98) (#116)". Backend and frontend both at that state. Migrations present on disk: V1
 through V9.
 
+**Since this snapshot (not yet reconciled below):** V11__remove_essential_and_founding.sql
+(Sep 2026) discontinued the ESSENTIAL tier and deleted the founding-member rate concept
+entirely (not deprecated) — catalog, checkout, webhook, admin, DTOs, analytics props, and
+DB columns (`plan_tier.founding_monthly_price_cents`, `plan_tier.stripe_price_id_founding`,
+`subscriber.founding_rate`, `subscriber.founding_rate_expires_at`, `subscriber.paused_until`)
+are all gone. COMPLETE is now the base tier at $169/mo ($1,690/yr); its Stripe price ids are
+`null` pending the founder creating new Stripe prices, and checkout fails closed with 409
+`PLAN_NOT_PURCHASABLE` in the meantime. `backend/api-contract.md` and
+`backend/homekept-backend-architecture.md` reflect the current state; the tables below (§3,
+§10) still describe the pre-V11 schema and are not yet reconciled.
+
 ---
 
 ## Table of contents
@@ -131,7 +142,7 @@ routed it through `SubscriberQueryService`).
 |---|---|---|---|
 | `identity` | Users, auth, JWT sessions, password hashing, password-reset and login rate limiting, admin seeding | `users`, `refresh_tokens`, `password_reset_tokens` | none (UserStatus has no machine class) |
 | `property` | The home: address, geo, SKU sheet, encrypted access notes | `property` | none |
-| `catalog` | Service and plan-tier definitions; source of truth for Stripe price IDs; founding-rate availability | `service`, `plan_tier`, `plan_tier_service` | none (read-only) |
+| `catalog` | Service and plan-tier definitions; source of truth for Stripe price IDs | `service`, `plan_tier`, `plan_tier_service` | none (read-only) |
 | `booking` | Pre-subscriber walk-through leads and the admin pipeline | `walkthrough_booking`, `walkthrough_booking_day_preference` | `WalkthroughBookingStateMachine` |
 | `subscription` | Subscriber lifecycle **and all Stripe integration** (checkout, portal, webhooks, self-serve pause/resume/cancel), plus activation | `subscriber`, `subscription_event`, `activation_token` | `SubscriberStateMachine` |
 | `visit` | Visit lifecycle, templates/scheduling, checklists, photos, notes, todos ("your list"), flags, reschedule requests, Home Health Score | `visit`, `visit_service`, `visit_template`, `visit_template_service`, `visit_photo`, `visit_note`, `todo_item`, `flag`, `reschedule_request`, `reschedule_request_slot`, `health_score_snapshot` | `VisitStateMachine` |

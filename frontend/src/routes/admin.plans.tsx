@@ -27,7 +27,7 @@ function PlansAdminPage() {
         </p>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
         {PLANS.map((p) => (
           <div key={p.id} className="rounded-2xl border border-border bg-card p-6">
             <h2 className="font-display text-xl font-bold">{p.name}</h2>

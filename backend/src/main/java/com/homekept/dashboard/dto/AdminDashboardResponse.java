@@ -8,14 +8,12 @@ package com.homekept.dashboard.dto;
  *
  * <ul>
  *   <li>{@code activeSubscribers} — count of subscribers with status ACTIVE.</li>
- *   <li>{@code mrrCents} — integer cents; sum of the current monthly price (founding rate
- *       if applicable) across ACTIVE subscribers only.</li>
+ *   <li>{@code mrrCents} — integer cents; sum of the current monthly price across ACTIVE
+ *       subscribers only.</li>
  *   <li>{@code pendingWalkthroughs} — count of walk-through bookings still PENDING
  *       (booked but not yet confirmed by admin).</li>
  *   <li>{@code upcomingVisits} — count of SCHEDULED visits with {@code scheduledFor} at
  *       or after now.</li>
- *   <li>{@code foundingRateSlotsRemaining} — founding-rate cap (15) minus the count of
- *       founding-rate subscribers; never negative.</li>
  * </ul>
  *
  * <p>Deliberately omitted (would require data that does not exist yet): an "at-risk
@@ -27,6 +25,5 @@ public record AdminDashboardResponse(
         long activeSubscribers,
         int mrrCents,
         long pendingWalkthroughs,
-        long upcomingVisits,
-        long foundingRateSlotsRemaining
+        long upcomingVisits
 ) {}

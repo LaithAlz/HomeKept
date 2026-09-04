@@ -21,7 +21,7 @@ never skip a gate.
 
 | Phase | Customers | ~When | Business theme | Tech theme |
 |---|---|---|---|---|
-| 0 — Build & launch | 0 → 5 | M0–M5 | Founding members, SOPs, legal rails | Expanded v1: full product surface |
+| 0 — Build & launch | 0 → 5 | M0–M5 | First customers, SOPs, legal rails | Expanded v1: full product surface |
 | 1 — Proof | 5 → 30 | M5–M14 | One neighbourhood, referrals, retention proof | Operate & polish |
 | 2 — Repeatability | 30 → 100 | M14–M26 | Second/third area, sales hire, founder pay | Automation (Stage 2) |
 | 3 — Workforce | 100 → 200 | M26–M32 | Tech hires #1–2, COO off tools | Technician platform (Stage 3) |
@@ -29,7 +29,7 @@ never skip a gate.
 
 > **Scope decision (June 2026):** v1 was expanded from the original 8-week MVP to the
 > full product surface — photo reports, technician app, complete customer self-serve,
-> picks system, visit templates, your-list, Health Score v1, founding rate, labor-cost
+> picks system, visit templates, your-list, Health Score v1, labor-cost
 > tracking. Cost: ~6 extra build weeks (calendar above slides accordingly; gates are
 > unchanged). Rationale: launch with the hero features instead of manual bridges.
 
@@ -50,10 +50,10 @@ never skip a gate.
 - COO deliverable #1: field SOP set (yellow-task protocols, skip-rules, photo criteria,
   van kit list) — this is the gate for the equity story being real
 - Apprenticeship: every walk-through and visit done as a pair; CEO reaches solo-competent
-  on the Essential checklist
+  on the standing visit checklist
 - Trade partners signed: TSSA gas, electrician, plumber, roofer (referral, no markup)
-- First 5 founding members ($129 Complete, 12-mo lock): friends-of-friends, own street,
-  one Nextdoor neighbourhood. Pick ONE FSA and stay in it.
+- First 5 customers (full public pricing): friends-of-friends, own street, one Nextdoor
+  neighbourhood. Pick ONE FSA and stay in it.
 
 **Tech** — the original 8-week plan (#1–45) **plus the expanded-v1 scope** (arch doc
 Stage 1, June 2026 revision):
@@ -65,7 +65,7 @@ Stage 1, June 2026 revision):
   cancel, buy extras)
 - **Technician app** (mobile PWA): day sheet, template-driven checklists, photo capture,
   materials + duration entry, complete/incomplete flow
-- Admin: pipeline, scheduling (template-generated), founding-rate management
+- Admin: pipeline, scheduling (template-generated)
 - Frontend: v2 design system (done — #48/#49) across all three apps
 - Deploy: Render + Cloudflare + Sentry + UptimeRobot (#12); PostHog wired with the
   canonical event taxonomy (arch §5.7) — funnels measurable from customer #1
@@ -87,7 +87,6 @@ nothing else in this plan matters until retention is proven.
 - Funnel: walk-through volume 6–10/mo, ≥40% close. All founder-led: Nextdoor, FB groups,
   door-hanger invites (book online — never sign at the door), referral ask built into
   month-3 photo report
-- Founding rate retired at 15; public pricing from #16
 - Realtor seed: 3–5 agents get a "first 60 days on us for your buyers" offer — pipeline
   for Phase 2 partnerships
 - Track from day 1 (PostHog funnels + DB): lead source, close rate, churn, NPS-ish
@@ -202,7 +201,7 @@ wins — decide deliberately.)
 
 | Milestone | ~Month | Customers | MRR | Team | Notes |
 |---|---|---|---|---|---|
-| Launch | M4 | 1 | $0.1K | 2 founders | first founding member |
+| Launch | M4 | 1 | $0.1K | 2 founders | first customer |
 | Breakeven (operating) | M5–6 | 5 | $0.6K | 2 | burn covered |
 | Proof | M14 | 30–35 | $4.5–5K | 2 | retention proven |
 | Founder salaries | ~M20 | 60 | $9K | 2 + sales (commission) | modest, equal |

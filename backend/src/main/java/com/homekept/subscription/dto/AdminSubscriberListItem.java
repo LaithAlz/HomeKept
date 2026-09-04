@@ -14,6 +14,5 @@ public record AdminSubscriberListItem(
         Long id,
         String status,
         String planCode,
-        Integer mrrCents,
-        boolean foundingRate
+        Integer mrrCents
 ) {}

@@ -18,7 +18,7 @@ export const Route = createFileRoute("/admin/catalog")({
   component: CatalogPage,
 });
 
-const PLAN_ORDER: PlanCode[] = ["ESSENTIAL", "COMPLETE", "PREMIER"];
+const PLAN_ORDER: PlanCode[] = ["COMPLETE", "PREMIER"];
 
 const TIER_CLASS_LABEL: Record<TierClass, string> = {
   BASIC: "Basic",
@@ -84,7 +84,7 @@ function CatalogPage() {
       {orderedPlans && (
         <section className="mt-6">
           <h2 className="font-display text-lg font-bold">Included in each plan</h2>
-          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+          <div className="mt-3 grid gap-4 lg:grid-cols-2">
             {orderedPlans.map((plan) => (
               <div key={plan.code} className="rounded-2xl border border-border bg-card p-5">
                 <div className="flex items-baseline justify-between gap-2">

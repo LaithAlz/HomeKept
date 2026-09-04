@@ -34,8 +34,6 @@ export interface AppSubscription {
   planDisplayName?: string; // absent pre-checkout
   billingCycle: BillingCycle;
   priceCents?: number; // integer cents — the price actually charged; absent pre-checkout
-  foundingRate: boolean;
-  foundingRateExpiresAt?: string; // ISO instant; absent unless foundingRate is true
   currentPeriodStart?: string; // ISO instant
   currentPeriodEnd?: string; // ISO instant
   nextVisitDate?: string; // ISO instant; absent when no SCHEDULED visit exists

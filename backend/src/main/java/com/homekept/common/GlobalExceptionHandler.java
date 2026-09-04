@@ -12,11 +12,11 @@ import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.RescheduleRequestConflictException;
 import com.homekept.visit.exception.RescheduleRequestNotFoundException;
 import com.homekept.visit.exception.VisitNotFoundException;
-import com.homekept.subscription.FoundingRateExhaustedException;
 import com.homekept.subscription.IllegalSubscriptionStateException;
 import com.homekept.subscription.InvalidActivationRequestException;
 import com.homekept.subscription.InvalidActivationTokenException;
 import com.homekept.subscription.NoBillingAccountException;
+import com.homekept.subscription.PlanNotPurchasableException;
 import com.homekept.subscription.SubscriberNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -250,14 +250,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Founding-rate slots exhausted or not available on the requested plan — 409.
-     * The message is a pre-canned safe string set by {@code CheckoutService}.
+     * A plan has no Stripe price id configured yet for the requested billing cycle — 409.
+     * Fail-closed: checkout must never reach Stripe with a blank price id, and never
+     * charge a stale price. The message is a fixed, pre-canned safe string.
      */
-    @ExceptionHandler(FoundingRateExhaustedException.class)
-    public ResponseEntity<ErrorEnvelope> handleFoundingRateExhausted(FoundingRateExhaustedException ex,
-                                                                      HttpServletRequest request) {
+    @ExceptionHandler(PlanNotPurchasableException.class)
+    public ResponseEntity<ErrorEnvelope> handlePlanNotPurchasable(PlanNotPurchasableException ex,
+                                                                    HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(ErrorEnvelope.of("FOUNDING_RATE_UNAVAILABLE", ex.getMessage(), requestId(request)));
+                .body(ErrorEnvelope.of("PLAN_NOT_PURCHASABLE", ex.getMessage(), requestId(request)));
     }
 
     /** Visit not found (or not accessible by the current user) — 404. */

@@ -21,8 +21,8 @@ public interface StripeService {
      * <p>The session is configured with:
      * <ul>
      *   <li>{@code mode=subscription}</li>
-     *   <li>The correct Stripe price id from the {@link PlanTier} (monthly / annual / founding)</li>
-     *   <li>Metadata: {@code subscriberId}, {@code planTierId}, {@code foundingRate}</li>
+     *   <li>The correct Stripe price id from the {@link PlanTier} (monthly / annual)</li>
+     *   <li>Metadata: {@code subscriberId}, {@code planTierId}</li>
      *   <li>{@code client_reference_id} set to the subscriber id (string)</li>
      *   <li>Success and cancel redirect URLs from {@code app.stripe.*}</li>
      *   <li>The subscriber's existing Stripe customer id (if any) to avoid customer duplication</li>
@@ -34,13 +34,12 @@ public interface StripeService {
      * @param subscriber     the subscriber initiating checkout
      * @param plan           the plan tier to subscribe to
      * @param cycle          MONTHLY or ANNUAL
-     * @param foundingRate   whether to use the founding-member price
      * @param idempotencyKey deterministic idempotency key for this checkout attempt
      * @return the Stripe-hosted checkout URL to redirect the customer to
      * @throws com.stripe.exception.StripeException on Stripe API errors
      */
     String createCheckoutSession(Subscriber subscriber, PlanTier plan, BillingCycle cycle,
-                                 boolean foundingRate, String idempotencyKey);
+                                 String idempotencyKey);
 
     /**
      * Creates a Stripe Billing Portal session.

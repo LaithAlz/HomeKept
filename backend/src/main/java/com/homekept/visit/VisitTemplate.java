@@ -21,8 +21,8 @@ import java.util.List;
 /**
  * A seasonal visit template: the named visit for a given month and minimum tier.
  *
- * <p>The calendar is cumulative. A subscriber on COMPLETE gets all ESSENTIAL templates
- * plus all COMPLETE templates. A subscriber on PREMIER gets all three tiers.
+ * <p>The calendar is cumulative. A subscriber on COMPLETE (the base tier) gets all
+ * COMPLETE templates. A subscriber on PREMIER gets COMPLETE + PREMIER templates.
  *
  * <p>Seeded via V6__visit.sql from docs/pricing-and-visits.md.
  * Templates are read-only at runtime — changes go through a new Flyway migration.
@@ -47,7 +47,7 @@ public class VisitTemplate {
 
     /**
      * Minimum plan tier at which this template applies (inclusive).
-     * ESSENTIAL → all three tiers; COMPLETE → Complete and Premier; PREMIER → Premier only.
+     * COMPLETE → Complete and Premier; PREMIER → Premier only.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "min_tier", nullable = false, length = 20)

@@ -7,10 +7,7 @@
  * import from here so the numbers can never drift or diverge again.
  */
 
-export type PlanId = "essential" | "complete" | "premier";
-
-/** Founding-member rate cap: first 15 customers (docs/pricing-and-visits.md). */
-export const FOUNDING_RATE_CAP = 15;
+export type PlanId = "complete" | "premier";
 
 export interface Plan {
   id: PlanId;
@@ -48,45 +45,13 @@ export interface Plan {
 
 export const PLANS: Plan[] = [
   {
-    id: "essential",
-    emoji: "🌱",
-    name: "Essential",
-    tagline: "Cover the basics, never miss the seasons.",
-    forWho: "Townhomes, condos, newer homes",
-    monthlyPriceCad: 89,
-    annualPriceCad: 890,
-    visitsPerYear: 4,
-    visitsDescription: "4 visits a year (seasonal anchors)",
-    includedPicks: 1,
-    maxPremiumPicks: 0,
-    yourListTime: "About 20 minutes of your-list time per visit",
-    technician: "Consistent technician where possible",
-    scheduling: "Standard scheduling, about 2 weeks out",
-    repairs: "Repairs quoted or referred",
-    extras: [],
-    priorityScheduling: false,
-    sameWeekEmergency: false,
-    dedicatedTechnician: false,
-    gasTuneupCoordination: false,
-    smartHomeSupport: false,
-    annualHomePlan: false,
-    repairsIncluded: false,
-    features: [
-      "4 seasonal visits a year: spring, summer, fall winterization, winter check",
-      "Filter checks, detector tests, and batteries every visit",
-      "Same-day photo report and Home Health Score update",
-      "About 20 minutes of your-list time per visit",
-      "1 included pick a year (Basic or Medium)",
-    ],
-  },
-  {
     id: "complete",
     emoji: "🏡",
     name: "Complete",
     tagline: "The whole home, handled.",
     forWho: "Most detached and semi-detached homes",
-    monthlyPriceCad: 149,
-    annualPriceCad: 1490,
+    monthlyPriceCad: 169,
+    annualPriceCad: 1690,
     visitsPerYear: 8,
     visitsDescription: "8 visits a year (anchors plus mid-season)",
     includedPicks: 3,
@@ -105,8 +70,10 @@ export const PLANS: Plan[] = [
     repairsIncluded: false,
     recommended: true,
     features: [
-      "Everything in Essential",
       "8 visits a year: seasonal anchors plus 4 mid-season visits",
+      "Filter checks, detector tests, and batteries every visit",
+      "Same-day photo report and Home Health Score update",
+      "About 20 minutes of your-list time per visit",
       "3 included picks a year (up to 1 Premium)",
       "Priority scheduling: issues seen within 48 hours",
       "Licensed gas tune-up coordinated for you",
@@ -153,8 +120,33 @@ export function formatDollarsCad(amount: number): string {
 
 /**
  * Monthly-equivalent price when billed annually (2 months free).
- * Floored to match whole-dollar display, e.g. Essential $890/yr -> $74/mo.
+ * Floored to match whole-dollar display, e.g. Premier $2,490/yr -> $207/mo.
  */
 export function annualMonthlyEquivalent(plan: Plan): number {
   return Math.floor(plan.annualPriceCad / 12);
+}
+
+/**
+ * Derived, displayed price per visit hour, in integer cents (format with
+ * `formatCentsCad` from `@/lib/format`). Visits are 90 minutes: per-visit-hour
+ * is the monthly price spread across a year of visits, then divided down from
+ * a 90-minute visit to a 60-minute (1-hour) rate.
+ *
+ * per-visit-hour = monthly x 12 / visitsPerYear / 1.5
+ */
+export function perVisitHourCents(plan: Plan): number {
+  const monthlyCents = plan.monthlyPriceCad * 100;
+  return Math.round((monthlyCents * 12) / plan.visitsPerYear / 1.5);
+}
+
+/**
+ * How much a subscriber saves per year by choosing annual over monthly
+ * billing, in integer cents (format with `formatCentsCad` from `@/lib/format`).
+ *
+ * savings = (monthly x 12) - annual
+ */
+export function annualSavingsCents(plan: Plan): number {
+  const monthlyTotalCents = plan.monthlyPriceCad * 100 * 12;
+  const annualCents = plan.annualPriceCad * 100;
+  return monthlyTotalCents - annualCents;
 }

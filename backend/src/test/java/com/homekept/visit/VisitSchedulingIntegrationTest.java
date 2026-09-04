@@ -28,8 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Covers:
  * <ul>
- *   <li>ESSENTIAL subscriber: only ESSENTIAL-tier templates scheduled in the window.</li>
- *   <li>PREMIER subscriber: all three tier templates scheduled in the window.</li>
+ *   <li>COMPLETE subscriber (base tier): only COMPLETE-tier templates scheduled in the
+ *       window.</li>
+ *   <li>PREMIER subscriber: both tiers' templates scheduled in the window.</li>
  *   <li>All created visits are SCHEDULED + ROUTINE + in the future.</li>
  *   <li>Each visit has exactly 4 VisitService rows (source=TEMPLATE, the 4 standing items).</li>
  *   <li>Idempotency: second call creates no new visits.</li>
@@ -52,11 +53,11 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
     @Autowired PropertyRepository propertyRepository;
     @Autowired JdbcTemplate jdbc;
 
-    // ── ESSENTIAL tier ────────────────────────────────────────────────────────
+    // ── COMPLETE tier (base tier) ─────────────────────────────────────────────
 
     @Test
-    void scheduleInitialVisits_essentialTier_schedulesOnlyEssentialTemplatesInWindow() {
-        Subscriber subscriber = seedActiveSubscriber("scheduling-essential@test.local", PlanCode.ESSENTIAL);
+    void scheduleInitialVisits_completeTier_schedulesOnlyCompleteTemplatesInWindow() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-complete@test.local", PlanCode.COMPLETE);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
 
@@ -64,7 +65,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
                 .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
                 .toList();
 
-        int expectedCount = expectedVisitCount(PlanCode.ESSENTIAL);
+        int expectedCount = expectedVisitCount(PlanCode.COMPLETE);
         assertThat(visits).hasSize(expectedCount);
 
         // Every created visit must be SCHEDULED and ROUTINE.
@@ -75,17 +76,17 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         java.time.Instant now = java.time.Instant.now();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
-        // The visit template ids must all belong to ESSENTIAL-min templates only.
-        List<Long> essentialTemplateIds = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.ESSENTIAL))
+        // The visit template ids must all belong to COMPLETE-min templates only.
+        List<Long> completeTemplateIds = visitTemplateRepository
+                .findByMinTierIn(List.of(PlanCode.COMPLETE))
                 .stream().map(VisitTemplate::getId).toList();
         assertThat(visits).allMatch(v ->
-                v.getVisitTemplateId() == null || essentialTemplateIds.contains(v.getVisitTemplateId()));
+                v.getVisitTemplateId() == null || completeTemplateIds.contains(v.getVisitTemplateId()));
     }
 
     @Test
-    void scheduleInitialVisits_essentialTier_eachVisitHasFourStandingItems() {
-        Subscriber subscriber = seedActiveSubscriber("scheduling-essential-services@test.local", PlanCode.ESSENTIAL);
+    void scheduleInitialVisits_completeTier_eachVisitHasFourStandingItems() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-complete-services@test.local", PlanCode.COMPLETE);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
 
@@ -106,7 +107,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
     // ── PREMIER tier ──────────────────────────────────────────────────────────
 
     @Test
-    void scheduleInitialVisits_premierTier_schedulesAllThreeTierTemplatesInWindow() {
+    void scheduleInitialVisits_premierTier_schedulesBothTierTemplatesInWindow() {
         Subscriber subscriber = seedActiveSubscriber("scheduling-premier@test.local", PlanCode.PREMIER);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
@@ -124,9 +125,9 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         java.time.Instant now = java.time.Instant.now();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
-        // Premier gets ESSENTIAL + COMPLETE + PREMIER templates.
+        // Premier gets COMPLETE + PREMIER templates.
         List<Long> allTemplateIds = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER))
+                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER))
                 .stream().map(VisitTemplate::getId).toList();
         assertThat(visits).allMatch(v ->
                 v.getVisitTemplateId() == null || allTemplateIds.contains(v.getVisitTemplateId()));
@@ -152,22 +153,22 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         }
     }
 
-    // ── PREMIER gets MORE than ESSENTIAL ─────────────────────────────────────
+    // ── PREMIER gets at least as many visits as COMPLETE ──────────────────────
 
     @Test
-    void scheduleInitialVisits_premierGetsMostVisitsDueToThreeTierCumulative() {
-        int essentialCount = expectedVisitCount(PlanCode.ESSENTIAL);
-        int premierCount   = expectedVisitCount(PlanCode.PREMIER);
+    void scheduleInitialVisits_premierGetsAtLeastAsManyVisitsAsComplete() {
+        int completeCount = expectedVisitCount(PlanCode.COMPLETE);
+        int premierCount  = expectedVisitCount(PlanCode.PREMIER);
 
-        // Premier should have at least as many visits as Essential (cumulative calendar).
-        assertThat(premierCount).isGreaterThanOrEqualTo(essentialCount);
+        // Premier should have at least as many visits as Complete (cumulative calendar).
+        assertThat(premierCount).isGreaterThanOrEqualTo(completeCount);
     }
 
     // ── Idempotency ───────────────────────────────────────────────────────────
 
     @Test
     void scheduleInitialVisits_idempotency_secondCallCreatesNoNewVisits() {
-        Subscriber subscriber = seedActiveSubscriber("scheduling-idempotent@test.local", PlanCode.ESSENTIAL);
+        Subscriber subscriber = seedActiveSubscriber("scheduling-idempotent@test.local", PlanCode.COMPLETE);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
         long countAfterFirst = countVisitsForSubscriber(subscriber.getId());
@@ -212,7 +213,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         Subscriber subscriber = seedActiveSubscriber("scheduling-topup@test.local", PlanCode.PREMIER);
 
         List<VisitTemplate> allTemplates = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER));
+                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER));
         LocalDate today = LocalDate.now(TORONTO);
         LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
         List<VisitTemplate> inWindow = allTemplates.stream()
@@ -259,7 +260,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         Subscriber subscriber = seedActiveSubscriber("scheduling-annual@test.local", PlanCode.PREMIER);
 
         List<VisitTemplate> allTemplates = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER));
+                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER));
         LocalDate today = LocalDate.now(TORONTO);
         LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
         List<VisitTemplate> inWindow = allTemplates.stream()

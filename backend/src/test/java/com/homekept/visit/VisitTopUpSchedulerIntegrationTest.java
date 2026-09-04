@@ -53,7 +53,7 @@ class VisitTopUpSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void topUpScheduledVisits_activeSubscriberWithNoVisits_getsScheduled() {
-        Subscriber subscriber = seedSubscriber("topup-active", PlanCode.ESSENTIAL, SubscriberStatus.ACTIVE);
+        Subscriber subscriber = seedSubscriber("topup-active", PlanCode.COMPLETE, SubscriberStatus.ACTIVE);
 
         visitTopUpScheduler.topUpScheduledVisits();
 
@@ -65,7 +65,7 @@ class VisitTopUpSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void topUpScheduledVisits_multipleActiveSubscribers_allToppedUpInOneRun() {
-        Subscriber subscriberA = seedSubscriber("topup-multi-a", PlanCode.ESSENTIAL, SubscriberStatus.ACTIVE);
+        Subscriber subscriberA = seedSubscriber("topup-multi-a", PlanCode.COMPLETE, SubscriberStatus.ACTIVE);
         Subscriber subscriberB = seedSubscriber("topup-multi-b", PlanCode.PREMIER, SubscriberStatus.ACTIVE);
 
         visitTopUpScheduler.topUpScheduledVisits();
@@ -94,7 +94,7 @@ class VisitTopUpSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void topUpScheduledVisits_pausedSubscriber_isSkipped() {
-        Subscriber subscriber = seedSubscriber("topup-paused", PlanCode.ESSENTIAL, SubscriberStatus.PAUSED);
+        Subscriber subscriber = seedSubscriber("topup-paused", PlanCode.COMPLETE, SubscriberStatus.PAUSED);
 
         visitTopUpScheduler.topUpScheduledVisits();
 
@@ -103,7 +103,7 @@ class VisitTopUpSchedulerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void topUpScheduledVisits_pendingActivationSubscriber_isSkipped() {
-        Subscriber subscriber = seedSubscriber("topup-pending", PlanCode.ESSENTIAL, SubscriberStatus.PENDING_ACTIVATION);
+        Subscriber subscriber = seedSubscriber("topup-pending", PlanCode.COMPLETE, SubscriberStatus.PENDING_ACTIVATION);
 
         visitTopUpScheduler.topUpScheduledVisits();
 

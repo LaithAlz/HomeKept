@@ -17,21 +17,26 @@ Technicians observe → photograph → flag → refer. Never diagnose, never lic
 
 ## Tiers
 
-| | 🌱 Essential | 🏡 Complete ★ Recommended | 🔑 Premier |
-|---|---|---|---|
-| Price | $89/mo · $890/yr | $149/mo · $1,490/yr | $249/mo · $2,490/yr |
-| Visits/year | 4 (seasonal anchors) | 8 (anchors + 4 mid-season) | 12 (monthly, each named) |
-| Included picks/yr | 1 (Basic/Medium) | 3 (max 1 Premium) | 6 (max 3 Premium) |
-| Your-list time/visit | ~20 min | ~20 min | up to 1 hr incl. minor repairs |
-| Technician | Consistent where possible | Consistent where possible | Dedicated — guaranteed same person |
-| Scheduling | Standard (~2 wks) | Priority: issue visits in 48h + emergency line | Same-week + 24h emergency |
-| Repairs | Quote/refer | Quote/refer | ≤1 hr labor/visit incl., parts at cost |
-| Extras | — | Licensed gas tune-up coordination | Smart-home support · Annual Home Plan (5-yr capital forecast) |
-| For | Townhomes, condos, newer homes | Most detached/semis | Larger homes, busy households, aging-in-place |
+| | 🏡 Complete ★ Recommended | 🔑 Premier |
+|---|---|---|
+| Price | $169/mo · $1,690/yr | $249/mo · $2,490/yr |
+| Visits/year | 8 (anchors + 4 mid-season) | 12 (monthly, each named) |
+| Included picks/yr | 3 (max 1 Premium) | 6 (max 3 Premium) |
+| Your-list time/visit | ~20 min | up to 1 hr incl. minor repairs |
+| Technician | Consistent where possible | Dedicated — guaranteed same person |
+| Scheduling | Priority: issue visits in 48h + emergency line | Same-week + 24h emergency |
+| Repairs | Quote/refer | ≤1 hr labor/visit incl., parts at cost |
+| Extras | Licensed gas tune-up coordination | Smart-home support · Annual Home Plan (5-yr capital forecast) |
+| For | Most detached/semis | Larger homes, busy households, aging-in-place |
 
-Annual = 2 months free. Prices CAD + HST. **Founding-member rate**: first 15 customers,
-Complete at $129/mo locked 12 months, in exchange for a disclosed **testimonial** (never a Google review — incentivized
-reviews violate Google policy and Competition Act guidance). Never discount the public list.
+Annual = 2 months free (10x the monthly price). Prices CAD + HST. Never discount the
+public list.
+
+**Price per visit hour** (visits are 90 minutes; derived, never hardcoded):
+monthly x 12 / visits per year / 1.5 = price per visit hour.
+
+- Complete: $169 x 12 / 8 / 1.5 = **$169.00/visit-hour**
+- Premier: $249 x 12 / 12 / 1.5 = **$166.00/visit-hour**
 
 ## Every visit, every tier
 
@@ -45,25 +50,25 @@ reviews violate Google policy and Competition Act guidance). Never discount the 
 
 ## Visit calendar
 
-E = Essential (4) · C = +Complete (8) · P = +Premier (12)
+C = Complete (8) · P = +Premier (12)
 
 | Month | Visit | Seasonal focus | Tier |
 |---|---|---|---|
-| Jan | **Winter check** | Mid-season filter · water heater flush *(skip-rule below)* · attic peek for ice dams (joist-safe, photo) · humidity tune · detector sweep (peak CO season) | E |
+| Jan | **Winter check** | Mid-season filter · water heater flush *(skip-rule below)* · attic peek for ice dams (joist-safe, photo) · humidity tune · detector sweep (peak CO season) | C |
 | Feb | Deep-winter walkthrough | Condensation/draft check · basement moisture scan · tub/shower caulking · garage door tune | P |
 | Mar | Thaw prep | Sump pump test & pit clean · melt drainage/grading check · foundation walkaround (binary criteria, photo) · floor drains | C |
-| Apr | **Spring readiness** | Reconnect/test outdoor taps · AC startup observation · spring gutter clear · winter-damage walkaround from grade | E |
+| Apr | **Spring readiness** | Reconnect/test outdoor taps · AC startup observation · spring gutter clear · winter-damage walkaround from grade | C |
 | May | Exterior tune | Deck/railing/fence hardware · screens · exterior caulking touch-points · irrigation/hose check | P |
 | Jun | Summer prep | Full exterior caulking pass · AC condenser clean (power off, gentle) · bath fan clean · drainage recheck | C |
-| Jul | **Summer systems** | AC performance check · under-sink/toilet/appliance leak inspection · dryer vent deep clean · washer hoses | E |
+| Jul | **Summer systems** | AC performance check · under-sink/toilet/appliance leak inspection · dryer vent deep clean · washer hoses | C |
 | Aug | Water systems | Water heater visual & temp · water pressure test · toilet internals · sump recheck | P |
 | Sep | Pre-heating check | Filter & furnace visual/performance observation · humidifier pad · weatherstripping pass · book licensed gas tune-up if due | C |
-| Oct | **Fall winterization** | Shut down & drain outdoor taps · humidifier service · weatherstripping/door sweeps · eaves check · detector sweep | E |
+| Oct | **Fall winterization** | Shut down & drain outdoor taps · humidifier service · weatherstripping/door sweeps · eaves check · detector sweep | C |
 | Nov | Post-leaf gutters | Full gutter & downspout clear · roof-line visual (grade/eaves only) · downspout extensions | C |
 | Dec | Holiday & safety | Detectors + extinguisher · dryer vent recheck · cord/space-heater walkaround · your-list catch-up | P |
 
-Upgrade pitch: *Essential keeps the house safe; Complete keeps water out of your basement
-and leaves out of your gutters; Premier is a house manager.*
+Upgrade pitch: *Complete keeps water out of your basement and leaves out of your
+gutters; Premier is a house manager.*
 
 ## Picks menu
 
@@ -117,17 +122,17 @@ included-picks allowance resets on the subscription anniversary, not the calenda
   humidifier model, water heater age) onto the property record.
 - Just-in-time ordering per route — no inventory beyond a small van buffer. Materials
   logged per visit as COGS from visit #1.
-- Expected materials cost/customer-year: ~$70 / $120 / $180 by tier.
+- Expected materials cost/customer-year: ~$120 / $180 by tier.
 
 ## Unit economics ($43/hr fully-loaded labor, ~2h/visit all-in)
 
-| | Essential | Complete | Premier |
-|---|---|---|---|
-| Revenue/yr | $1,068 | $1,788 | $2,988 |
-| Direct cost/yr | ~$415 + 1 pick | ~$810 + picks | ~$1,310 + picks + repair hour |
-| Gross margin | ~58% | ~55% (worst-case picks ~45%) | ~50% (worst-case picks + full repair usage ~40%) |
+| | Complete | Premier |
+|---|---|---|
+| Revenue/yr | $2,028 | $2,988 |
+| Direct cost/yr | ~$810 + picks | ~$1,310 + picks + repair hour |
+| Gross margin | ~60% (worst-case picks ~50%) | ~50% (worst-case picks + full repair usage ~40%) |
 
-Capacity: one full-time tech ≈ 80 visits/mo ≈ ~120 Complete subscribers ≈ $18K MRR.
+Capacity: one full-time tech ≈ 80 visits/mo ≈ ~120 Complete subscribers ≈ $20K MRR.
 
 ## Startup costs & cash plan (to 30 customers)
 
@@ -145,14 +150,11 @@ magnets $200–400 · brand basics $400–600 · starter materials $300–500.
 | Marketing (flyers; organic $0) | ~$100 | ~$150 | ~$200 |
 | Stripe (~3% rev) | $0 | ~$45 | ~$135 |
 | **Burn** | **~$400** | **~$640** | **~$1,115** |
-| **MRR** (mix 6E/20C/4P) | $0 | ~$1,500 | ~$4,510 |
+| **MRR** (mix 24C/6P) | $0 | ~$1,850 | ~$5,550 |
 
 Operating breakeven ≈ customer 4–5. Cash to launch ~$5–7K; cushion $10K ($5K per
 founder). Materials are ~6.6% of revenue at 30 customers and billed-before-consumed —
 labor is the only cost that ever scales against us, and it's founder sweat until Stage 3.
-
-> With the first 15 customers on the founding rate ($129), 30-customer MRR is ≈ $4.2K
-> rather than $4.5K until their 12-month locks roll off. Plan cash to the lower number.
 
 ## Roles
 

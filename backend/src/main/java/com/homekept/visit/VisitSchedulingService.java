@@ -28,9 +28,9 @@ import java.util.List;
  * before it's overdue).
  *
  * <h2>Cumulative calendar</h2>
- * <p>The calendar is cumulative: an ESSENTIAL subscriber gets ESSENTIAL-only templates;
- * a COMPLETE subscriber gets ESSENTIAL + COMPLETE templates; a PREMIER subscriber gets
- * all three. The {@link VisitTemplateRepository#findByMinTierIn} query handles this.
+ * <p>The calendar is cumulative: a COMPLETE subscriber (the base tier) gets COMPLETE-only
+ * templates; a PREMIER subscriber gets COMPLETE + PREMIER templates. The
+ * {@link VisitTemplateRepository#findByMinTierIn} query handles this.
  *
  * <h2>Idempotency</h2>
  * <p>Idempotency is per-template <em>and window-scoped</em>, not per-subscriber and not
@@ -202,14 +202,13 @@ public class VisitSchedulingService {
 
     /**
      * Returns the cumulative list of {@link PlanCode} values that a subscriber at
-     * {@code tier} qualifies for. Cumulative means: PREMIER gets all three tiers;
-     * COMPLETE gets ESSENTIAL + COMPLETE; ESSENTIAL gets only ESSENTIAL.
+     * {@code tier} qualifies for. Cumulative means: PREMIER gets both tiers; COMPLETE
+     * (the base tier) gets only COMPLETE.
      */
     static List<PlanCode> eligibleTiersFor(PlanCode tier) {
         return switch (tier) {
-            case ESSENTIAL -> List.of(PlanCode.ESSENTIAL);
-            case COMPLETE  -> List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE);
-            case PREMIER   -> List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER);
+            case COMPLETE -> List.of(PlanCode.COMPLETE);
+            case PREMIER  -> List.of(PlanCode.COMPLETE, PlanCode.PREMIER);
         };
     }
 

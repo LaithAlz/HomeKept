@@ -144,8 +144,8 @@ public class StripeWebhookService {
      * checkout.session.completed (mode=subscription)
      *
      * <p>Activates the subscriber: sets Stripe ids, plan tier, period dates, billing
-     * cycle, founding-rate flag (if requested), started_at; transitions
-     * PENDING_ACTIVATION → ACTIVE; fires the "subscription started" notification.
+     * cycle, started_at; transitions PENDING_ACTIVATION → ACTIVE; fires the
+     * "subscription started" notification.
      *
      * <p>mode=payment (extra-pick checkout) is acknowledged without state change —
      * handled by the picks slice.
@@ -225,19 +225,6 @@ public class StripeWebhookService {
             }
         }
 
-        // Reconcile founding status from THIS completed session's metadata — the session
-        // Stripe is actually billing — so the recorded flag always matches what is charged.
-        // The cap is enforced at checkout (the slot is reserved under the advisory lock
-        // before the founding price is ever offered); here we SETTLE that reservation to
-        // reality. A customer who reserved founding but ultimately completed a normal-price
-        // session is released back to non-founding, so "recorded founding" can never diverge
-        // from "billed founding" (which would otherwise leak a slot forever).
-        boolean billedFounding = "true".equals(session.getMetadata().get("foundingRate"));
-        subscriber.setFoundingRate(billedFounding);
-        if (billedFounding) {
-            subscriber.setFoundingRateExpiresAt(now.plusSeconds(365L * 24 * 3600));
-        }
-
         // Period dates: Stripe does not expose them directly on the session. We set
         // approximate values here; customer.subscription.updated (which fires immediately
         // after this event for new subscriptions) syncs the real dates.
@@ -262,8 +249,8 @@ public class StripeWebhookService {
         // Decoupled this way so a scheduling failure can never roll back the activation.
         eventPublisher.publishEvent(new SubscriberActivatedEvent(subscriber.getId()));
 
-        log.info("subscription_activated subscriberId={} planCode={} foundingRate={}",
-                subscriber.getId(), planCode, subscriber.isFoundingRate());
+        log.info("subscription_activated subscriberId={} planCode={}",
+                subscriber.getId(), planCode);
 
         // Analytics (arch doc §5.7) — the revenue truth event, captured here on the webhook
         // (never trusting the client). Attributed to the subscriber's user; enum/flag props
@@ -276,7 +263,6 @@ public class StripeWebhookService {
         Map<String, Object> activatedProps = new LinkedHashMap<>();
         activatedProps.put("plan_code", planCode);
         activatedProps.put("billing_cycle", session.getMetadata().get("billingCycle"));
-        activatedProps.put("founding_rate", subscriber.isFoundingRate());
         analytics.capture(subscriber.getUserId(), AnalyticsEvent.SUBSCRIPTION_ACTIVATED, activatedProps);
     }
 

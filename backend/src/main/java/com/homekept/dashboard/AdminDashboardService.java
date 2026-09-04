@@ -45,8 +45,7 @@ public class AdminDashboardService {
                 subMetrics.activeSubscribers(),
                 subMetrics.mrrCents(),
                 pendingWalkthroughs,
-                upcomingVisits,
-                subMetrics.foundingRateSlotsRemaining()
+                upcomingVisits
         );
     }
 }

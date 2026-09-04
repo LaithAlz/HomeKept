@@ -97,9 +97,8 @@ function TermsPage() {
                 </li>
               </ul>
               <p>
-                Three subscription tiers are available: <strong>Essential</strong>,{" "}
-                <strong>Complete</strong>, and <strong>Premier</strong>. Plan features are described
-                on{" "}
+                Two subscription tiers are available: <strong>Complete</strong> and{" "}
+                <strong>Premier</strong>. Plan features are described on{" "}
                 <Link
                   to="/plans"
                   className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

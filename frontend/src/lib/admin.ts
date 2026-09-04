@@ -159,7 +159,6 @@ export interface AdminSubscriberListItem {
   status: string;
   planCode?: string;
   mrrCents?: number;
-  foundingRate: boolean;
 }
 
 export interface AdminSubscriberPropertySummary {
@@ -188,7 +187,6 @@ export interface AdminSubscriberDetail {
   status: string;
   planCode?: string;
   mrrCents?: number;
-  foundingRate: boolean;
   billingCycle: string;
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
@@ -597,7 +595,6 @@ export interface AdminDashboardResponse {
   mrrCents: number;
   pendingWalkthroughs: number;
   upcomingVisits: number;
-  foundingRateSlotsRemaining: number;
 }
 
 /**
@@ -634,7 +631,6 @@ export const STATUS_TONE: Record<string, string> = {
 };
 
 export const PLAN_LABEL: Record<string, string> = {
-  ESSENTIAL: "Essential",
   COMPLETE: "Complete",
   PREMIER: "Premier",
 };

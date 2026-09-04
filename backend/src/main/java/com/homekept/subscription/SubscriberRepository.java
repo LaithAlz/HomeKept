@@ -2,7 +2,6 @@ package com.homekept.subscription;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -11,34 +10,6 @@ import java.util.Optional;
  * Spring Data repository for {@link Subscriber}.
  */
 public interface SubscriberRepository extends JpaRepository<Subscriber, Long> {
-
-    /** Count founding subscribers — used by the founding-rate availability check. */
-    long countByFoundingRateTrue();
-
-    /**
-     * Acquires a Postgres transaction-scoped advisory lock on a fixed key (42) that
-     * serialises concurrent founding-rate grants inside the webhook handler.
-     *
-     * <p>The lock is held until the current transaction commits or rolls back.
-     * Callers MUST be inside an active {@code @Transactional} context.
-     * Two transactions that both call this method will execute serially — the second
-     * blocks until the first releases the lock on commit.
-     *
-     * <p>Key 42 is the founding-rate critical-section identifier. It has no external
-     * significance — it just needs to be the same constant value across all callers
-     * that want to serialize founding grants.
-     *
-     * <p>{@code pg_advisory_xact_lock} returns SQL {@code void}. A bare
-     * {@code SELECT pg_advisory_xact_lock(42)} on a {@code void} method throws "a result
-     * was returned when none was expected", and {@code @Modifying} is wrong here too — it
-     * runs {@code executeUpdate()}, which likewise rejects the returned ResultSet. Wrapping
-     * the call in {@code count(*)} yields a single {@code bigint} row that maps cleanly; the
-     * returned {@code 1} is intentionally ignored by callers — the side effect (acquiring
-     * the transaction-scoped lock) is the entire point.
-     */
-    @Query(value = "SELECT count(*) FROM (SELECT pg_advisory_xact_lock(42)) AS lock_acquired",
-            nativeQuery = true)
-    long lockFoundingCounter();
 
     /** Cursor-paginated list for the admin console (newest first). */
     List<Subscriber> findByIdLessThanOrderByIdDesc(Long cursor, Pageable pageable);

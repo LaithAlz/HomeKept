@@ -31,18 +31,15 @@ public class CheckoutService {
 
     private static final Logger log = LoggerFactory.getLogger(CheckoutService.class);
 
-    private final SubscriberRepository subscriberRepository;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
     private final StripeService stripeService;
     private final AnalyticsService analytics;
 
-    public CheckoutService(SubscriberRepository subscriberRepository,
-                           SubscriberQueryService subscriberQueryService,
+    public CheckoutService(SubscriberQueryService subscriberQueryService,
                            CatalogService catalogService,
                            StripeService stripeService,
                            AnalyticsService analytics) {
-        this.subscriberRepository = subscriberRepository;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
         this.stripeService = stripeService;
@@ -55,8 +52,9 @@ public class CheckoutService {
      * <ol>
      *   <li>Resolves the subscriber by {@code userId} — 404 if none exists yet.</li>
      *   <li>Validates the plan code and billing cycle.</li>
-     *   <li>If {@code foundingRate=true}: verifies slots are available AND the plan has
-     *       a founding price — returns 409 if either condition fails.</li>
+     *   <li>Fails closed with 409 {@code PLAN_NOT_PURCHASABLE} if the plan has no Stripe
+     *       price id configured for the requested cycle yet — never falls through to
+     *       Stripe with a blank price id, and never charges a stale price.</li>
      *   <li>Calls {@link StripeService#createCheckoutSession} with a deterministic
      *       idempotency key.</li>
      * </ol>
@@ -64,15 +62,13 @@ public class CheckoutService {
      * @param userId       the authenticated user's id (from the JWT principal)
      * @param planCode     the desired plan
      * @param billingCycle MONTHLY or ANNUAL
-     * @param foundingRate whether to apply the founding-member rate
      * @return the Stripe checkout URL
-     * @throws SubscriberNotFoundException      if the user has no subscriber row (404)
-     * @throws FoundingRateExhaustedException   if founding slots are full or unavailable (409)
+     * @throws SubscriberNotFoundException  if the user has no subscriber row (404)
+     * @throws PlanNotPurchasableException  if the plan has no Stripe price id yet (409)
      */
     @Transactional
     public CheckoutSessionResponse createCheckoutSession(Long userId, PlanCode planCode,
-                                                         BillingCycle billingCycle,
-                                                         boolean foundingRate) {
+                                                         BillingCycle billingCycle) {
         Subscriber subscriber = subscriberQueryService.requireByUserId(userId);
 
         // Only a brand-new, unpaid subscription may check out. CANCELLED is terminal (a
@@ -90,58 +86,34 @@ public class CheckoutService {
             throw new IllegalArgumentException("Unknown planCode: " + planCode);
         }
 
-        // Founding-rate slot reservation. The check-and-claim MUST be atomic and MUST happen
-        // before the founding price id is committed to the Stripe session. Otherwise
-        // concurrent checkouts each pass an unlocked availability check, all get billed the
-        // founding price, and a later webhook flag-flip cannot claw the discount back (that
-        // was the oversell bug). Under the transaction-scoped advisory lock we count
-        // committed founding rows and, if a slot remains, durably reserve THIS row in the
-        // same transaction; the next serialized checkout sees the higher count and is
-        // rejected. Net effect: at most FOUNDING_CAP founding checkouts can ever be offered.
-        // The reservation is SETTLED to billing reality by the webhook, which reconciles the
-        // flag from the completed session's metadata (a customer who reserves founding then
-        // completes a normal-price session is released back to non-founding there).
-        // Tradeoff: a reserved-but-abandoned checkout holds its slot until that customer
-        // activates or it is manually released (there is no PENDING_ACTIVATION cleanup job
-        // yet) — acceptable at 15 slots with deliberate onboarding.
-        boolean grantFounding = false;
-        if (foundingRate) {
-            if (!plan.hasFoundingPrice()) {
-                throw new FoundingRateExhaustedException(
-                        "Founding rate is not available on the " + planCode + " plan.");
-            }
-            subscriberRepository.lockFoundingCounter(); // serialises concurrent founding claims
-            // Idempotent re-claim: if THIS row already holds a reservation it already counts
-            // toward the cap, so skip the count check (which would otherwise 409 a customer
-            // who already holds a slot, e.g. re-opening an expired checkout) and re-use it.
-            if (!subscriber.isFoundingRate()
-                    && subscriberRepository.countByFoundingRateTrue() >= FoundingRateAvailabilityImpl.FOUNDING_CAP) {
-                throw new FoundingRateExhaustedException(
-                        "All founding-member slots have been filled. Founding rate is no longer available.");
-            }
-            subscriber.setFoundingRate(true); // durable reservation, flushed at commit under the lock
-            grantFounding = true;
+        // Fail closed: resolve the intended Stripe price id for this cycle BEFORE ever
+        // calling Stripe. A blank price id (e.g. COMPLETE's ids cleared pending new Stripe
+        // prices) must return 409, never reach Stripe, and never fall back to a stale price.
+        String priceId = switch (billingCycle) {
+            case MONTHLY -> plan.getStripePriceIdMonthly();
+            case ANNUAL  -> plan.getStripePriceIdAnnual();
+        };
+        if (priceId == null || priceId.isBlank()) {
+            throw new PlanNotPurchasableException();
         }
 
         // Deterministic idempotency key: same subscriber + plan + cycle always produces
         // the same key, so a retry of an in-flight checkout returns the same session URL.
         String idempotencyKey = Hashing.sha256Hex(
-                "checkout:" + subscriber.getId() + ":" + planCode.name() + ":" + billingCycle.name()
-                        + ":" + grantFounding);
+                "checkout:" + subscriber.getId() + ":" + planCode.name() + ":" + billingCycle.name());
 
-        log.info("checkout_started subscriberId={} planCode={} cycle={} foundingRate={}",
-                subscriber.getId(), planCode, billingCycle, grantFounding);
+        log.info("checkout_started subscriberId={} planCode={} cycle={}",
+                subscriber.getId(), planCode, billingCycle);
 
         // Analytics (arch doc §5.7) — attributed to the customer, enum/flag props only, no
         // PII. capture() is itself commit-gated and best-effort.
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("plan_code", planCode.name());
         props.put("billing_cycle", billingCycle.name());
-        props.put("founding_rate", grantFounding);
         analytics.capture(userId, AnalyticsEvent.CHECKOUT_STARTED, props);
 
         String checkoutUrl = stripeService.createCheckoutSession(
-                subscriber, plan, billingCycle, grantFounding, idempotencyKey);
+                subscriber, plan, billingCycle, idempotencyKey);
 
         return new CheckoutSessionResponse(checkoutUrl);
     }
