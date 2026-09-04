@@ -1,14 +1,17 @@
 package com.homekept.subscription;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
  * Spring Data repository for {@link SubscriptionEvent}.
  *
- * <p>Only used for idempotency lookups (by Stripe event id) and for persisting new
- * events. All other reads go through the Stripe API or the subscriber entity directly.
+ * <p>Used for idempotency lookups (by Stripe event id), persisting new events, and the
+ * admin subscriber activity history ({@code GET /api/admin/subscribers/{id}/events}). All
+ * other reads go through the Stripe API or the subscriber entity directly.
  */
 interface SubscriptionEventRepository extends JpaRepository<SubscriptionEvent, Long> {
 
@@ -20,4 +23,13 @@ interface SubscriptionEventRepository extends JpaRepository<SubscriptionEvent, L
      * @return the existing row, or empty if this event has not been processed yet
      */
     Optional<SubscriptionEvent> findByStripeEventId(String stripeEventId);
+
+    /**
+     * Newest-first activity history for a single subscriber, for the admin console.
+     *
+     * @param subscriberId the subscriber id
+     * @param pageable     page size cap (the controller caps this at 100)
+     * @return events ordered by {@code createdAt} descending
+     */
+    List<SubscriptionEvent> findBySubscriberIdOrderByCreatedAtDesc(Long subscriberId, Pageable pageable);
 }

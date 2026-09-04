@@ -6,15 +6,24 @@ import com.homekept.property.PropertyService;
 import com.homekept.subscription.dto.AdminSubscriberDetail;
 import com.homekept.subscription.dto.AdminSubscriberListItem;
 import com.homekept.subscription.dto.AdminSubscriberPropertySummary;
+import com.homekept.subscription.dto.SubscriptionActionResponse;
+import com.homekept.subscription.dto.SubscriptionEventItem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Read-only service for the admin subscriber console.
+ * Admin-facing service for the subscriber console: read-only detail/list views, direct
+ * control of a subscriber's subscription (cancel / pause / resume), and the subscriber's
+ * activity history.
  *
  * <p>Cross-domain calls go through service interfaces only:
  * <ul>
@@ -22,23 +31,44 @@ import java.util.stream.Collectors;
  *   <li>property → {@link PropertyService} (property summary for the detail view)</li>
  * </ul>
  *
+ * <p>The pause/resume/cancel mutations delegate their actual mechanics (state-machine
+ * legality, Stripe calls, idempotency keys) to the package-private methods on
+ * {@link SubscriptionSelfServeService} — see that class's javadoc for why. This service only
+ * resolves the subscriber by id (admin's own 404, distinct from the self-serve by-user-id
+ * lookup) and applies the same billing-presence guard before delegating.
+ *
  * <p>MRR is in integer cents — never floats. No PII in logs.
  */
 @Service
 public class SubscriptionAdminService {
 
+    private static final Logger log = LoggerFactory.getLogger(SubscriptionAdminService.class);
+
     private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int EVENTS_LIMIT = 100;
+
+    /** Event type whose payload carries a churn/cancellation reason to surface as {@code note}. */
+    private static final String CANCELLATION_REQUESTED = "CANCELLATION_REQUESTED";
 
     private final SubscriberRepository subscriberRepository;
     private final CatalogService catalogService;
     private final PropertyService propertyService;
+    private final SubscriptionSelfServeService selfServeService;
+    private final SubscriptionEventRepository subscriptionEventRepository;
+    private final ObjectMapper objectMapper;
 
     public SubscriptionAdminService(SubscriberRepository subscriberRepository,
                                     CatalogService catalogService,
-                                    PropertyService propertyService) {
+                                    PropertyService propertyService,
+                                    SubscriptionSelfServeService selfServeService,
+                                    SubscriptionEventRepository subscriptionEventRepository,
+                                    ObjectMapper objectMapper) {
         this.subscriberRepository = subscriberRepository;
         this.catalogService = catalogService;
         this.propertyService = propertyService;
+        this.selfServeService = selfServeService;
+        this.subscriptionEventRepository = subscriptionEventRepository;
+        this.objectMapper = objectMapper;
     }
 
     /**
@@ -115,7 +145,133 @@ public class SubscriptionAdminService {
      */
     public record SubscriptionMetrics(long activeSubscribers, int mrrCents, long foundingRateSlotsRemaining) {}
 
+    // ── Subscription lifecycle mutations ────────────────────────────────────────
+
+    /**
+     * Cancels a subscriber's subscription, either at period end or immediately, and records
+     * the reason as a {@code MANUAL} {@link SubscriptionEvent} (payload
+     * {@code {"reason": ..., "by": "ADMIN"}}) BEFORE calling Stripe. The event and the Stripe
+     * call share one transaction (see {@link SubscriptionSelfServeService#cancelSubscriber}).
+     *
+     * <p>The CANCELLED status transition itself is applied later by the
+     * {@code customer.subscription.deleted} webhook, not here — see that class's javadoc.
+     *
+     * @param id          subscriber id
+     * @param reason      the required admin-supplied reason (churn data)
+     * @param immediately {@code false} = cancel at period end; {@code true} = cancel now
+     * @return the current status and period end
+     * @throws SubscriberNotFoundException      unknown subscriber id (404)
+     * @throws NoBillingAccountException        no Stripe subscription yet (409)
+     * @throws IllegalSubscriptionStateException the subscriber cannot transition to CANCELLED (409)
+     */
+    @Transactional
+    public SubscriptionActionResponse cancelSubscriber(Long id, String reason, boolean immediately) {
+        Subscriber subscriber = requireSubscriber(id);
+        selfServeService.requireBilled(subscriber);
+
+        SubscriptionActionResponse response = selfServeService.cancelSubscriber(
+                subscriber, selfServeService.serializeReason(reason, "ADMIN"), immediately);
+
+        log.info("subscription_admin_cancel_requested subscriberId={} immediately={}",
+                subscriber.getId(), immediately);
+        return response;
+    }
+
+    /**
+     * Pauses a subscriber's billing (same semantics/Stripe call as the customer self-serve
+     * pause — eligible only from ACTIVE).
+     *
+     * @param id subscriber id
+     * @return the current status and period end
+     * @throws SubscriberNotFoundException      unknown subscriber id (404)
+     * @throws NoBillingAccountException        no Stripe subscription yet (409)
+     * @throws IllegalSubscriptionStateException not eligible to pause (409)
+     */
+    @Transactional(readOnly = true)
+    public SubscriptionActionResponse pauseSubscriber(Long id) {
+        Subscriber subscriber = requireSubscriber(id);
+        selfServeService.requireBilled(subscriber);
+
+        SubscriptionActionResponse response = selfServeService.pauseSubscriber(subscriber);
+        log.info("subscription_admin_pause_requested subscriberId={}", subscriber.getId());
+        return response;
+    }
+
+    /**
+     * Resumes a subscriber's billing (same semantics/Stripe call as the customer self-serve
+     * resume — eligible only from PAUSED).
+     *
+     * @param id subscriber id
+     * @return the current status and period end
+     * @throws SubscriberNotFoundException      unknown subscriber id (404)
+     * @throws NoBillingAccountException        no Stripe subscription yet (409)
+     * @throws IllegalSubscriptionStateException not eligible to resume (409)
+     */
+    @Transactional(readOnly = true)
+    public SubscriptionActionResponse resumeSubscriber(Long id) {
+        Subscriber subscriber = requireSubscriber(id);
+        selfServeService.requireBilled(subscriber);
+
+        SubscriptionActionResponse response = selfServeService.resumeSubscriber(subscriber);
+        log.info("subscription_admin_resume_requested subscriberId={}", subscriber.getId());
+        return response;
+    }
+
+    /**
+     * Returns a subscriber's activity history (newest first, capped at {@value #EVENTS_LIMIT}
+     * rows): Stripe webhook deliveries and manual (admin/self-serve) actions.
+     *
+     * @param id subscriber id
+     * @return the subscriber's events, newest first
+     * @throws SubscriberNotFoundException unknown subscriber id (404)
+     */
+    @Transactional(readOnly = true)
+    public List<SubscriptionEventItem> listSubscriberEvents(Long id) {
+        requireSubscriber(id);
+
+        return subscriptionEventRepository
+                .findBySubscriberIdOrderByCreatedAtDesc(id, PageRequest.of(0, EVENTS_LIMIT))
+                .stream()
+                .map(this::toEventItem)
+                .collect(Collectors.toList());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Resolves a subscriber by id for the admin mutation/events endpoints.
+     *
+     * @throws SubscriberNotFoundException if no subscriber row exists for this id (404)
+     */
+    private Subscriber requireSubscriber(Long id) {
+        return subscriberRepository.findById(id)
+                .orElseThrow(() -> new SubscriberNotFoundException("No subscriber row found for id=" + id));
+    }
+
+    /**
+     * Maps a {@link SubscriptionEvent} row to its admin-console DTO. {@code note} is the
+     * churn reason extracted from the JSONB payload for {@code CANCELLATION_REQUESTED}
+     * events only; every other event type reports {@code null}. The payload is parsed, never
+     * logged (no PII in logs).
+     */
+    private SubscriptionEventItem toEventItem(SubscriptionEvent event) {
+        String note = null;
+        if (CANCELLATION_REQUESTED.equals(event.getEventType()) && event.getPayload() != null) {
+            try {
+                JsonNode payload = objectMapper.readTree(event.getPayload());
+                note = payload.path("reason").asText(null);
+            } catch (JacksonException e) {
+                log.warn("subscription_event_payload_unparseable subscriberId={} eventId={}",
+                        event.getSubscriberId(), event.getId());
+            }
+        }
+        return new SubscriptionEventItem(
+                event.getId(),
+                event.getEventType(),
+                event.getSource().name(),
+                event.getCreatedAt(),
+                note);
+    }
 
     private AdminSubscriberListItem toListItem(Subscriber s) {
         String planCode = catalogService.getPlanCode(s.getPlanTierId());

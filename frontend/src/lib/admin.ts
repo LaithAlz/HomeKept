@@ -218,6 +218,88 @@ export function useAdminSubscriber(id: number | null) {
   });
 }
 
+/* -------------------------------------------------------------------------- */
+/* Subscriber activity + admin-initiated subscription actions                */
+/* -------------------------------------------------------------------------- */
+
+/** One row of `GET /api/admin/subscribers/{id}/events` — newest first. */
+export interface AdminSubscriberEvent {
+  id: number;
+  type: string;
+  source: "STRIPE" | "MANUAL" | string;
+  occurredAt: string;
+  note: string | null;
+}
+
+/** `GET /api/admin/subscribers/{id}/events` — the subscriber's activity history. */
+export function useAdminSubscriberEvents(id: number | null) {
+  return useQuery({
+    queryKey: ["admin", "subscriber-events", id],
+    queryFn: () => get<AdminSubscriberEvent[]>(`/api/admin/subscribers/${id}/events`),
+    enabled: id !== null,
+  });
+}
+
+/** Response body shared by the admin cancel/pause/resume subscription actions. */
+export interface AdminSubscriptionActionResponse {
+  status: string;
+  currentPeriodEnd?: string;
+}
+
+/** Request body for `POST /api/admin/subscribers/{id}/cancel`. */
+export interface AdminCancelSubscriptionRequest {
+  reason: string;
+  immediately: boolean;
+}
+
+/**
+ * Every admin subscription action can move the subscriber's status, touch its
+ * `currentPeriodEnd`, and append an activity event — so all three invalidate the
+ * same four query keys: this subscriber's detail, the subscribers list, this
+ * subscriber's activity, and the dashboard aggregate (MRR/active-subscriber counts).
+ */
+function invalidateAfterAdminSubscriptionAction(
+  queryClient: ReturnType<typeof useQueryClient>,
+  id: number,
+) {
+  void queryClient.invalidateQueries({ queryKey: ["admin", "subscriber", id] });
+  void queryClient.invalidateQueries({ queryKey: ["admin", "subscribers"] });
+  void queryClient.invalidateQueries({ queryKey: ["admin", "subscriber-events", id] });
+  void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
+}
+
+/**
+ * `POST /api/admin/subscribers/{id}/cancel` — staff-initiated cancellation.
+ * `409 NO_BILLING_ACCOUNT` if the subscriber has no Stripe subscription yet;
+ * `409 ILLEGAL_STATE_TRANSITION` if the subscription's status changed since load.
+ */
+export function useAdminCancelSubscription(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: AdminCancelSubscriptionRequest) =>
+      post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/cancel`, request),
+    onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
+  });
+}
+
+/** `POST /api/admin/subscribers/{id}/pause` — staff-initiated pause. */
+export function useAdminPauseSubscription(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/pause`),
+    onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
+  });
+}
+
+/** `POST /api/admin/subscribers/{id}/resume` — staff-initiated resume. */
+export function useAdminResumeSubscription(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/resume`),
+    onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
+  });
+}
+
 /**
  * Request body for `PATCH /api/admin/properties/{propertyId}/sku`. Every field is
  * optional/nullable on the backend (`AdminUpdateSkuRequest.java`) — an omitted key
