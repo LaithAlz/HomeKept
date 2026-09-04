@@ -82,10 +82,11 @@ or `200 { "valid": false, "reason": "EXPIRED" | "USED" | "INVALID" }`
 
 ### `POST /api/activation/complete`
 `{ "token": "...", "password": "..." }` → in one transaction: creates `User` (CUSTOMER,
-PENDING_ACTIVATION), `Property` from booking data, and the `Subscriber` row in
+ACTIVE — a password has just been set, so the account must be able to authenticate
+immediately), `Property` from booking data, and the `Subscriber` row in
 `PENDING_ACTIVATION` (so `property.subscriber_id` is never orphaned); consumes the token;
 sets auth cookies. The Stripe `checkout.session.completed` webhook later flips the
-subscriber to `ACTIVE`.
+subscriber (not the user) to `ACTIVE`.
 → `201 { "userId": 9, "next": "CHECKOUT" }`
 
 ---
@@ -99,7 +100,7 @@ subscriber to `ACTIVE`.
 | `POST /api/auth/logout` | — | `204`, revokes all refresh tokens |
 | `GET /api/auth/me` | — | `200 { id, firstName, lastName, email, role }` |
 | `POST /api/auth/forgot` | `{ email }` | always `202` (same response whether the account exists — no enumeration); emails a single-use HMAC reset token, 30-min expiry · rate limit 5/IP/hour |
-| `POST /api/auth/reset` | `{ token, password }` | `200`, consumes token, revokes all refresh tokens, updates the password either way; sets fresh cookies only if the user is ACTIVE (no auto-sign-in for a non-ACTIVE user) |
+| `POST /api/auth/reset` | `{ token, password }` | `200 { "signedIn": true \| false }`, consumes token, revokes all refresh tokens, updates the password either way; sets fresh cookies and `signedIn: true` only if the user is ACTIVE (no auto-sign-in for a non-ACTIVE user) — otherwise `signedIn: false` and any auth cookies already on the request are cleared, so a browser can never come out of a reset holding a stale session for a different account |
 
 There is **no** `POST /api/auth/register` at MVP. Customer accounts are created only via
 the activation flow; the first ADMIN (and any TECHNICIAN) users are created by seed

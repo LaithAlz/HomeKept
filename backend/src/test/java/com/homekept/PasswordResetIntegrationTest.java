@@ -43,9 +43,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>POST /api/auth/forgot — only the token hash is persisted, never the raw token</li>
  *   <li>POST /api/auth/forgot — rate limit: 6th attempt from the same IP → 429</li>
  *   <li>POST /api/auth/reset — happy path: sets the new password, revokes existing refresh
- *       tokens, sets fresh auth cookies, auto-signs-in an ACTIVE user</li>
+ *       tokens, sets fresh auth cookies, auto-signs-in an ACTIVE user, and returns
+ *       {@code { "signedIn": true }}</li>
  *   <li>POST /api/auth/reset — non-ACTIVE user: password is still updated, but no auto
- *       sign-in (no cookies set) — mirrors the login/refresh ACTIVE gate (#115)</li>
+ *       sign-in — mirrors the login/refresh ACTIVE gate (#115) — the response returns
+ *       {@code { "signedIn": false }} and clears any auth cookies the browser already
+ *       held, so a stale session for a different account can't survive a reset</li>
  *   <li>POST /api/auth/reset — a successful reset invalidates the user's other outstanding
  *       reset tokens, not just the one used (#115)</li>
  *   <li>POST /api/auth/reset — re-using a consumed token → 400 INVALID_TOKEN</li>
@@ -193,6 +196,7 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.signedIn").value(true))
                 .andExpect(cookie().exists("hk_access"))
                 .andExpect(cookie().exists("hk_refresh"));
 
@@ -213,10 +217,15 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn() throws Exception {
+    void reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn_andClearsAnyExistingCookies() throws Exception {
         // Mirrors the login/refresh ACTIVE gate (#115 finding 2): the password change must
         // still happen, but a non-ACTIVE user must not be auto-signed-in via reset — that
         // would be a future login-lockout bypass once a suspend feature ships.
+        //
+        // Also asserts the response tells the caller signedIn:false AND clears any auth
+        // cookies on the response — a browser holding a *different* account's stale session
+        // must not come out of this reset still signed in as that other account (the bug
+        // where a customer's reset landed on /admin).
         User user = createTestUserWithStatus("reset-suspended@test.local", "OldPassword1", UserStatus.SUSPENDED);
         PasswordResetTokenService.MintResult mint = tokenService.mint(user);
 
@@ -224,8 +233,11 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
                 .andExpect(status().isOk())
-                .andExpect(cookie().doesNotExist("hk_access"))
-                .andExpect(cookie().doesNotExist("hk_refresh"));
+                .andExpect(jsonPath("$.signedIn").value(false))
+                .andExpect(cookie().value("hk_access", ""))
+                .andExpect(cookie().maxAge("hk_access", 0))
+                .andExpect(cookie().value("hk_refresh", ""))
+                .andExpect(cookie().maxAge("hk_refresh", 0));
 
         // Password is still changed even though the user isn't auto-signed-in.
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
@@ -248,6 +260,7 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.signedIn").value(true))
                 .andExpect(cookie().exists("hk_access"))
                 .andExpect(cookie().exists("hk_refresh"));
     }

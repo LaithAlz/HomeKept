@@ -5,6 +5,7 @@ import com.homekept.identity.dto.ForgotPasswordRequest;
 import com.homekept.identity.dto.LoginRequest;
 import com.homekept.identity.dto.MeResponse;
 import com.homekept.identity.dto.ResetPasswordRequest;
+import com.homekept.identity.dto.ResetPasswordResponse;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -217,14 +218,25 @@ public class AuthController {
      * tokens. Fresh auth cookies (auto-sign-in) are set only if the user is ACTIVE — see
      * {@link AuthService#resetPassword}. Always 200 either way: the password change itself
      * succeeds regardless of auto-sign-in eligibility.
+     *
+     * <p>Response body {@code { "signedIn": boolean }} tells the caller whether fresh
+     * cookies were set. When {@code false}, this endpoint also clears any auth cookies the
+     * requesting browser already held: a browser can arrive here holding a *different*
+     * account's stale session (e.g. an admin resetting a customer's password on their
+     * behalf, or two accounts sharing a browser), and leaving that stale session in place
+     * would let the frontend route the person into the wrong console after the reset.
      */
     @PostMapping("/reset")
-    public ResponseEntity<Void> reset(@Valid @RequestBody ResetPasswordRequest request,
+    public ResponseEntity<ResetPasswordResponse> reset(@Valid @RequestBody ResetPasswordRequest request,
                                       HttpServletRequest httpRequest,
                                       HttpServletResponse httpResponse) {
         Optional<AuthService.TokenPair> tokens = authService.resetPassword(request.token(), request.password());
-        tokens.ifPresent(t -> cookieHelper.setAuthCookies(httpResponse, t.accessToken(), t.refreshToken(),
-                httpRequest.isSecure()));
-        return ResponseEntity.ok().build();
+        if (tokens.isPresent()) {
+            AuthService.TokenPair t = tokens.get();
+            cookieHelper.setAuthCookies(httpResponse, t.accessToken(), t.refreshToken(), httpRequest.isSecure());
+        } else {
+            cookieHelper.clearAuthCookies(httpResponse, httpRequest.isSecure());
+        }
+        return ResponseEntity.ok(new ResetPasswordResponse(tokens.isPresent()));
     }
 }

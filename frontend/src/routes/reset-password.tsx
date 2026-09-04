@@ -69,6 +69,11 @@ interface FieldErrors {
   confirmPassword?: string;
 }
 
+/** Response body for POST /api/auth/reset (backend/api-contract.md §Auth). */
+interface ResetPasswordResponse {
+  signedIn: boolean;
+}
+
 function ResetPasswordForm({ token, onDeadEnd }: { token: string; onDeadEnd: () => void }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -100,14 +105,24 @@ function ResetPasswordForm({ token, onDeadEnd }: { token: string; onDeadEnd: () 
       // The token is only ever held in this component's state and sent in
       // the request body — never written to localStorage, never logged,
       // never reflected into an attribute or href.
-      await post<void>("/api/auth/reset", { token, password });
-      // The backend has already set fresh auth cookies on this response —
-      // the customer is signed in. A full-page navigation (rather than the
-      // router's client-side navigate) is intentional: it's the simplest
-      // way to let /app's session guard pick up the cookie this response
-      // just set (see AppShell and signin.tsx's sanitizeNext comment).
-      const session = await getSession().catch(() => null);
-      window.location.assign(session ? homeFor(session.role) : "/app");
+      const { signedIn } = await post<ResetPasswordResponse>("/api/auth/reset", {
+        token,
+        password,
+      });
+      if (signedIn) {
+        // The backend has already set fresh auth cookies on this response —
+        // the customer is signed in. A full-page navigation (rather than the
+        // router's client-side navigate) is intentional: it's the simplest
+        // way to let /app's session guard pick up the cookie this response
+        // just set (see AppShell and signin.tsx's sanitizeNext comment).
+        const session = await getSession().catch(() => null);
+        window.location.assign(session ? homeFor(session.role) : "/app");
+      } else {
+        // Not auto-signed-in: the backend has also cleared any auth cookies
+        // this browser held, so send the customer to sign in with the new
+        // password rather than guessing at a session that no longer exists.
+        window.location.assign("/signin");
+      }
     } catch (err) {
       setSubmitting(false);
 
