@@ -56,6 +56,12 @@ export interface AdminBookingListItem {
   dayPreferences: string[];
   leadSource: string;
   scheduledFor: string | null;
+  /**
+   * ISO instant the activation invite was last sent, `null` before any invite. Backend
+   * adds this to `AdminBookingListItem` (issue audit #4) — optional here defensively in
+   * case a cached/older response predates the field.
+   */
+  invitedAt?: string | null;
   createdAt: string;
 }
 
@@ -108,11 +114,20 @@ export function usePatchBooking() {
   });
 }
 
-/** `POST /api/admin/bookings/{id}/activation-invite` — issue #35. */
+/**
+ * `POST /api/admin/bookings/{id}/activation-invite` — issue #35. Invalidates the
+ * bookings list so the newly-set `invitedAt` (issue audit #4) lands on refetch —
+ * callers should still keep a short-lived local "sent" state for the optimistic UI
+ * between the mutation resolving and the refetch completing.
+ */
 export function useSendActivationInvite() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bookingId: number) =>
       post<{ status: string }>(`/api/admin/bookings/${bookingId}/activation-invite`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+    },
   });
 }
 
@@ -426,6 +441,55 @@ export function useAdminTechnicians() {
   return useQuery({
     queryKey: ["admin", "technicians"],
     queryFn: () => get<AdminTechnicianListItem[]>("/api/admin/technicians"),
+  });
+}
+
+/**
+ * Request body for `POST /api/admin/technicians` (`CreateTechnicianRequest.java`).
+ * Onboards an existing user (who already has the TECHNICIAN role, assigned separately)
+ * by creating their `technician_profile` row.
+ */
+export interface CreateTechnicianRequest {
+  userId: number;
+  fullyLoadedHourlyCostCents: number;
+  employeeStatus?: string;
+  hireDate?: string;
+}
+
+/** Response body for `POST /api/admin/technicians` (`TechnicianProfileResponse.java`). */
+export interface TechnicianProfileResponse {
+  id: number;
+  userId: number;
+  employeeStatus: string | null;
+  hireDate: string | null;
+  fullyLoadedHourlyCostCents: number | null;
+  createdAt: string;
+}
+
+/**
+ * `employeeStatus` is a free-form `VARCHAR(50)` on the backend (no CHECK constraint,
+ * no Java enum — see `TechnicianProfile.java`/the V7 migration), so this option list
+ * is a frontend convention, not a contract. Keep in sync with `humanize()`'s display
+ * in `routes/admin.technicians.tsx` if it changes.
+ */
+export const EMPLOYEE_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "ON_LEAVE", label: "On leave" },
+  { value: "TERMINATED", label: "Terminated" },
+];
+
+/**
+ * `POST /api/admin/technicians` — onboard a technician profile for an existing user
+ * (issue audit #1). Invalidates the roster so the new row appears immediately.
+ */
+export function useCreateTechnician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateTechnicianRequest) =>
+      post<TechnicianProfileResponse>("/api/admin/technicians", request),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "technicians"] });
+    },
   });
 }
 

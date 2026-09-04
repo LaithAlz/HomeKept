@@ -2,7 +2,7 @@ import { useId, useMemo, useState, type FormEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { zodValidator } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -261,9 +261,30 @@ function SubscriberDetailSheet({
               {detail.cancelledAt && (
                 <DetailTile label="Cancelled">{formatDateShort(detail.cancelledAt)}</DetailTile>
               )}
+              {detail.currentPeriodStart && (
+                <DetailTile label="Current period started">
+                  {formatDateShort(detail.currentPeriodStart)}
+                </DetailTile>
+              )}
               {detail.currentPeriodEnd && (
                 <DetailTile label="Current period ends">
                   {formatDateShort(detail.currentPeriodEnd)}
+                </DetailTile>
+              )}
+              {detail.stripeCustomerId && (
+                <DetailTile label="Stripe customer">
+                  <StripeLink
+                    href={`https://dashboard.stripe.com/customers/${detail.stripeCustomerId}`}
+                    id={detail.stripeCustomerId}
+                  />
+                </DetailTile>
+              )}
+              {detail.stripeSubscriptionId && (
+                <DetailTile label="Stripe subscription">
+                  <StripeLink
+                    href={`https://dashboard.stripe.com/subscriptions/${detail.stripeSubscriptionId}`}
+                    id={detail.stripeSubscriptionId}
+                  />
                 </DetailTile>
               )}
             </div>
@@ -303,6 +324,21 @@ type FlushEligibility = "unknown" | "yes" | "no";
 function toFlushEligibility(value: boolean | null): FlushEligibility {
   if (value === null) return "unknown";
   return value ? "yes" : "no";
+}
+
+/** `null` = empty; `"invalid"` = present but not a whole number 0–100. */
+function parseAgeYears(raw: string): number | null | "invalid" {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 0 || n > 100) return "invalid";
+  return n;
+}
+
+/** True when `current` is non-empty and differs from the loaded value (both trimmed). */
+function fieldChanged(current: string, original: string): boolean {
+  const trimmed = current.trim();
+  return trimmed !== "" && trimmed !== original;
 }
 
 /**
@@ -347,28 +383,56 @@ function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummar
   const baseId = useId();
   const errorId = `${baseId}-sku-error`;
 
+  const originalAgeStr =
+    property.waterHeaterAgeYears !== null ? String(property.waterHeaterAgeYears) : "";
+  const originalFlush = toFlushEligibility(property.waterHeaterFlushEligible);
+
+  // Whether the form has anything worth sending: a field is only "changed" if it's
+  // non-empty and differs from the loaded value — the backend treats an omitted or
+  // null field as "leave unchanged" (api-contract.md line 198), so an emptied field
+  // is deliberately excluded rather than sent as a clear. Kept independent of the
+  // water-heater-age range check so an invalid-but-edited age still enables Save and
+  // surfaces the validation message on submit, instead of the button just doing nothing.
+  const hasChanges =
+    fieldChanged(hvacFilterSizes, property.hvacFilterSizes ?? "") ||
+    fieldChanged(smokeCoDetectorModels, property.smokeCoDetectorModels ?? "") ||
+    fieldChanged(humidifierModel, property.humidifierModel ?? "") ||
+    fieldChanged(waterHeaterAgeYears, originalAgeStr) ||
+    (flushEligible !== "unknown" && flushEligible !== originalFlush);
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
-    const trimmedAge = waterHeaterAgeYears.trim();
-    let ageYears: number | null = null;
-    if (trimmedAge !== "") {
-      ageYears = Number(trimmedAge);
-      if (!Number.isInteger(ageYears) || ageYears < 0 || ageYears > 100) {
-        setError("Water heater age must be a whole number of years, between 0 and 100.");
-        return;
+    const ageYears = parseAgeYears(waterHeaterAgeYears);
+    if (ageYears === "invalid") {
+      setError("Water heater age must be a whole number of years, between 0 and 100.");
+      return;
+    }
+
+    const request: AdminUpdateSkuRequest = {};
+    if (fieldChanged(hvacFilterSizes, property.hvacFilterSizes ?? "")) {
+      request.hvacFilterSizes = hvacFilterSizes.trim();
+    }
+    if (fieldChanged(smokeCoDetectorModels, property.smokeCoDetectorModels ?? "")) {
+      request.smokeCoDetectorModels = smokeCoDetectorModels.trim();
+    }
+    if (fieldChanged(humidifierModel, property.humidifierModel ?? "")) {
+      request.humidifierModel = humidifierModel.trim();
+    }
+    if (typeof ageYears === "number" && ageYears !== property.waterHeaterAgeYears) {
+      request.waterHeaterAgeYears = ageYears;
+    }
+    if (flushEligible !== "unknown") {
+      const value = flushEligible === "yes";
+      if (value !== property.waterHeaterFlushEligible) {
+        request.waterHeaterFlushEligible = value;
       }
     }
 
-    const request: AdminUpdateSkuRequest = {
-      hvacFilterSizes: hvacFilterSizes.trim() === "" ? null : hvacFilterSizes.trim(),
-      smokeCoDetectorModels:
-        smokeCoDetectorModels.trim() === "" ? null : smokeCoDetectorModels.trim(),
-      humidifierModel: humidifierModel.trim() === "" ? null : humidifierModel.trim(),
-      waterHeaterAgeYears: ageYears,
-      waterHeaterFlushEligible: flushEligible === "unknown" ? null : flushEligible === "yes",
-    };
+    // Nothing to send (e.g. every edit was cleared back to blank) — leave silently,
+    // no toast, matching "blank fields are left unchanged".
+    if (Object.keys(request).length === 0) return;
 
     mutation.mutate(request, {
       onSuccess: () => {
@@ -382,7 +446,8 @@ function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummar
     <div className="rounded-xl border border-border p-3">
       <h3 className="font-display text-sm font-bold">SKU sheet</h3>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Technician prep captured on the walk-through and refined over later visits.
+        Technician prep captured on the walk-through and refined over later visits. Blank fields are
+        left unchanged.
       </p>
 
       <form onSubmit={handleSubmit} noValidate className="mt-3 space-y-3">
@@ -481,7 +546,7 @@ function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummar
           <Button
             type="submit"
             size="sm"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !hasChanges}
             aria-busy={mutation.isPending}
           >
             {mutation.isPending && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
@@ -499,5 +564,21 @@ function DetailTile({ label, children }: { label: string; children: React.ReactN
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="font-medium">{children}</div>
     </div>
+  );
+}
+
+/** Truncated Stripe object id that opens the matching Stripe Dashboard page in a new tab. */
+function StripeLink({ href, id }: { href: string; id: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1 truncate text-primary underline-offset-2 hover:underline"
+    >
+      <span className="truncate">{id}</span>
+      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span className="sr-only">(opens in Stripe Dashboard, new tab)</span>
+    </a>
   );
 }

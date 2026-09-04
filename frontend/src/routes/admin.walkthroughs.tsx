@@ -271,13 +271,17 @@ function ConfirmedActions({ booking }: { booking: AdminBookingListItem }) {
 function PerformedActions({ booking }: { booking: AdminBookingListItem }) {
   const { change, pending: statusPending, error: statusError } = useStatusChange(booking.id);
   const invite = useSendActivationInvite();
-  const [inviteSent, setInviteSent] = useState(false);
+  // Optimistic "just sent" flag — only needed for the moment between the mutation
+  // resolving and the `["admin", "bookings"]` refetch (triggered by the mutation's
+  // own `onSuccess`) landing with the real `invitedAt` from the server. Once that
+  // refetch lands, `booking.invitedAt` takes over as the source of truth.
+  const [justSent, setJustSent] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   function sendInvite() {
     setInviteError(null);
     invite.mutate(booking.id, {
-      onSuccess: () => setInviteSent(true),
+      onSuccess: () => setJustSent(true),
       onError: (err) => {
         setInviteError(
           err instanceof ApiError
@@ -288,16 +292,28 @@ function PerformedActions({ booking }: { booking: AdminBookingListItem }) {
     });
   }
 
+  const invitedAt = booking.invitedAt ?? null;
+  const sent = justSent || invitedAt !== null;
+
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex gap-2">
-        {inviteSent ? (
-          <span
-            role="status"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-moss"
-          >
-            <Check className="h-3.5 w-3.5" aria-hidden="true" /> Invite sent
-          </span>
+        {sent ? (
+          <div className="flex items-center gap-2">
+            <span
+              role="status"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-moss"
+            >
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              {invitedAt ? `Invite sent ${formatDateTime(invitedAt)}` : "Invite sent"}
+            </span>
+            <Button size="sm" variant="outline" disabled={invite.isPending} onClick={sendInvite}>
+              {invite.isPending && (
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+              )}
+              Resend
+            </Button>
+          </div>
         ) : (
           <Button size="sm" variant="accent" disabled={invite.isPending} onClick={sendInvite}>
             {invite.isPending ? (
