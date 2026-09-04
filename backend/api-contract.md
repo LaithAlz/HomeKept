@@ -190,8 +190,8 @@ checklist response, are not yet built.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/admin/bookings?status=&cursor=` | walk-through pipeline list |
-| `PATCH /api/admin/bookings/{id}` | status transitions (via `WalkthroughBookingStateMachine`), set `scheduledFor` |
+| `GET /api/admin/bookings?status=&cursor=` | walk-through pipeline list; each row includes `invitedAt` (`Instant`, `null` until an activation invite has been sent for that booking, else the most recent invite's timestamp — resolved from `activation_token`, never a frontend-only flag) |
+| `PATCH /api/admin/bookings/{id}` | status transitions (via `WalkthroughBookingStateMachine`), set `scheduledFor`; response includes `invitedAt` (same semantics as the list) |
 | `POST /api/admin/bookings/{id}/activation-invite` | mint token + send activation email |
 | `GET /api/admin/subscribers?cursor=` | subscriber list w/ status, plan, MRR |
 | `GET /api/admin/subscribers/{id}` | detail incl. property, Stripe links. `property` includes `propertyId` (targets the SKU update below) and the SKU sheet fields — `hvacFilterSizes`, `smokeCoDetectorModels`, `humidifierModel`, `waterHeaterAgeYears`, `waterHeaterFlushEligible` (all `null` until captured; technician-prep data per docs/pricing-and-visits.md §Materials) |

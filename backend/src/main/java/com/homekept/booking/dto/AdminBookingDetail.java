@@ -31,9 +31,15 @@ public record AdminBookingDetail(
         Instant performedAt,
         Instant contactConsentAt,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+        Instant invitedAt
 ) {
-    public static AdminBookingDetail from(WalkthroughBooking b) {
+    /**
+     * @param invitedAt the most recent activation invite's {@code created_at}, resolved by the
+     *                  caller via the subscription domain's {@code ActivationTokenService}
+     *                  (never queried here); {@code null} until an invite has been sent
+     */
+    public static AdminBookingDetail from(WalkthroughBooking b, Instant invitedAt) {
         return new AdminBookingDetail(
                 b.getId(),
                 b.getStatus().name(),
@@ -58,7 +64,8 @@ public record AdminBookingDetail(
                 b.getPerformedAt(),
                 b.getContactConsentAt(),
                 b.getCreatedAt(),
-                b.getUpdatedAt()
+                b.getUpdatedAt(),
+                invitedAt
         );
     }
 }

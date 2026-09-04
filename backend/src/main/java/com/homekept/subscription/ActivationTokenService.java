@@ -13,7 +13,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.HexFormat;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Mints, validates, and consumes activation tokens for the magic-link flow.
@@ -156,6 +159,31 @@ public class ActivationTokenService {
         }
 
         return result.bookingId();
+    }
+
+    /**
+     * Returns the most recent activation-invite timestamp for each of the given booking ids,
+     * for the admin walk-through pipeline's "invited" indicator (issue: the invite flag must
+     * survive a reload — it cannot live only in frontend state).
+     *
+     * <p>Resolved with a single grouped query — the booking domain must call this (never
+     * {@link ActivationTokenRepository} or {@link ActivationToken} directly) to batch a whole
+     * page of bookings without N+1.
+     *
+     * @param bookingIds the booking ids to resolve; may be empty
+     * @return a map from booking id to the latest invite's {@code createdAt}; booking ids with
+     *         no activation token are simply absent from the map (never mapped to null).
+     *         Empty input returns an empty map without querying the database.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Instant> latestInviteAtByBookingIds(Collection<Long> bookingIds) {
+        if (bookingIds == null || bookingIds.isEmpty()) {
+            return Map.of();
+        }
+        return tokenRepository.findLatestCreatedAtByBookingIdIn(bookingIds).stream()
+                .collect(Collectors.toMap(
+                        ActivationTokenRepository.LatestInviteAt::getBookingId,
+                        ActivationTokenRepository.LatestInviteAt::getLatestCreatedAt));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
