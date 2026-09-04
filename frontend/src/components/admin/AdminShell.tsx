@@ -13,12 +13,15 @@ import {
   Tags,
   Settings,
   Loader2,
+  LogOut,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { getSession, homeFor, type Role } from "@/lib/auth";
+import { getSession, homeFor, logout, type Role } from "@/lib/auth";
+import { resetIdentity } from "@/lib/analytics";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAdminDashboard } from "@/lib/admin";
 
 type Item = {
@@ -212,6 +215,20 @@ function AdminConsole() {
     [dashboard],
   );
 
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await logout();
+    resetIdentity();
+    // Drop every cached query (subscriber PII, booking contact info) so nothing
+    // lingers in memory for the next person on this device.
+    queryClient.clear();
+    navigate({ to: "/signin", replace: true });
+  }
+
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
 
@@ -281,8 +298,19 @@ function AdminConsole() {
             ))}
           </nav>
 
-          <div className="border-t border-border p-4 text-xs text-muted-foreground">
-            Internal tool · America/Toronto
+          <div className="border-t border-border p-3">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-surface hover:text-foreground disabled:pointer-events-none disabled:opacity-60"
+            >
+              <LogOut className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              Sign out
+            </button>
+            <p className="px-2.5 pt-2 text-xs text-muted-foreground">
+              Internal tool · America/Toronto
+            </p>
           </div>
         </aside>
 
@@ -293,6 +321,15 @@ function AdminConsole() {
             <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
               Admin
             </span>
+            <button
+              type="button"
+              onClick={handleSignOut}
+              disabled={signingOut}
+              aria-label="Sign out"
+              className="ml-auto inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-surface hover:text-foreground disabled:opacity-60"
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+            </button>
           </div>
           <Outlet />
         </main>
