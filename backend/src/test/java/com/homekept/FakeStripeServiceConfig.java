@@ -63,8 +63,7 @@ public class FakeStripeServiceConfig {
 
         @Override
         public String createCheckoutSession(Subscriber subscriber, PlanTier plan,
-                                            BillingCycle cycle, boolean foundingRate,
-                                            String idempotencyKey) {
+                                            BillingCycle cycle, String idempotencyKey) {
             return FAKE_CHECKOUT_URL;
         }
 

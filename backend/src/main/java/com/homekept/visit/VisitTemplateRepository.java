@@ -14,9 +14,9 @@ public interface VisitTemplateRepository extends JpaRepository<VisitTemplate, Lo
 
     /**
      * Returns the templates whose {@code minTier} is at or below the subscriber's plan tier.
-     * The calendar is cumulative: a COMPLETE subscriber gets ESSENTIAL + COMPLETE templates.
+     * The calendar is cumulative: a PREMIER subscriber gets COMPLETE + PREMIER templates.
      *
-     * <p>In-list is safe here because PlanCode has exactly 3 values and the list is
+     * <p>In-list is safe here because PlanCode has exactly 2 values and the list is
      * always built programmatically by {@link VisitSchedulingService}.
      */
     @Query("SELECT vt FROM VisitTemplate vt WHERE vt.minTier IN :tiers ORDER BY vt.month ASC")

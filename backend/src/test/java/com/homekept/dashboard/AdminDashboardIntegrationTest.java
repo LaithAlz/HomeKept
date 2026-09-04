@@ -43,11 +43,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Covers:
  * <ul>
- *   <li>GET as ADMIN → 200 with all five metric fields present.</li>
+ *   <li>GET as ADMIN → 200 with all four metric fields present.</li>
  *   <li>GET as CUSTOMER → 403; anonymous → 401.</li>
  *   <li>A new ACTIVE subscriber increases {@code activeSubscribers} by 1 and
  *       {@code mrrCents} by the plan's monthly price.</li>
- *   <li>A new founding-rate subscriber decreases {@code foundingRateSlotsRemaining} by 1.</li>
  *   <li>A new PENDING walk-through booking increases {@code pendingWalkthroughs} by 1.</li>
  *   <li>A new future SCHEDULED visit increases {@code upcomingVisits} by 1.</li>
  * </ul>
@@ -109,8 +108,7 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.activeSubscribers").isNumber())
                 .andExpect(jsonPath("$.mrrCents").isNumber())
                 .andExpect(jsonPath("$.pendingWalkthroughs").isNumber())
-                .andExpect(jsonPath("$.upcomingVisits").isNumber())
-                .andExpect(jsonPath("$.foundingRateSlotsRemaining").isNumber());
+                .andExpect(jsonPath("$.upcomingVisits").isNumber());
     }
 
     // ── Aggregate correctness ─────────────────────────────────────────────────
@@ -120,27 +118,17 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
         long baselineActive = readLong("$.activeSubscribers");
         long baselineMrr = readLong("$.mrrCents");
 
-        Long planTierId = essentialPlanTierId();
+        Long planTierId = completePlanTierId();
         Integer monthlyPriceCents = jdbc.queryForObject(
                 "SELECT monthly_price_cents FROM plan_tier WHERE id = ?", Integer.class, planTierId);
 
-        seedActiveSubscriber(planTierId, false);
+        seedActiveSubscriber(planTierId);
 
         long afterActive = readLong("$.activeSubscribers");
         long afterMrr = readLong("$.mrrCents");
 
         assertThat(afterActive).isEqualTo(baselineActive + 1);
         assertThat(afterMrr).isEqualTo(baselineMrr + monthlyPriceCents);
-    }
-
-    @Test
-    void getDashboard_foundingRateSubscriber_decreasesSlotsRemaining() throws Exception {
-        long baselineSlots = readLong("$.foundingRateSlotsRemaining");
-
-        seedActiveSubscriber(essentialPlanTierId(), true);
-
-        long afterSlots = readLong("$.foundingRateSlotsRemaining");
-        assertThat(afterSlots).isEqualTo(baselineSlots - 1);
     }
 
     @Test
@@ -157,7 +145,7 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
     void getDashboard_futureScheduledVisit_increasesUpcomingVisits() throws Exception {
         long baseline = readLong("$.upcomingVisits");
 
-        Subscriber sub = seedActiveSubscriber(essentialPlanTierId(), false);
+        Subscriber sub = seedActiveSubscriber(completePlanTierId());
 
         visitRepository.save(new Visit(
                 sub.getId(), sub.getPropertyId(), null,
@@ -178,16 +166,16 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
         return n.longValue();
     }
 
-    private Long essentialPlanTierId() {
+    private Long completePlanTierId() {
         Long id = jdbc.queryForObject(
-                "SELECT id FROM plan_tier WHERE code = ?", Long.class, PlanCode.ESSENTIAL.name());
+                "SELECT id FROM plan_tier WHERE code = ?", Long.class, PlanCode.COMPLETE.name());
         if (id == null) {
-            throw new IllegalStateException("ESSENTIAL plan tier not seeded");
+            throw new IllegalStateException("COMPLETE plan tier not seeded");
         }
         return id;
     }
 
-    private Subscriber seedActiveSubscriber(Long planTierId, boolean foundingRate) {
+    private Subscriber seedActiveSubscriber(Long planTierId) {
         long nano = System.nanoTime();
 
         User user = userRepository.save(new User(
@@ -203,7 +191,6 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
         Subscriber sub = new Subscriber(user.getId(), property.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
         sub.setPlanTierId(planTierId);
-        sub.setFoundingRate(foundingRate);
         return subscriberRepository.save(sub);
     }
 

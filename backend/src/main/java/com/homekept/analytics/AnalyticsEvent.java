@@ -42,10 +42,10 @@ public final class AnalyticsEvent {
     /** A prospect completed activation and became a subscriber. Props: {@code days_since_walkthrough}. */
     public static final String ACTIVATION_COMPLETED = "activation_completed";
 
-    /** A customer started a Stripe checkout. Props: {@code plan_code}, {@code billing_cycle}, {@code founding_rate}. */
+    /** A customer started a Stripe checkout. Props: {@code plan_code}, {@code billing_cycle}. */
     public static final String CHECKOUT_STARTED = "checkout_started";
 
-    /** A subscription went live (checkout.session.completed webhook). Props: {@code plan_code}, {@code billing_cycle}, {@code founding_rate}. */
+    /** A subscription went live (checkout.session.completed webhook). Props: {@code plan_code}, {@code billing_cycle}. */
     public static final String SUBSCRIPTION_ACTIVATED = "subscription_activated";
 
     /**

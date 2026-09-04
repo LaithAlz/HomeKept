@@ -145,9 +145,9 @@ settings UI may truthfully state "encrypted at rest."
 
 **Key entities:**
 - `Service` — id, name, category (HVAC / PLUMBING / EXTERIOR / SMART_HOME), tier_class (BASIC / MEDIUM / PREMIUM — the picks classification, see docs/pricing-and-visits.md), default_duration_minutes, a_la_carte_price_cents (nullable — set for pickable services), description, is_free_with_every_visit, active
-- `PlanTier` — id, code (ESSENTIAL / COMPLETE / PREMIER), display_name, monthly_price_cents, annual_price_cents, visits_per_year, included_picks_per_year, max_premium_picks_per_year, stripe_price_id_monthly, stripe_price_id_annual, stripe_price_id_founding (nullable — the founding-member rate, retired after the first 15), description
+- `PlanTier` — id, code (COMPLETE / PREMIER — the ESSENTIAL tier and the founding-member rate were both removed entirely, not deprecated, by V11__remove_essential_and_founding.sql in the September 2026 repositioning), display_name, monthly_price_cents, annual_price_cents, visits_per_year, included_picks_per_year, max_premium_picks_per_year, stripe_price_id_monthly, stripe_price_id_annual (both nullable for COMPLETE until the founder creates new Stripe prices at the repositioned amount), description
 - `PlanTierService` — plan_tier_id, service_id, frequency_per_year
-- `VisitTemplate` — id, min_tier (ESSENTIAL / COMPLETE / PREMIER — this tier *and above* get the visit; the calendar is cumulative, so no duplication across tiers), month (1–12), name ("Fall winterization"), description
+- `VisitTemplate` — id, min_tier (COMPLETE / PREMIER — this tier *and above* get the visit; the calendar is cumulative, so no duplication across tiers), month (1–12), name ("Fall winterization"), description
 - `VisitTemplateService` — visit_template_id, service_id, sort_order
 
 **Visit templates** are the seasonal calendar as data: which named visit each tier gets in
@@ -172,7 +172,7 @@ via migration from docs/pricing-and-visits.md and edited only by migration at MV
 **Owns:** `subscriber` table, `subscription_event` table.
 
 **Key entities:**
-- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, founding_rate (boolean), founding_rate_expires_at (nullable — 12 months from activation; the first-15 cap is enforced by counting founding_rate rows), stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, paused_until, cancelled_at, created_at, updated_at
+- `Subscriber` — id, user_id (FK to identity), property_id (FK to property), plan_tier_id, status, stripe_customer_id, stripe_subscription_id, current_period_start, current_period_end, billing_cycle, started_at, paused_at, cancelled_at, created_at, updated_at
 - `SubscriptionEvent` — id, subscriber_id, event_type, payload (JSONB), processed_at, source (STRIPE_WEBHOOK / MANUAL / SYSTEM)
 
 **Status state machine (this is sacred — see Part 4):**
@@ -701,8 +701,8 @@ events. Keyed by user/subscriber internal ID. Wrapped in a thin `AnalyticsServic
 | `booking_step_completed` | frontend | step (1–3) |
 | `walkthrough_booked` | backend | lead_source, city (form enum), property_type |
 | `activation_completed` | backend | days_since_walkthrough |
-| `checkout_started` | backend | plan_code, billing_cycle, founding_rate |
-| `subscription_activated` | backend (webhook) | plan_code, billing_cycle, founding_rate |
+| `checkout_started` | backend | plan_code, billing_cycle |
+| `subscription_activated` | backend (webhook) | plan_code, billing_cycle |
 | `visit_completed` | backend | visit_template, duration_actual, services_count, photos_count |
 | `report_viewed` | frontend | visit_id |
 | `todo_added` | backend | — (todos are free text; the text itself is never sent) |
@@ -950,7 +950,7 @@ The shape of what gets built when, anchored to customer counts.
 > anchors for later stages are superseded by docs/three-year-plan.md.
 
 Domains built: `identity`, `property` (incl. SKU sheet fields), `catalog` (incl.
-tier_class, picks, visit templates, founding-member rate), `subscription`, `booking`,
+tier_class, picks, visit templates), `subscription`, `booking`,
 `visit` (incl. photos, todos/"your list", checklists, materials + duration capture),
 `technician` (stub rows with cost fields — no regions/availability), `notification`
 (email only), `billing`.
@@ -968,7 +968,7 @@ Apps live at launch:
   from the template (+ picks/todos/flagged items), photo capture to R2, notes,
   materials + actual-duration entry, complete/incomplete flow
 - **Admin** (`/admin/*`): walk-through pipeline, subscriber list/detail, visit
-  scheduling (template-generated, admin confirms), founding-rate management (first 15)
+  scheduling (template-generated, admin confirms)
 
 Integrations live: Stripe Checkout + customer portal + one-off payments for extra
 picks, Stripe webhooks (per the §2.4 handler table, incl. mode-split handling of

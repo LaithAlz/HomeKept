@@ -93,10 +93,7 @@ function AdminDashboard() {
           />
         )}
 
-        <section
-          aria-label="Key metrics"
-          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-        >
+        <section aria-label="Key metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="MRR" value={dashboard ? formatCentsCad(dashboard.mrrCents) : "—"} />
           <MetricCard
             label="Active subscribers"
@@ -109,10 +106,6 @@ function AdminDashboard() {
           <MetricCard
             label="Upcoming visits"
             value={dashboard ? String(dashboard.upcomingVisits) : "—"}
-          />
-          <MetricCard
-            label="Founding rate slots remaining"
-            value={dashboard ? String(dashboard.foundingRateSlotsRemaining) : "—"}
           />
         </section>
 
@@ -211,7 +204,6 @@ function RecentSubscribersPanel() {
                 </Link>
                 <p className="text-xs text-muted-foreground">
                   {s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "No plan yet"}
-                  {s.foundingRate ? " · Founding rate" : ""}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-3">

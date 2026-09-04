@@ -89,8 +89,6 @@ public class SubscriptionAppService {
                 planDisplayName,
                 subscriber.getBillingCycle().name(),
                 priceCents,
-                subscriber.isFoundingRate(),
-                subscriber.getFoundingRateExpiresAt(),
                 subscriber.getCurrentPeriodStart(),
                 subscriber.getCurrentPeriodEnd(),
                 nextVisitDate
@@ -128,13 +126,8 @@ public class SubscriptionAppService {
 
     /**
      * Resolves the price actually charged for the subscriber's billing cycle.
-     * Founding rate (when active and set on the plan) takes precedence over the regular
-     * monthly/annual price; founding rate is always billed monthly per docs/pricing-and-visits.md.
      */
     private Integer resolvePriceCents(Subscriber subscriber, CatalogService.PlanTierSummary plan) {
-        if (subscriber.isFoundingRate() && plan.foundingMonthlyPriceCents() != null) {
-            return plan.foundingMonthlyPriceCents();
-        }
         return subscriber.getBillingCycle() == BillingCycle.ANNUAL
                 ? plan.annualPriceCents()
                 : plan.monthlyPriceCents();

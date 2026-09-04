@@ -36,7 +36,7 @@ public class CheckoutController {
      * customer to. On success the customer pays on Stripe's side; the
      * {@code checkout.session.completed} webhook then activates the subscriber.
      *
-     * @param request  the plan, billing cycle, and founding-rate flag
+     * @param request  the plan and billing cycle
      * @param auth     injected by Spring Security — principal is the Long user id
      * @return {@code 200 { checkoutUrl }}
      */
@@ -46,7 +46,7 @@ public class CheckoutController {
             Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         CheckoutSessionResponse response = checkoutService.createCheckoutSession(
-                userId, request.planCode(), request.billingCycle(), request.foundingRate());
+                userId, request.planCode(), request.billingCycle());
         return ResponseEntity.ok(response);
     }
 

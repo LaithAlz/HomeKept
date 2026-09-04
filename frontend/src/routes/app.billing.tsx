@@ -82,8 +82,6 @@ function PlanCard({ subscription }: { subscription: AppSubscription }) {
     planDisplayName,
     billingCycle,
     priceCents,
-    foundingRate,
-    foundingRateExpiresAt,
     currentPeriodStart,
     currentPeriodEnd,
   } = subscription;
@@ -122,17 +120,6 @@ function PlanCard({ subscription }: { subscription: AppSubscription }) {
         <p className="mt-3 text-sm text-muted-foreground">
           Your plan will appear here once checkout is complete.
         </p>
-      )}
-
-      {foundingRate && (
-        <div className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">
-          Founding rate
-          {foundingRateExpiresAt && (
-            <span className="font-normal text-muted-foreground">
-              locked in through {formatFullDate(foundingRateExpiresAt)}
-            </span>
-          )}
-        </div>
       )}
 
       {(currentPeriodStart || currentPeriodEnd) && (

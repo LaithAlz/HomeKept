@@ -2,7 +2,6 @@ package com.homekept;
 
 import com.homekept.RecordingAnalyticsConfig.RecordingAnalyticsService;
 import com.homekept.analytics.AnalyticsEvent;
-import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
 import com.homekept.identity.UserStatus;
@@ -10,18 +9,17 @@ import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
 import com.homekept.property.PropertyType;
 import com.homekept.subscription.BillingCycle;
-import com.homekept.subscription.CheckoutService;
-import com.homekept.subscription.FoundingRateAvailabilityImpl;
-import com.homekept.subscription.FoundingRateExhaustedException;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
 import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,8 +44,8 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired SubscriberRepository subscriberRepository;
     @Autowired PropertyRepository propertyRepository;
-    @Autowired CheckoutService checkoutService;
     @Autowired RecordingAnalyticsService recording;
+    @Autowired JdbcTemplate jdbc;
 
     /** CUSTOMER user + subscriber shared across the checkout/portal tests. */
     private User customerUser;
@@ -61,7 +59,7 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
 
         // ACTIVE so loginAs (/api/auth/login) can authenticate. The checkout endpoint gates
         // on the CUSTOMER role, not user status; the subscriber stays PENDING_ACTIVATION
-        // (pre-payment) below, which is what the founding-cap/checkout logic actually reads.
+        // (pre-payment) below, which is what the checkout logic actually reads.
         customerUser = userRepository.save(new User(
                 "checkout-customer-" + nano + "@test.local",
                 passwordEncoder.encode("Test1234!"),
@@ -80,24 +78,48 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
         customerAccessToken = loginAs(customerUser.getEmail(), "Test1234!");
     }
 
+    /**
+     * Restores COMPLETE's Stripe price ids after every test — V12 cleared them to NULL
+     * pending the founder's new Stripe prices, so most tests here stamp placeholder ids
+     * back in via {@link #stampCompletePriceIds()} to exercise the happy path; this
+     * undoes that so state never leaks between tests (plan_tier is seed data, not
+     * truncated by {@link AbstractIntegrationTest}).
+     */
+    @AfterEach
+    void restoreCompletePriceIds() {
+        jdbc.update("UPDATE plan_tier SET stripe_price_id_monthly = NULL, "
+                + "stripe_price_id_annual = NULL WHERE code = 'COMPLETE'");
+    }
+
+    /**
+     * COMPLETE's Stripe price ids were cleared to NULL by
+     * V12__remove_essential_and_founding.sql (pending the founder's new Stripe prices).
+     * Tests that exercise the checkout happy path stamp placeholder ids back in first.
+     */
+    private void stampCompletePriceIds() {
+        jdbc.update("UPDATE plan_tier SET stripe_price_id_monthly = 'price_test_monthly', "
+                + "stripe_price_id_annual = 'price_test_annual' WHERE code = 'COMPLETE'");
+    }
+
     // ── POST /api/checkout/session — happy path ───────────────────────────────
 
     @Test
     void createCheckoutSession_asCustomer_returns200WithCheckoutUrl() throws Exception {
+        stampCompletePriceIds();
+
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", customerAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.checkoutUrl").value(FakeStripeServiceConfig.FAKE_CHECKOUT_URL));
 
-        // Analytics: checkout_started fired, attributed to the customer, enum/flag props only.
+        // Analytics: checkout_started fired, attributed to the customer, enum props only.
         assertThat(recording.events()).anySatisfy(e -> {
             assertThat(e.event()).isEqualTo(AnalyticsEvent.CHECKOUT_STARTED);
             assertThat(e.distinctId()).isEqualTo(customerUser.getId());
             assertThat(e.props()).containsEntry("plan_code", "COMPLETE");
             assertThat(e.props()).containsEntry("billing_cycle", "MONTHLY");
-            assertThat(e.props()).containsEntry("founding_rate", false);
         });
     }
 
@@ -107,7 +129,7 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
     void createCheckoutSession_anonymous_returns401() throws Exception {
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -118,34 +140,38 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isForbidden());
     }
 
-    // ── POST /api/checkout/session — founding rate cap ────────────────────────
+    // ── POST /api/checkout/session — fail closed on a missing Stripe price id ────
 
     @Test
-    void createCheckoutSession_foundingRate_whenCapReached_returns409() throws Exception {
-        // Fill all 15 founding-member slots.
-        insertFoundingSubscribers(15);
-
+    void createCheckoutSession_planWithNoStripePriceId_returns409PlanNotPurchasable() throws Exception {
+        // COMPLETE's price ids are NULL after V12 (pending the founder's new Stripe
+        // prices) — checkout must fail closed, never reach Stripe, never charge the old
+        // $149 price.
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", customerAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":true}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("FOUNDING_RATE_UNAVAILABLE"));
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_PURCHASABLE"));
+
     }
 
     @Test
-    void createCheckoutSession_foundingRate_whenSlotsAvailable_returns200() throws Exception {
-        // COMPLETE plan has a founding price; no founding subscribers seeded in this test.
+    void createCheckoutSession_annualCycleWithNoAnnualPriceId_returns409() throws Exception {
+        // Only the monthly id is set — the annual cycle must still fail closed.
+        jdbc.update("UPDATE plan_tier SET stripe_price_id_monthly = 'price_test_monthly' "
+                + "WHERE code = 'COMPLETE'");
+
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", customerAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":true}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.checkoutUrl").value(FakeStripeServiceConfig.FAKE_CHECKOUT_URL));
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"ANNUAL\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("PLAN_NOT_PURCHASABLE"));
     }
 
     // ── POST /api/checkout/session — status gate (B1) ─────────────────────────
@@ -156,13 +182,14 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
         // on that row would let Stripe charge them while the webhook can never activate a terminal
         // row (money taken, no service). Checkout must be refused before any Stripe call — a
         // returning customer is a NEW subscriber row (see SubscriberStatus).
+        stampCompletePriceIds();
         customerSubscriber.setStatus(SubscriberStatus.CANCELLED);
         subscriberRepository.save(customerSubscriber);
 
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", customerAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
     }
@@ -171,100 +198,16 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
     void createCheckoutSession_whenSubscriberAlreadyActive_returns409() throws Exception {
         // An ACTIVE subscriber already has a live Stripe subscription; a second checkout would
         // create a duplicate (double billing). Plan/billing changes go through the billing portal.
+        stampCompletePriceIds();
         customerSubscriber.setStatus(SubscriberStatus.ACTIVE);
         subscriberRepository.save(customerSubscriber);
 
         mockMvc.perform(post(CHECKOUT_SESSION_URL)
                         .cookie(new Cookie("hk_access", customerAccessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
+                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
-    }
-
-    // ── POST /api/checkout/session — founding slot claimed at checkout (B2) ────
-
-    @Test
-    void createCheckoutSession_foundingRate_claimsSlotDurablyAtCheckout_beforeAnyWebhook() throws Exception {
-        // B2: the founding slot must be claimed at checkout — before the founding price id is ever
-        // committed to Stripe — so concurrent checkouts cannot oversell the discount. Proven by
-        // founding_rate=true persisting on the row immediately after checkout, with NO webhook yet.
-        mockMvc.perform(post(CHECKOUT_SESSION_URL)
-                        .cookie(new Cookie("hk_access", customerAccessToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":true}"))
-                .andExpect(status().isOk());
-
-        Subscriber after = subscriberRepository.findById(customerSubscriber.getId()).orElseThrow();
-        assertThat(after.isFoundingRate()).isTrue();
-    }
-
-    @Test
-    void createCheckoutSession_nonFounding_doesNotClaimFoundingSlot() throws Exception {
-        // Control: a non-founding checkout must NOT claim a founding slot.
-        mockMvc.perform(post(CHECKOUT_SESSION_URL)
-                        .cookie(new Cookie("hk_access", customerAccessToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":false}"))
-                .andExpect(status().isOk());
-
-        Subscriber after = subscriberRepository.findById(customerSubscriber.getId()).orElseThrow();
-        assertThat(after.isFoundingRate()).isFalse();
-    }
-
-    @Test
-    void createCheckoutSession_foundingRate_reClaimByExistingHolder_atCap_stillSucceeds() throws Exception {
-        // MED regression: the caller's own reservation counts toward the cap. If the customer
-        // already holds a founding slot (e.g. re-opening an expired checkout) and 14 OTHERS
-        // hold the remaining slots (15 total), a re-checkout must NOT 409 the holder out of
-        // their own slot — the claim is idempotent for a row that already holds one.
-        customerSubscriber.setFoundingRate(true);
-        subscriberRepository.save(customerSubscriber);
-        insertFoundingSubscribers((int) (FoundingRateAvailabilityImpl.FOUNDING_CAP - 1)); // 14 others => 15 total
-
-        mockMvc.perform(post(CHECKOUT_SESSION_URL)
-                        .cookie(new Cookie("hk_access", customerAccessToken))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"planCode\":\"COMPLETE\",\"billingCycle\":\"MONTHLY\",\"foundingRate\":true}"))
-                .andExpect(status().isOk());
-    }
-
-    @Test
-    void createCheckoutSession_twoConcurrentFoundingClaims_withOneSlotLeft_onlyOneWins() throws Exception {
-        // B2 concurrency guard: 14 slots taken (1 left). Two simultaneous founding checkouts
-        // for two different PENDING customers must not both claim it. The advisory lock
-        // serialises the count-then-claim, so exactly one succeeds, one is rejected, and the
-        // founding count settles at exactly the cap.
-        insertFoundingSubscribers((int) (FoundingRateAvailabilityImpl.FOUNDING_CAP - 1)); // 14 taken
-
-        Long userA = newPendingCustomer("concurrent-a");
-        Long userB = newPendingCustomer("concurrent-b");
-
-        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
-        java.util.concurrent.CountDownLatch fire = new java.util.concurrent.CountDownLatch(1);
-        java.util.function.Function<Long, java.util.concurrent.Callable<Boolean>> claimFor = uid -> () -> {
-            fire.await();
-            try {
-                checkoutService.createCheckoutSession(uid, PlanCode.COMPLETE, BillingCycle.MONTHLY, true);
-                return Boolean.TRUE;   // claimed the slot
-            } catch (FoundingRateExhaustedException e) {
-                return Boolean.FALSE;  // correctly rejected
-            }
-        };
-
-        var fa = pool.submit(claimFor.apply(userA));
-        var fb = pool.submit(claimFor.apply(userB));
-        fire.countDown(); // release both at once
-
-        boolean aWon = fa.get();
-        boolean bWon = fb.get();
-        pool.shutdown();
-
-        // Exactly one of the two concurrent claims won.
-        assertThat(aWon ^ bWon).isTrue();
-        // And the cap is exactly full — never exceeded.
-        assertThat(subscriberRepository.countByFoundingRateTrue())
-                .isEqualTo(FoundingRateAvailabilityImpl.FOUNDING_CAP);
     }
 
     // ── POST /api/billing/portal-session ──────────────────────────────────────
@@ -319,58 +262,5 @@ class CheckoutControllerIntegrationTest extends AbstractIntegrationTest {
                 "Admin", "Test",
                 Role.ADMIN, UserStatus.ACTIVE));
         return loginAs(email, "Test1234!");
-    }
-
-    /**
-     * Inserts {@code count} founding subscribers (founding_rate=true) directly via
-     * repositories. Mirrors the helper in {@link FoundingRateIntegrationTest}.
-     */
-    private void insertFoundingSubscribers(int count) {
-        for (int i = 0; i < count; i++) {
-            long nano = System.nanoTime();
-
-            // ACTIVE, not PENDING_ACTIVATION: a Subscriber row only ever exists once
-            // ActivationService.complete has run, which now creates the User ACTIVE (a
-            // password has already been set) — these stub rows represent real activated
-            // founding subscribers occupying a cap slot.
-            User user = userRepository.save(new User(
-                    "founding-checkout-" + nano + "@test.local",
-                    passwordEncoder.encode("placeholder"),
-                    "Founding", "Stub",
-                    Role.CUSTOMER, UserStatus.ACTIVE));
-
-            Property property = propertyRepository.save(new Property(
-                    nano + " Founding Checkout St", null, "Mississauga", "L5L 1A1",
-                    "L5L", null, null, PropertyType.DETACHED));
-
-            Subscriber sub = new Subscriber(
-                    user.getId(), property.getId(),
-                    SubscriberStatus.ACTIVE, BillingCycle.MONTHLY);
-            sub.setFoundingRate(true);
-            subscriberRepository.save(sub);
-        }
-    }
-
-    /**
-     * Creates a CUSTOMER user + property + PENDING_ACTIVATION subscriber and returns the
-     * user id (the argument {@code CheckoutService.createCheckoutSession} resolves by).
-     * Used by the concurrency test, which calls the service directly on two threads.
-     */
-    private Long newPendingCustomer(String tag) {
-        long nano = System.nanoTime();
-        User user = userRepository.save(new User(
-                tag + "-" + nano + "@test.local",
-                passwordEncoder.encode("placeholder"),
-                "Test", "Concurrent",
-                Role.CUSTOMER, UserStatus.ACTIVE));
-
-        Property prop = propertyRepository.save(new Property(
-                nano + " Concurrent St", null, "Mississauga", "L5L 1A1",
-                "L5L", null, null, PropertyType.DETACHED));
-
-        Subscriber sub = new Subscriber(user.getId(), prop.getId(),
-                SubscriberStatus.PENDING_ACTIVATION, BillingCycle.MONTHLY);
-        subscriberRepository.save(sub);
-        return user.getId();
     }
 }

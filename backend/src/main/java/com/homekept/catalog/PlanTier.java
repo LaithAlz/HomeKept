@@ -19,11 +19,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A subscription plan tier (ESSENTIAL / COMPLETE / PREMIER).
+ * A subscription plan tier (COMPLETE / PREMIER).
  *
  * <p>Pricing is in integer cents — never floats. Stripe price IDs are set by the founder
- * once Stripe products are created (issue #21); they are nullable until then.
- * Founding rate fields are only populated for COMPLETE per docs/pricing-and-visits.md.
+ * once Stripe products are created (issue #21); they are nullable until then — most
+ * recently COMPLETE's, cleared by V12__remove_essential_and_founding.sql pending new
+ * Stripe prices at the repositioned amount.
  *
  * <p>See arch doc §2.3 and docs/pricing-and-visits.md for canonical numbers.
  */
@@ -68,16 +69,6 @@ public class PlanTier {
     @Column(name = "stripe_price_id_annual", length = 255)
     private String stripePriceIdAnnual;
 
-    @Column(name = "stripe_price_id_founding", length = 255)
-    private String stripePriceIdFounding;
-
-    /**
-     * Founding-member monthly price in cents. Only set for COMPLETE ($129/mo locked 12 months).
-     * NULL for ESSENTIAL and PREMIER — founding rate is not available on those tiers.
-     */
-    @Column(name = "founding_monthly_price_cents")
-    private Integer foundingMonthlyPriceCents;
-
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
@@ -110,21 +101,9 @@ public class PlanTier {
     public int getMaxPremiumPicksPerYear() { return maxPremiumPicksPerYear; }
     public String getStripePriceIdMonthly() { return stripePriceIdMonthly; }
     public String getStripePriceIdAnnual() { return stripePriceIdAnnual; }
-    public String getStripePriceIdFounding() { return stripePriceIdFounding; }
-    public Integer getFoundingMonthlyPriceCents() { return foundingMonthlyPriceCents; }
     public String getDescription() { return description; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public Instant getArchivedAt() { return archivedAt; }
     public List<PlanTierService> getPlanTierServices() { return planTierServices; }
-
-    /**
-     * True if this tier has a seeded founding-member price in the DB.
-     * This is the per-tier half of the founding-rate gate; the other half is the global
-     * slot count checked via {@link FoundingRateAvailability}. See
-     * {@link com.homekept.catalog.dto.PlanTierResponse} for how both are ANDed together.
-     */
-    public boolean hasFoundingPrice() {
-        return foundingMonthlyPriceCents != null;
-    }
 }

@@ -26,11 +26,11 @@ report, the seasonal calendar. The product is the proof until reviews exist.
   posts = the same seasonal tips as the video series
 - Booking link → homekept.ca/book?utm_source=gbp
 - **The reviews engine — testimonials and reviews are different things:**
-  - The founding-rate exchange buys a **testimonial** for HomeKept's own marketing,
-    with founding-member status disclosed wherever it's used. It never buys a Google
-    review — incentivized reviews violate Google policy outright (removal/suspension
-    risk for the profile this whole channel depends on) and are a Competition Bureau
-    deceptive-marketing concern. No exceptions, including the founding cohort.
+  - Any disclosed, real **testimonial** used in HomeKept's own marketing is never
+    incentivized, and never buys a Google review — incentivized reviews violate
+    Google policy outright (removal/suspension risk for the profile this whole
+    channel depends on) and are a Competition Bureau deceptive-marketing concern.
+    No exceptions.
   - **Google reviews are asked for uniformly:** the review ask goes in the visit-report
     email after *every* completed visit, same direct GBP link for everyone. The 👍/👎
     report rating is used for ops follow-up and ask *timing* only — never for selecting
@@ -82,9 +82,9 @@ saturated. "We already maintain two homes on this street" is the best ad we'll e
 
 - **Lead nurture (non-converted walk-through bookings):** inquiry = implied consent for
   6 months under CASL. Sequence: plan recap (day 1) → seasonal tip + what we'd have
-  caught (week 2) → founding-rate nudge while available (week 4) → monthly seasonal tip
-  until the 6-month consent window closes, then stop unless they opt in. Every send:
-  sender ID + unsubscribe.
+  caught (week 2) → book-now nudge (week 4) → monthly seasonal tip until the 6-month
+  consent window closes, then stop unless they opt in. Every send: sender ID +
+  unsubscribe.
 - **Subscriber monthly note:** the seasonal tip + "what's on your next visit" — same
   content engine, third use. This is retention, not acquisition; it's also where the
   review ask and referral ask live.

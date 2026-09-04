@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>Covers:
  * <ul>
  *   <li>An ACTIVE subscriber sees their plan, price, status, and next visit date.</li>
- *   <li>Founding-rate pricing and annual-cycle pricing resolve correctly.</li>
+ *   <li>Annual-cycle pricing resolves correctly.</li>
  *   <li>A subscriber with no plan tier assigned yet (pre-checkout) gets null plan fields.</li>
  *   <li>A user with no subscriber row → 404 (ownership rule, matches {@code /api/app/visits}).</li>
  *   <li>Anonymous → 401; ADMIN on a CUSTOMER endpoint → 403.</li>
@@ -90,8 +90,7 @@ class AppSubscriptionQueryIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.planCode").value("COMPLETE"))
                 .andExpect(jsonPath("$.planDisplayName").value("Complete"))
                 .andExpect(jsonPath("$.billingCycle").value("MONTHLY"))
-                .andExpect(jsonPath("$.priceCents").value(14900))
-                .andExpect(jsonPath("$.foundingRate").value(false))
+                .andExpect(jsonPath("$.priceCents").value(16900))
                 .andExpect(jsonPath("$.currentPeriodEnd").exists());
     }
 
@@ -104,22 +103,7 @@ class AppSubscriptionQueryIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(SUBSCRIPTION_URL).cookie(authCookie()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.billingCycle").value("ANNUAL"))
-                .andExpect(jsonPath("$.priceCents").value(149000));
-    }
-
-    @Test
-    void getSubscription_foundingRate_returnsFoundingPriceRegardlessOfCycle() throws Exception {
-        assignPlan(customerSubscriber, "COMPLETE");
-        customerSubscriber.setFoundingRate(true);
-        Instant expiresAt = Instant.now().plus(365, ChronoUnit.DAYS);
-        customerSubscriber.setFoundingRateExpiresAt(expiresAt);
-        subscriberRepository.save(customerSubscriber);
-
-        mockMvc.perform(get(SUBSCRIPTION_URL).cookie(authCookie()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.foundingRate").value(true))
-                .andExpect(jsonPath("$.priceCents").value(12900))
-                .andExpect(jsonPath("$.foundingRateExpiresAt").exists());
+                .andExpect(jsonPath("$.priceCents").value(169000));
     }
 
     @Test

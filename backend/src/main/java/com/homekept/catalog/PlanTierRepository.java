@@ -13,7 +13,7 @@ interface PlanTierRepository extends JpaRepository<PlanTier, Long> {
     /**
      * Returns all tiers with their service associations eagerly loaded.
      * Uses JOIN FETCH to avoid N+1 on the plan_tier_service join table.
-     * Ordered so ESSENTIAL → COMPLETE → PREMIER always renders in price order.
+     * Ordered so COMPLETE → PREMIER always renders in price order.
      */
     @Query("""
             SELECT DISTINCT pt FROM PlanTier pt
@@ -24,17 +24,16 @@ interface PlanTierRepository extends JpaRepository<PlanTier, Long> {
     List<PlanTier> findAllWithServices();
 
     /**
-     * Find a plan tier by its Stripe price id (monthly, annual, or founding column).
+     * Find a plan tier by its Stripe price id (monthly or annual column).
      *
      * <p>Used by the webhook handler to map the price id from a Stripe subscription
-     * object back to the HomeKept {@link PlanTier}. The query checks all three price-id
-     * columns so that the same lookup works regardless of billing cycle or founding rate.
+     * object back to the HomeKept {@link PlanTier}. The query checks both price-id
+     * columns so that the same lookup works regardless of billing cycle.
      */
     @Query("""
             SELECT pt FROM PlanTier pt
-            WHERE pt.stripePriceIdMonthly  = :priceId
-               OR pt.stripePriceIdAnnual   = :priceId
-               OR pt.stripePriceIdFounding = :priceId
+            WHERE pt.stripePriceIdMonthly = :priceId
+               OR pt.stripePriceIdAnnual  = :priceId
             """)
     Optional<PlanTier> findByAnyStripePriceId(@Param("priceId") String priceId);
 

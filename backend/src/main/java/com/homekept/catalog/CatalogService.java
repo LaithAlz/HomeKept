@@ -29,28 +29,21 @@ public class CatalogService {
 
     private final PlanTierRepository planTierRepository;
     private final ServiceRepository serviceRepository;
-    private final FoundingRateAvailability foundingRateAvailability;
 
     public CatalogService(PlanTierRepository planTierRepository,
-                          ServiceRepository serviceRepository,
-                          FoundingRateAvailability foundingRateAvailability) {
+                          ServiceRepository serviceRepository) {
         this.planTierRepository = planTierRepository;
         this.serviceRepository = serviceRepository;
-        this.foundingRateAvailability = foundingRateAvailability;
     }
 
     /**
      * Returns all active plan tiers with their included services.
-     * Ordered ESSENTIAL → COMPLETE → PREMIER (ascending monthly price).
-     *
-     * <p>{@code foundingRateAvailable} is true only when the tier has a founding price AND
-     * the global founding-slot count is under 15 ({@link FoundingRateAvailability}).
+     * Ordered COMPLETE → PREMIER (ascending monthly price).
      */
     @Transactional(readOnly = true)
     public List<PlanTierResponse> getPlans() {
-        boolean slotsRemaining = foundingRateAvailability.foundingSlotsRemaining();
         return planTierRepository.findAllWithServices().stream()
-                .map(tier -> PlanTierResponse.from(tier, slotsRemaining))
+                .map(PlanTierResponse::from)
                 .toList();
     }
 
@@ -69,23 +62,6 @@ public class CatalogService {
         }
         return planTierRepository.findById(planTierId)
                 .map(PlanTier::getMonthlyPriceCents)
-                .orElse(null);
-    }
-
-    /**
-     * Returns the founding monthly price in cents for a given plan tier id.
-     * Returns {@code null} if the tier is not found or has no founding price.
-     *
-     * @param planTierId the plan tier id
-     * @return founding monthly price in cents, or {@code null}
-     */
-    @Transactional(readOnly = true)
-    public Integer getFoundingMonthlyPriceCents(Long planTierId) {
-        if (planTierId == null) {
-            return null;
-        }
-        return planTierRepository.findById(planTierId)
-                .map(PlanTier::getFoundingMonthlyPriceCents)
                 .orElse(null);
     }
 
@@ -124,8 +100,8 @@ public class CatalogService {
     }
 
     /**
-     * Finds the {@link PlanTier} that owns the given Stripe price id (any of the three
-     * price columns: monthly, annual, founding). Returns {@code null} if no tier matches.
+     * Finds the {@link PlanTier} that owns the given Stripe price id (monthly or annual).
+     * Returns {@code null} if no tier matches.
      *
      * <p>This is the canonical price-to-plan mapping point. Webhook handlers call this
      * instead of reaching into {@link PlanTierRepository} directly.
@@ -146,7 +122,7 @@ public class CatalogService {
      *
      * <p>Used by the checkout service to resolve the tier before creating a Stripe session.
      *
-     * @param code the plan code (ESSENTIAL, COMPLETE, PREMIER)
+     * @param code the plan code (COMPLETE, PREMIER)
      * @return the matching {@link PlanTier}, or {@code null}
      */
     @Transactional(readOnly = true)
@@ -240,16 +216,14 @@ public class CatalogService {
             String code,
             String displayName,
             int monthlyPriceCents,
-            int annualPriceCents,
-            Integer foundingMonthlyPriceCents
+            int annualPriceCents
     ) {
         private static PlanTierSummary from(PlanTier tier) {
             return new PlanTierSummary(
                     tier.getCode().name(),
                     tier.getDisplayName(),
                     tier.getMonthlyPriceCents(),
-                    tier.getAnnualPriceCents(),
-                    tier.getFoundingMonthlyPriceCents()
+                    tier.getAnnualPriceCents()
             );
         }
     }

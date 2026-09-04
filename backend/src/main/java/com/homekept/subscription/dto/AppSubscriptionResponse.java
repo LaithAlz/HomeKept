@@ -10,13 +10,11 @@ import java.time.Instant;
  *
  * <p>No PII — IDs, enums, integer cents, booleans, and timestamps only. Money is integer
  * cents (never floats). {@code priceCents} is the price actually charged for the
- * subscriber's billing cycle: the founding rate (when {@code foundingRate} is true and the
- * plan has one) takes precedence over the regular monthly/annual price.
+ * subscriber's billing cycle (monthly or annual).
  *
  * <p>{@code planCode}, {@code planDisplayName}, and {@code priceCents} are {@code null}
  * before checkout completes (a {@code PENDING_ACTIVATION} subscriber has no plan tier
- * assigned yet). {@code foundingRateExpiresAt} is {@code null} unless {@code foundingRate}
- * is true. {@code nextVisitDate} is {@code null} when no SCHEDULED visit exists yet.
+ * assigned yet). {@code nextVisitDate} is {@code null} when no SCHEDULED visit exists yet.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AppSubscriptionResponse(
@@ -25,8 +23,6 @@ public record AppSubscriptionResponse(
         String planDisplayName,
         String billingCycle,
         Integer priceCents,
-        boolean foundingRate,
-        Instant foundingRateExpiresAt,
         Instant currentPeriodStart,
         Instant currentPeriodEnd,
         Instant nextVisitDate

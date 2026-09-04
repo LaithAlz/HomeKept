@@ -43,7 +43,7 @@ public class SubscriptionStartedNotifier {
      * Notifies the subscriber that their subscription has been activated.
      *
      * @param subscriberId the HomeKept subscriber id — safe to log (not PII)
-     * @param planCode     the plan code string (ESSENTIAL / COMPLETE / PREMIER)
+     * @param planCode     the plan code string (COMPLETE / PREMIER)
      */
     public void onSubscriptionStarted(Long subscriberId, String planCode) {
         Optional<UserContact> contact = recipientResolver.forSubscriber(subscriberId);

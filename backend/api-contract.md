@@ -53,8 +53,12 @@ Walk-through booking form submission (frontend `book` wizard).
 booking-confirmation email.
 
 ### `GET /api/catalog/plans`
-Plan tiers for the pricing page (prices per docs/pricing-and-visits.md).
-→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 14900, "annualPriceCents": 149000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "foundingRateAvailable": true, "foundingMonthlyPriceCents": 12900, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
+Plan tiers for the pricing page. Two tiers: COMPLETE (base) and PREMIER. The ESSENTIAL
+tier and the founding-member rate were removed entirely (not deprecated) in the September
+2026 repositioning — see the V11 migration. COMPLETE's Stripe price ids are `null` until
+the founder creates the new Stripe prices at the repositioned amount; until then, checkout
+for COMPLETE fails closed (see `POST /api/checkout/session` below).
+→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 16900, "annualPriceCents": 169000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
 
 ### `GET /api/catalog/picks`
 The pickable services menu, grouped by tier class, with à la carte prices
@@ -112,13 +116,14 @@ real need appears.
 ## Checkout & billing (role: CUSTOMER)
 
 ### `POST /api/checkout/session`
-`{ "planCode": "COMPLETE", "billingCycle": "MONTHLY", "foundingRate": false }`
+`{ "planCode": "COMPLETE", "billingCycle": "MONTHLY" }`
 → `200 { "checkoutUrl": "https://checkout.stripe.com/..." }` (Stripe-hosted page)
 
-`foundingRate: true` is validated server-side against the cap (15 founding subscribers,
-counted from `subscriber.founding_rate = true`) and uses `stripe_price_id_founding`;
-`subscriber.founding_rate_expires_at` is set 12 months from activation. The plans
-payload's `foundingRateAvailable` is computed from the same count.
+Fails closed with `409 { "error": { "code": "PLAN_NOT_PURCHASABLE", "message": "This plan
+can't be purchased yet." } }` when the resolved plan tier has no Stripe price id for the
+requested `billingCycle` (e.g. COMPLETE's ids are `null` pending the founder's new Stripe
+prices per the September 2026 repositioning) — checkout never reaches Stripe and never
+charges a stale price in that case.
 
 ### `POST /api/billing/portal-session`
 → `200 { "portalUrl": "https://billing.stripe.com/..." }` (plan change / cancel / cards)
@@ -138,7 +143,7 @@ acknowledged and ignored.
 
 | Endpoint | Returns / does |
 |---|---|
-| `GET /api/app/subscription` | `{ status, planCode, planDisplayName, billingCycle, priceCents, foundingRate, foundingRateExpiresAt, currentPeriodStart, currentPeriodEnd, nextVisitDate }` — `planCode`/`planDisplayName`/`priceCents` are `null` pre-checkout (`PENDING_ACTIVATION`, no plan tier assigned yet); `priceCents` is the price actually charged for the billing cycle (founding rate takes precedence when active — it is monthly-only, per docs/pricing-and-visits.md); `nextVisitDate` is the subscriber's next SCHEDULED visit, `null` if none. No subscriber row for the authenticated user → `404`. (`picksRemaining`/`premiumPicksRemaining` — picks tracking — are a follow-up issue, not yet built.) |
+| `GET /api/app/subscription` | `{ status, planCode, planDisplayName, billingCycle, priceCents, currentPeriodStart, currentPeriodEnd, nextVisitDate }` — `planCode`/`planDisplayName`/`priceCents` are `null` pre-checkout (`PENDING_ACTIVATION`, no plan tier assigned yet); `priceCents` is the price actually charged for the billing cycle (monthly or annual); `nextVisitDate` is the subscriber's next SCHEDULED visit, `null` if none. No subscriber row for the authenticated user → `404`. (`picksRemaining`/`premiumPicksRemaining` — picks tracking — are a follow-up issue, not yet built.) |
 | `GET /api/app/account` | `{ firstName, lastName, email, streetAddress, unit, city, postalCode }` — settings-page profile; bundles the service property's address with name/email (which also appear on `GET /api/auth/me`) for a single round trip. Never includes decrypted access notes. No subscriber row for the authenticated user → `404` |
 | `GET /api/app/visits?status=SCHEDULED&cursor=&limit=` | paginated visits: `{ id, name, scheduledFor, durationMinutes, status, type, technicianFirstName, services: [{ name, source, completed }], hasPendingRescheduleRequest: boolean }` — true iff the visit has a PENDING `reschedule_request` (batch-computed for the whole page, one query), same meaning as on the detail endpoint |
 | `GET /api/app/visits/{id}` | full visit incl. checklist, `completionNotes`, notes, `photos: [{ url (signed, 15-min), caption, takenAt }]`, `hasPendingRescheduleRequest: boolean` — true iff the visit has a PENDING `reschedule_request` (lets the UI persist the "reschedule requested" state across reloads instead of relying on optimistic client-side state) |
@@ -208,7 +213,7 @@ checklist response, are not yet built.
 | `POST /api/admin/reschedule-requests/{id}/decline` | `{ adminNote }` (required) — marks the request DECLINED. 404 if missing; 409 if already resolved |
 | `GET /api/admin/technicians` | full technician roster (small at MVP, no pagination): `[{ id, userId, firstName, lastName, email, role, userStatus, employeeStatus, hireDate, fullyLoadedHourlyCostCents, createdAt }]`. Identity fields resolved from the `users` table via the identity domain's service; internal staff data, not customer PII |
 | `POST /api/admin/technicians` | `{ userId, fullyLoadedHourlyCostCents, employeeStatus?, hireDate? }` — onboard a technician: creates a `technician_profile` for an existing user (the user's TECHNICIAN role is managed separately). 409 if a profile already exists for that user |
-| `GET /api/admin/dashboard` | aggregate metrics for the admin home / operational dashboard (#43): `{ activeSubscribers, mrrCents, pendingWalkthroughs, upcomingVisits, foundingRateSlotsRemaining }`. `mrrCents` sums the current monthly price across ACTIVE subscribers only; `pendingWalkthroughs` counts PENDING (unconfirmed) bookings; `upcomingVisits` counts SCHEDULED visits with `scheduledFor` at or after now; `foundingRateSlotsRemaining` is the 15-subscriber founding cap minus current founding subscribers. No "at-risk subscribers" field — there is no backing status/column for that concept yet |
+| `GET /api/admin/dashboard` | aggregate metrics for the admin home / operational dashboard (#43): `{ activeSubscribers, mrrCents, pendingWalkthroughs, upcomingVisits }`. `mrrCents` sums the current monthly price across ACTIVE subscribers only; `pendingWalkthroughs` counts PENDING (unconfirmed) bookings; `upcomingVisits` counts SCHEDULED visits with `scheduledFor` at or after now. No "at-risk subscribers" field — there is no backing status/column for that concept yet |
 
 All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).
 

@@ -18,7 +18,6 @@ public record AdminSubscriberDetail(
         String status,
         String planCode,
         Integer mrrCents,
-        boolean foundingRate,
         String billingCycle,
         String stripeCustomerId,
         String stripeSubscriptionId,

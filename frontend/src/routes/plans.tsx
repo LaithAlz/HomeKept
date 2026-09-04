@@ -12,19 +12,21 @@ import {
   PLANS,
   formatDollarsCad,
   annualMonthlyEquivalent,
+  perVisitHourCents,
+  annualSavingsCents,
   type Plan,
   type PlanId,
 } from "@/lib/plans";
+import { formatCentsCad } from "@/lib/format";
 import { getSession } from "@/lib/auth";
 import { ApiError, post } from "@/lib/api";
 
 const searchSchema = z.object({
-  tier: fallback(z.enum(["essential", "complete", "premier"]), "complete").default("complete"),
+  tier: fallback(z.enum(["complete", "premier"]), "complete").default("complete"),
 });
 
 /** Maps the frontend's plan ids to the backend's `PlanCode` enum values. */
-const PLAN_CODE: Record<PlanId, "ESSENTIAL" | "COMPLETE" | "PREMIER"> = {
-  essential: "ESSENTIAL",
+const PLAN_CODE: Record<PlanId, "COMPLETE" | "PREMIER"> = {
   complete: "COMPLETE",
   premier: "PREMIER",
 };
@@ -82,7 +84,6 @@ function trustedStripeCheckoutUrl(checkoutUrl: string): string | null {
 function usePlanCheckout(billing: "monthly" | "annual") {
   const navigate = useNavigate();
   const [state, setState] = useState<Record<PlanId, CheckoutState>>({
-    essential: IDLE_CHECKOUT,
     complete: IDLE_CHECKOUT,
     premier: IDLE_CHECKOUT,
   });
@@ -101,10 +102,6 @@ function usePlanCheckout(billing: "monthly" | "annual") {
       const { checkoutUrl } = await post<CheckoutSessionResponse>("/api/checkout/session", {
         planCode: PLAN_CODE[tier.id],
         billingCycle,
-        // The founding-member rate is not yet surfaced in the frontend's plan
-        // data (lib/plans.ts has no `foundingRateAvailable`), so we never opt
-        // in from here; the backend re-validates the cap regardless.
-        foundingRate: false,
       });
 
       const dest = trustedStripeCheckoutUrl(checkoutUrl);
@@ -117,10 +114,18 @@ function usePlanCheckout(billing: "monthly" | "annual") {
       window.location.href = dest;
       // Left in "loading": the page is about to unload.
     } catch (err) {
-      const message =
-        err instanceof ApiError && err.status === 429
-          ? "You've reached the limit for checkout attempts. Please try again in a few minutes."
-          : GENERIC_CHECKOUT_ERROR;
+      let message = GENERIC_CHECKOUT_ERROR;
+      if (err instanceof ApiError) {
+        if (err.status === 429) {
+          message =
+            "You've reached the limit for checkout attempts. Please try again in a few minutes.";
+        } else if (err.code === "PLAN_NOT_PURCHASABLE") {
+          // Pre-canned safe string from the backend ("This plan can't be purchased yet.").
+          message = err.message;
+        } else if (err.code === "ILLEGAL_STATE_TRANSITION") {
+          message = "Your account can't start a new plan right now. Check Billing or contact us.";
+        }
+      }
       setState((s) => ({ ...s, [tier.id]: { status: "idle", error: message } }));
     }
   }
@@ -136,9 +141,9 @@ export const Route = createFileRoute("/plans")({
       {
         name: "description",
         content:
-          "Compare Essential, Complete, and Premier plans for HomeKept home maintenance. Monthly or annual billing. All prices in CAD.",
+          "Compare Complete and Premier plans for HomeKept home maintenance. Monthly or annual billing. All prices in CAD.",
       },
-      { property: "og:title", content: "HomeKept Plans: Essential, Complete, Premier" },
+      { property: "og:title", content: "HomeKept Plans: Complete and Premier" },
       {
         property: "og:description",
         content: "Pick the level of proactive home maintenance that fits your home. Pause anytime.",
@@ -154,11 +159,11 @@ export const Route = createFileRoute("/plans")({
 
 type Cell = boolean | string;
 
-type Row = { label: string; values: [Cell, Cell, Cell] };
+type Row = { label: string; values: [Cell, Cell] };
 
 type Group = { name: string; rows: Row[] };
 
-const [essential, complete, premier] = PLANS;
+const [complete, premier] = PLANS;
 
 const groups: Group[] = [
   {
@@ -166,49 +171,33 @@ const groups: Group[] = [
     rows: [
       {
         label: "Scheduled visits per year",
-        values: [
-          String(essential.visitsPerYear),
-          String(complete.visitsPerYear),
-          String(premier.visitsPerYear),
-        ],
+        values: [String(complete.visitsPerYear), String(premier.visitsPerYear)],
       },
       {
         label: "Priority scheduling (48h + emergency line)",
-        values: [
-          essential.priorityScheduling,
-          complete.priorityScheduling,
-          premier.priorityScheduling,
-        ],
+        values: [complete.priorityScheduling, premier.priorityScheduling],
       },
       {
         label: "Same-week scheduling + 24h emergency",
-        values: [
-          essential.sameWeekEmergency,
-          complete.sameWeekEmergency,
-          premier.sameWeekEmergency,
-        ],
+        values: [complete.sameWeekEmergency, premier.sameWeekEmergency],
       },
       {
         label: "Dedicated technician (guaranteed same person)",
-        values: [
-          essential.dedicatedTechnician,
-          complete.dedicatedTechnician,
-          premier.dedicatedTechnician,
-        ],
+        values: [complete.dedicatedTechnician, premier.dedicatedTechnician],
       },
     ],
   },
   {
     name: "Every visit",
     rows: [
-      { label: "Filter checks & swaps", values: [true, true, true] },
-      { label: "Smoke & CO detector tests + batteries", values: [true, true, true] },
-      { label: "Seasonal mechanicals walkaround", values: [true, true, true] },
+      { label: "Filter checks & swaps", values: [true, true] },
+      { label: "Smoke & CO detector tests + batteries", values: [true, true] },
+      { label: "Seasonal mechanicals walkaround", values: [true, true] },
       {
         label: "Your-list time per visit",
-        values: ["~20 min", "~20 min", "Up to 1 hr, incl. minor repairs"],
+        values: ["~20 min", "Up to 1 hr, incl. minor repairs"],
       },
-      { label: "Photo report + Home Health Score update", values: [true, true, true] },
+      { label: "Photo report + Home Health Score update", values: [true, true] },
     ],
   },
   {
@@ -216,45 +205,33 @@ const groups: Group[] = [
     rows: [
       {
         label: "Included picks per year",
-        values: [
-          String(essential.includedPicks),
-          String(complete.includedPicks),
-          String(premier.includedPicks),
-        ],
+        values: [String(complete.includedPicks), String(premier.includedPicks)],
       },
       {
         label: "Max Premium picks included",
-        values: [
-          String(essential.maxPremiumPicks),
-          String(complete.maxPremiumPicks),
-          String(premier.maxPremiumPicks),
-        ],
+        values: [String(complete.maxPremiumPicks), String(premier.maxPremiumPicks)],
       },
       {
         label: "Licensed gas tune-up coordination",
-        values: [
-          essential.gasTuneupCoordination,
-          complete.gasTuneupCoordination,
-          premier.gasTuneupCoordination,
-        ],
+        values: [complete.gasTuneupCoordination, premier.gasTuneupCoordination],
       },
       {
         label: "Smart-home support",
-        values: [essential.smartHomeSupport, complete.smartHomeSupport, premier.smartHomeSupport],
+        values: [complete.smartHomeSupport, premier.smartHomeSupport],
       },
       {
         label: "Minor repairs included (parts at cost)",
-        values: [essential.repairsIncluded, complete.repairsIncluded, premier.repairsIncluded],
+        values: [complete.repairsIncluded, premier.repairsIncluded],
       },
       {
         label: "Annual Home Plan (5-yr capital forecast)",
-        values: [essential.annualHomePlan, complete.annualHomePlan, premier.annualHomePlan],
+        values: [complete.annualHomePlan, premier.annualHomePlan],
       },
     ],
   },
   {
     name: "Flexibility",
-    rows: [{ label: "Pause anytime, up to 3 months a year", values: [true, true, true] }],
+    rows: [{ label: "Pause anytime, up to 3 months a year", values: [true, true] }],
   },
 ];
 
@@ -338,8 +315,8 @@ function PlansPage() {
         </section>
 
         {/* Plan cards */}
-        <section className="mx-auto max-w-7xl px-6 py-16 md:py-20">
-          <div className="grid gap-6 md:grid-cols-3 md:gap-6">
+        <section className="mx-auto max-w-4xl px-6 py-16 md:py-20">
+          <div className="grid gap-6 sm:grid-cols-2 sm:gap-6">
             {PLANS.map((p) => (
               <PlanCard
                 key={p.id}
@@ -596,6 +573,14 @@ function PlanCard({
           ? `Billed monthly · ${formatDollarsCad(tier.monthlyPriceCad * 12)}/yr`
           : `Billed annually · ${formatDollarsCad(tier.annualPriceCad)}/yr`}
       </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {formatCentsCad(perVisitHourCents(tier))} per visit-hour
+      </p>
+      {billing === "annual" && (
+        <span className="mt-3 inline-flex w-fit items-center rounded-full bg-accent/15 px-3 py-1 text-xs font-bold text-accent">
+          You save {formatCentsCad(annualSavingsCents(tier))} vs. monthly
+        </span>
+      )}
 
       <PlanCtaButton
         tier={tier}
@@ -636,7 +621,7 @@ function ComparisonTable({
           <tr className="border-b border-border">
             <th
               scope="col"
-              className="w-[34%] p-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
+              className="w-[40%] p-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
             >
               Features
             </th>
@@ -665,7 +650,7 @@ function ComparisonTable({
               <tr className="bg-surface/60">
                 <th
                   scope="rowgroup"
-                  colSpan={4}
+                  colSpan={3}
                   className="p-4 text-xs font-bold uppercase tracking-[0.18em] text-foreground"
                 >
                   {g.name}

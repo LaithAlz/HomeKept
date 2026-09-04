@@ -720,7 +720,7 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         return id;
     }
 
-    /** The "Fall winterization" template (month 10, ESSENTIAL) — seeded by V6__visit.sql. */
+    /** The "Fall winterization" template (month 10, COMPLETE) — seeded by V6__visit.sql. */
     private Long fallWinterizationTemplateId() {
         Long id = jdbc.queryForObject(
                 "SELECT id FROM visit_template WHERE name = 'Fall winterization'",

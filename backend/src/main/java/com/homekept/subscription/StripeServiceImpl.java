@@ -43,12 +43,12 @@ public class StripeServiceImpl implements StripeService {
 
     @Override
     public String createCheckoutSession(Subscriber subscriber, PlanTier plan, BillingCycle cycle,
-                                        boolean foundingRate, String idempotencyKey) {
-        String priceId = resolvePriceId(plan, cycle, foundingRate);
+                                        String idempotencyKey) {
+        String priceId = resolvePriceId(plan, cycle);
         if (priceId == null || priceId.isBlank()) {
             throw new IllegalStateException(
                     "PlanTier " + plan.getCode() + " has no Stripe price id for cycle=" + cycle
-                            + " foundingRate=" + foundingRate + ". Set it in the DB before checkout.");
+                            + ". Set it in the DB before checkout.");
         }
 
         SessionCreateParams.Builder params = SessionCreateParams.builder()
@@ -56,7 +56,6 @@ public class StripeServiceImpl implements StripeService {
                 .setClientReferenceId(String.valueOf(subscriber.getId()))
                 .putMetadata("subscriberId", String.valueOf(subscriber.getId()))
                 .putMetadata("planTierId", String.valueOf(plan.getId()))
-                .putMetadata("foundingRate", String.valueOf(foundingRate))
                 // Chosen billing cycle, echoed back on checkout.session.completed so the
                 // activation analytics event reports the billed cycle (the subscriber row
                 // still holds its default until the later customer.subscription.updated sync).
@@ -82,8 +81,8 @@ public class StripeServiceImpl implements StripeService {
         try {
             com.stripe.model.checkout.Session session =
                     com.stripe.model.checkout.Session.create(params.build(), options);
-            log.info("Stripe checkout session created subscriberId={} planCode={} cycle={} foundingRate={}",
-                    subscriber.getId(), plan.getCode(), cycle, foundingRate);
+            log.info("Stripe checkout session created subscriberId={} planCode={} cycle={}",
+                    subscriber.getId(), plan.getCode(), cycle);
             return session.getUrl();
         } catch (StripeException e) {
             log.error("Stripe checkout session creation failed subscriberId={} stripeCode={}",
@@ -207,16 +206,9 @@ public class StripeServiceImpl implements StripeService {
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Selects the correct Stripe price id from the plan tier based on billing cycle
-     * and whether the founding rate applies.
-     *
-     * <p>Founding rate uses the founding price id regardless of cycle (it is a
-     * monthly-only special rate per docs/pricing-and-visits.md).
+     * Selects the correct Stripe price id from the plan tier based on billing cycle.
      */
-    private String resolvePriceId(PlanTier plan, BillingCycle cycle, boolean foundingRate) {
-        if (foundingRate) {
-            return plan.getStripePriceIdFounding();
-        }
+    private String resolvePriceId(PlanTier plan, BillingCycle cycle) {
         return switch (cycle) {
             case MONTHLY -> plan.getStripePriceIdMonthly();
             case ANNUAL  -> plan.getStripePriceIdAnnual();

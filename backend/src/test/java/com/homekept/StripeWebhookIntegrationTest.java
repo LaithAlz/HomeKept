@@ -76,8 +76,7 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         Subscriber sub = seedPendingSubscriber("checkout-activate@test.local");
 
         String eventId = "evt_checkout_completed_1";
-        // planTierId=1 corresponds to ESSENTIAL in the seeded catalog.
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), String.valueOf(completePlanTierId()));
 
         postSignedWebhook(payload);
 
@@ -94,22 +93,21 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         assertThat(count).isEqualTo(1);
 
         // The AFTER_COMMIT listener must have scheduled the subscriber's initial visits.
-        // ESSENTIAL (planTierId=1) always has at least one template month (Jan/Apr/Jul/Oct)
-        // inside the 4-month scheduling window, so at least one SCHEDULED visit is created —
-        // proving the activation → SubscriberActivatedEvent → scheduling wiring works end-to-end.
+        // COMPLETE (the base tier) always has at least one template month inside the
+        // 4-month scheduling window, so at least one SCHEDULED visit is created — proving
+        // the activation → SubscriberActivatedEvent → scheduling wiring works end-to-end.
         Integer visitCount = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM visit WHERE subscriber_id = ? AND status = 'SCHEDULED'",
                 Integer.class, sub.getId());
         assertThat(visitCount).isGreaterThan(0);
 
         // Analytics: the revenue-truth activation event fired on the webhook, attributed to
-        // the subscriber's user, with enum/flag props only (no PII).
+        // the subscriber's user, with enum props only (no PII).
         assertThat(recording.events()).anySatisfy(e -> {
             assertThat(e.event()).isEqualTo(AnalyticsEvent.SUBSCRIPTION_ACTIVATED);
             assertThat(e.distinctId()).isEqualTo(sub.getUserId());
             assertThat(e.props().get("plan_code")).isNotNull();
             assertThat(e.props()).containsEntry("billing_cycle", "MONTHLY");
-            assertThat(e.props()).containsEntry("founding_rate", false);
         });
     }
 
@@ -122,7 +120,8 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         Subscriber sub = seedPendingSubscriber("checkout-annual@test.local");
 
         String eventId = "evt_checkout_annual_1";
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false", "ANNUAL");
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()),
+                String.valueOf(completePlanTierId()), "ANNUAL");
 
         postSignedWebhook(payload);
 
@@ -139,7 +138,7 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         Subscriber sub = seedPendingSubscriber("checkout-idempotent@test.local");
 
         String eventId = "evt_checkout_idempotent_1";
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), String.valueOf(completePlanTierId()));
 
         // First POST — activates the subscriber.
         postSignedWebhook(payload);
@@ -267,6 +266,40 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         });
     }
 
+    // ── customer.subscription.updated — unknown/retired price id ─────────────
+
+    @Test
+    void subscriptionUpdated_unknownPriceId_syncsPeriodDatesButLeavesPlanTierUnchanged() throws Exception {
+        // A retired/unrecognized Stripe price id (e.g. an old price no longer mapped to any
+        // plan_tier row) must not clear or corrupt the subscriber's plan tier — it logs
+        // webhook_unknown_price_id and otherwise proceeds normally: period dates still sync,
+        // and the webhook still acks 200 (Stripe must not retry).
+        Subscriber sub = seedActiveSubscriber("sub-updated-unknown-price@test.local");
+        Long originalPlanTierId = completePlanTierId();
+        sub.setPlanTierId(originalPlanTierId);
+        subscriberRepository.save(sub);
+
+        String eventId = "evt_sub_updated_unknown_price_1";
+        String payload = subscriptionPayload(eventId, "customer.subscription.updated",
+                sub.getStripeSubscriptionId(), sub.getStripeCustomerId(), "price_retired_no_longer_mapped");
+
+        postSignedWebhook(payload); // asserts 200 — Stripe must not retry
+
+        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
+        // Plan tier is untouched — an unresolvable price id must never null out or swap it.
+        assertThat(updated.getPlanTierId()).isEqualTo(originalPlanTierId);
+        // Period dates still synced from the payload — the unknown price only skips the
+        // plan-tier sync, not the rest of the handler.
+        assertThat(updated.getCurrentPeriodStart()).isNotNull();
+        assertThat(updated.getCurrentPeriodEnd()).isNotNull();
+
+        // One subscription_event row must exist — the event is still recorded normally.
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM subscription_event WHERE stripe_event_id = ?",
+                Integer.class, eventId);
+        assertThat(count).isEqualTo(1);
+    }
+
     // ── Ignored event ─────────────────────────────────────────────────────────
 
     @Test
@@ -319,7 +352,7 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         // B1 regression. The Subscriber is a managed JPA entity: if the handler mutated its
         // Stripe ids / plan / period BEFORE the transition guard and then returned on the illegal
         // CANCELLED → ACTIVE transition, dirty-checking would still flush those writes onto a dead
-        // row (corrupting Stripe linkage / burning a founding slot). The guard now runs first, so
+        // row (corrupting Stripe linkage). The guard now runs first, so
         // an ineligible event mutates nothing. CheckoutService already blocks this checkout from
         // starting; this proves the webhook is safe as defense in depth.
         Subscriber sub = seedSubscriberWithStatus("checkout-on-cancelled@test.local",
@@ -328,7 +361,7 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         String originalSubscriptionId = sub.getStripeSubscriptionId();
 
         String eventId = "evt_checkout_on_cancelled_1";
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
+        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), String.valueOf(completePlanTierId()));
 
         postSignedWebhook(payload); // asserts 200 — Stripe must not retry
 
@@ -346,53 +379,6 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         assertThat(count).isZero();
     }
 
-    // ── checkout.session.completed with a founding slot claimed at checkout (B2) ──
-
-    @Test
-    void checkoutSessionCompleted_foundingClaimedAtCheckout_activatesAndStampsExpiry() throws Exception {
-        // B2: the founding slot is claimed at checkout (founding_rate already true on the row).
-        // The webhook must NOT re-grant or re-count it — it only stamps the 12-month expiry on
-        // activation. Verifies founding_rate survives activation and the expiry is set.
-        Subscriber sub = seedSubscriberWithStatus("founding-preclaimed@test.local",
-                SubscriberStatus.PENDING_ACTIVATION);
-        sub.setFoundingRate(true);
-        subscriberRepository.save(sub);
-
-        String eventId = "evt_checkout_founding_preclaimed_1";
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "true");
-
-        postSignedWebhook(payload);
-
-        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.ACTIVE);
-        assertThat(updated.isFoundingRate()).isTrue();
-        assertThat(updated.getFoundingRateExpiresAt()).isNotNull();
-    }
-
-    @Test
-    void checkoutSessionCompleted_reservedFoundingButCompletedNormalSession_reconcilesFlagToFalse() throws Exception {
-        // HIGH regression: a customer can reserve a founding slot at checkout (founding_rate
-        // set true) and then complete a NORMAL-price session. The webhook must reconcile the
-        // recorded flag to what Stripe actually billed — otherwise the customer is recorded
-        // founding while billed normal and permanently consumes one of 15 founding slots.
-        Subscriber sub = seedSubscriberWithStatus("reserved-then-normal@test.local",
-                SubscriberStatus.PENDING_ACTIVATION);
-        sub.setFoundingRate(true); // reserved a founding slot at a prior founding checkout
-        subscriberRepository.save(sub);
-
-        String eventId = "evt_reserved_then_normal_1";
-        // The COMPLETED session is normal-price: foundingRate metadata = false.
-        String payload = checkoutSessionPayload(eventId, String.valueOf(sub.getId()), "1", "false");
-
-        postSignedWebhook(payload);
-
-        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
-        assertThat(updated.getStatus()).isEqualTo(SubscriberStatus.ACTIVE);
-        // Reconciled to false — the slot is released, matching the normal price billed.
-        assertThat(updated.isFoundingRate()).isFalse();
-        assertThat(updated.getFoundingRateExpiresAt()).isNull();
-    }
-
     // ── Helpers: payload builders ──────────────────────────────────────────────
 
     /**
@@ -404,8 +390,8 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
      * reads the {@code object} discriminator field to select the right class.
      */
     private String checkoutSessionPayload(String eventId, String subscriberId,
-                                          String planTierId, String foundingRate) {
-        return checkoutSessionPayload(eventId, subscriberId, planTierId, foundingRate, "MONTHLY");
+                                          String planTierId) {
+        return checkoutSessionPayload(eventId, subscriberId, planTierId, "MONTHLY");
     }
 
     /**
@@ -414,13 +400,13 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
      * analytics event can read the billed cycle rather than the subscriber row's default.
      */
     private String checkoutSessionPayload(String eventId, String subscriberId,
-                                          String planTierId, String foundingRate, String billingCycle) {
+                                          String planTierId, String billingCycle) {
         return """
                 {"id":"%s","object":"event","type":"checkout.session.completed",\
 "data":{"object":{"id":"cs_test","object":"checkout.session","mode":"subscription",\
 "customer":"cus_test","subscription":"sub_test",\
-"metadata":{"subscriberId":"%s","planTierId":"%s","foundingRate":"%s","billingCycle":"%s"}}}}"""
-                .formatted(eventId, subscriberId, planTierId, foundingRate, billingCycle);
+"metadata":{"subscriberId":"%s","planTierId":"%s","billingCycle":"%s"}}}}"""
+                .formatted(eventId, subscriberId, planTierId, billingCycle);
     }
 
     /**
@@ -437,11 +423,21 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Builds a minimal {@code customer.subscription.*} event payload.
+     * Builds a minimal {@code customer.subscription.*} event payload with the default
+     * (unresolvable) test price id {@code price_test}.
      * The handler resolves the subscriber by {@code data.object.id} (the Stripe subscription id).
      */
     private String subscriptionPayload(String eventId, String eventType,
                                         String subscriptionId, String customerId) {
+        return subscriptionPayload(eventId, eventType, subscriptionId, customerId, "price_test");
+    }
+
+    /**
+     * Overload that lets a test control the subscription item's Stripe price id — used to
+     * exercise the "unknown/retired price id" path in {@code handleSubscriptionUpdated}.
+     */
+    private String subscriptionPayload(String eventId, String eventType,
+                                        String subscriptionId, String customerId, String priceId) {
         long periodStart = System.currentTimeMillis() / 1000L;
         long periodEnd   = periodStart + 30L * 24 * 3600;
         return """
@@ -449,8 +445,8 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
 "data":{"object":{"id":"%s","object":"subscription","customer":"%s","status":"active",\
 "current_period_start":%d,"current_period_end":%d,\
 "items":{"object":"list","data":[{"id":"si_test","object":"subscription_item",\
-"price":{"id":"price_test","object":"price","recurring":{"interval":"month","interval_count":1}}}]}}}}"""
-                .formatted(eventId, eventType, subscriptionId, customerId, periodStart, periodEnd);
+"price":{"id":"%s","object":"price","recurring":{"interval":"month","interval_count":1}}}]}}}}"""
+                .formatted(eventId, eventType, subscriptionId, customerId, periodStart, periodEnd, priceId);
     }
 
     // ── Helpers: seed data ────────────────────────────────────────────────────
@@ -473,6 +469,11 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         sub.setStripeCustomerId("cus_" + sub.getId());
         sub.setStripeSubscriptionId("sub_" + sub.getId());
         return subscriberRepository.save(sub);
+    }
+
+    /** Resolves COMPLETE's plan_tier id from the seeded catalog (V2__catalog.sql). */
+    private Long completePlanTierId() {
+        return jdbc.queryForObject("SELECT id FROM plan_tier WHERE code = 'COMPLETE'", Long.class);
     }
 
     /**
