@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Download, Plus, AlertTriangle, CreditCard, CalendarClock, Loader2 } from "lucide-react";
+import { Plus, AlertTriangle, CreditCard, CalendarClock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NewBookingSheet } from "@/components/admin/NewBookingSheet";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
@@ -73,10 +73,6 @@ function AdminDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="size-4" />
-              Export
-            </Button>
             <Button size="sm" onClick={() => setNewBookingOpen(true)}>
               <Plus className="size-4" />
               New booking
@@ -208,6 +204,7 @@ function RecentSubscribersPanel() {
               <div className="min-w-0">
                 <Link
                   to="/admin/subscribers"
+                  search={{ id: s.id }}
                   className="font-semibold text-foreground hover:underline"
                 >
                   Subscriber #{s.id}
@@ -387,7 +384,9 @@ function NeedsAttentionPanel() {
                 </p>
               </div>
               <Button size="sm" variant="outline" className="shrink-0" asChild>
-                <Link to="/admin/subscribers">View</Link>
+                <Link to="/admin/subscribers" search={{ id: s.id }}>
+                  View
+                </Link>
               </Button>
             </li>
           ))}
