@@ -134,14 +134,15 @@ class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
                 .andReturn();
 
         String body = result.getResponse().getContentAsString();
-        String invitedAtForInvited = com.jayway.jsonpath.JsonPath.read(
-                body, "$[?(@.id == " + invitedBookingId + ")].invitedAt[0]");
-        List<Object> invitedAtForUninvited = com.jayway.jsonpath.JsonPath.read(
-                body, "$[?(@.id == " + uninvitedBookingId + ")].invitedAt");
+        List<java.util.Map<String, Object>> invitedRows = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + invitedBookingId + ")]");
+        List<java.util.Map<String, Object>> uninvitedRows = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + uninvitedBookingId + ")]");
 
-        assertThat(invitedAtForInvited).isNotNull();
-        assertThat(invitedAtForUninvited).hasSize(1);
-        assertThat(invitedAtForUninvited.get(0)).isNull();
+        assertThat(invitedRows).hasSize(1);
+        assertThat(invitedRows.get(0).get("invitedAt")).isNotNull();
+        assertThat(uninvitedRows).hasSize(1);
+        assertThat(uninvitedRows.get(0).get("invitedAt")).isNull();
     }
 
     // ── GET /api/admin/subscribers — role gating ──────────────────────────────
