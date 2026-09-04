@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { zodValidator } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Search, Loader2, ExternalLink } from "lucide-react";
+import { Search, Loader2, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,11 +44,13 @@ import {
   useAdminSubscriberEvents,
   useAdminSubscribers,
   useUpdatePropertySku,
+  subscriberFullName,
   STATUS_LABEL,
   STATUS_TONE,
   PLAN_LABEL,
   type AdminSubscriberDetail,
   type AdminSubscriberEvent,
+  type AdminSubscriberListItem,
   type AdminSubscriberPropertySummary,
   type AdminUpdateSkuRequest,
 } from "@/lib/admin";
@@ -83,7 +85,13 @@ function SubscribersPage() {
     return subscribers.filter((s) => {
       if (status !== "all" && s.status !== status) return false;
       if (plan !== "all" && s.planCode !== plan) return false;
-      if (q && !String(s.id).includes(q.trim())) return false;
+      if (q) {
+        const needle = q.trim().toLowerCase();
+        const idMatch = String(s.id).includes(q.trim());
+        const nameMatch = subscriberFullName(s).toLowerCase().includes(needle);
+        const emailMatch = (s.email ?? "").toLowerCase().includes(needle);
+        if (!idMatch && !nameMatch && !emailMatch) return false;
+      }
       return true;
     });
   }, [subscribers, q, status, plan]);
@@ -108,11 +116,11 @@ function SubscribersPage() {
             className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
           />
           <label htmlFor="subscriber-search" className="sr-only">
-            Search by subscriber ID
+            Search by name, email, or subscriber ID
           </label>
           <Input
             id="subscriber-search"
-            placeholder="Search by ID"
+            placeholder="Search by name, email, or ID"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="pl-9"
@@ -162,6 +170,8 @@ function SubscribersPage() {
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-3">ID</th>
+                <th className="px-2 py-3">Name</th>
+                <th className="px-2 py-3">City</th>
                 <th className="px-2 py-3">Plan</th>
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3 text-right">MRR</th>
@@ -169,36 +179,11 @@ function SubscribersPage() {
             </thead>
             <tbody>
               {rows.map((s) => (
-                <tr key={s.id} className="border-t border-border hover:bg-muted/30">
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => setOpenId(s.id)}
-                      className="font-medium text-foreground hover:underline"
-                    >
-                      #{s.id}
-                    </button>
-                  </td>
-                  <td className="px-2 py-3">
-                    {s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "—"}
-                  </td>
-                  <td className="px-2 py-3">
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-xs font-medium",
-                        STATUS_TONE[s.status] ?? "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      {STATUS_LABEL[s.status] ?? s.status}
-                    </span>
-                  </td>
-                  <td className="px-2 py-3 text-right tabular-nums">
-                    {formatCentsCad(s.mrrCents)}
-                  </td>
-                </tr>
+                <SubscriberRow key={s.id} subscriber={s} onOpen={() => setOpenId(s.id)} />
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No subscribers match these filters.
                   </td>
                 </tr>
@@ -213,6 +198,50 @@ function SubscribersPage() {
   );
 }
 
+function SubscriberRow({
+  subscriber: s,
+  onOpen,
+}: {
+  subscriber: AdminSubscriberListItem;
+  onOpen: () => void;
+}) {
+  const fullName = subscriberFullName(s);
+  const hasName = fullName.length > 0;
+
+  return (
+    <tr className="border-t border-border hover:bg-muted/30">
+      <td className="px-4 py-3">
+        <button onClick={onOpen} className="font-medium text-foreground hover:underline">
+          #{s.id}
+        </button>
+      </td>
+      <td className="px-2 py-3">
+        {hasName ? (
+          <div>
+            <div className="font-medium text-foreground">{fullName}</div>
+            {s.email && <div className="text-xs text-muted-foreground">{s.email}</div>}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-2 py-3">{s.city ?? <span className="text-muted-foreground">—</span>}</td>
+      <td className="px-2 py-3">{s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "—"}</td>
+      <td className="px-2 py-3">
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-xs font-medium",
+            STATUS_TONE[s.status] ?? "bg-muted text-muted-foreground",
+          )}
+        >
+          {STATUS_LABEL[s.status] ?? s.status}
+        </span>
+      </td>
+      <td className="px-2 py-3 text-right tabular-nums">{formatCentsCad(s.mrrCents)}</td>
+    </tr>
+  );
+}
+
 function SubscriberDetailSheet({
   id,
   onOpenChange,
@@ -222,21 +251,73 @@ function SubscriberDetailSheet({
 }) {
   const { data: detail, isLoading, isError, refetch } = useAdminSubscriber(id);
 
+  const fullName = detail ? subscriberFullName(detail) : "";
+  const hasName = fullName.length > 0;
+  // SheetTitle is always rendered (Radix requires an accessible name for the dialog) —
+  // it just doesn't have a name or subscriber id to show until `detail` loads. When the
+  // backend hasn't landed name fields yet (or a subscriber has none on file), the title
+  // falls back to today's "Subscriber #N" — the same string this panel always showed.
+  const title = detail ? (hasName ? fullName : `Subscriber #${detail.id}`) : "Subscriber detail";
+  const description = !detail
+    ? "Loading subscriber detail."
+    : hasName
+      ? `Subscriber #${detail.id}`
+      : detail.property
+        ? `${detail.property.streetAddress}, ${detail.property.city}`
+        : "No property linked yet.";
+
   return (
     <Sheet open={id !== null} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md">
-        {/* SheetTitle is always rendered (Radix requires an accessible name for the
-            dialog) — it just doesn't have a subscriber id to show until `detail` loads. */}
+      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>{detail ? `Subscriber #${detail.id}` : "Subscriber detail"}</SheetTitle>
-          <SheetDescription>
-            {detail
-              ? detail.property
-                ? `${detail.property.streetAddress}, ${detail.property.city}`
-                : "No property linked yet."
-              : "Loading subscriber detail."}
-          </SheetDescription>
+          <SheetTitle>{title}</SheetTitle>
+          <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
+
+        {detail && (
+          <div className="mt-3 space-y-3">
+            {hasName && (detail.email || detail.phone) && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                {detail.email && (
+                  <a
+                    href={`mailto:${detail.email}`}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {detail.email}
+                  </a>
+                )}
+                {detail.phone && (
+                  <a
+                    href={`tel:${detail.phone}`}
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    {detail.phone}
+                  </a>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                  STATUS_TONE[detail.status] ?? "bg-muted text-muted-foreground",
+                )}
+              >
+                {STATUS_LABEL[detail.status] ?? detail.status}
+              </span>
+              {detail.planCode && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+                  {PLAN_LABEL[detail.planCode] ?? detail.planCode}
+                </span>
+              )}
+            </div>
+            {hasName && detail.property && (
+              <p className="text-sm text-muted-foreground">
+                {detail.property.streetAddress}, {detail.property.city} {detail.property.postalCode}
+              </p>
+            )}
+          </div>
+        )}
 
         {isLoading && <PanelLoading label="Loading subscriber." className="mt-6" />}
 
@@ -254,85 +335,34 @@ function SubscriberDetailSheet({
 
         {detail && (
           <div className="mt-6 space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <DetailTile label="Plan">
-                {detail.planCode
-                  ? (PLAN_LABEL[detail.planCode] ?? detail.planCode)
-                  : "Not chosen yet"}
-              </DetailTile>
-              <DetailTile label="MRR">{formatCentsCad(detail.mrrCents)}</DetailTile>
-              <DetailTile label="Status">{STATUS_LABEL[detail.status] ?? detail.status}</DetailTile>
-              <DetailTile label="Billing cycle">
-                {detail.billingCycle === "ANNUAL" ? "Annual" : "Monthly"}
-              </DetailTile>
-              <DetailTile label="Started">
-                {detail.startedAt ? formatDateShort(detail.startedAt) : "—"}
-              </DetailTile>
-              {detail.pausedAt && (
-                <DetailTile label="Paused">{formatDateShort(detail.pausedAt)}</DetailTile>
-              )}
-              {detail.cancelledAt && (
-                <DetailTile label="Cancelled">{formatDateShort(detail.cancelledAt)}</DetailTile>
-              )}
-              {detail.currentPeriodStart && (
-                <DetailTile label="Current period started">
-                  {formatDateShort(detail.currentPeriodStart)}
-                </DetailTile>
-              )}
-              {detail.currentPeriodEnd && (
-                <DetailTile label="Current period ends">
-                  {formatDateShort(detail.currentPeriodEnd)}
-                </DetailTile>
-              )}
-              {detail.stripeCustomerId && (
-                <DetailTile label="Stripe customer">
-                  <StripeLink
-                    href={`https://dashboard.stripe.com/customers/${detail.stripeCustomerId}`}
-                    id={detail.stripeCustomerId}
-                  />
-                </DetailTile>
-              )}
-              {detail.stripeSubscriptionId && (
-                <DetailTile label="Stripe subscription">
-                  <StripeLink
-                    href={`https://dashboard.stripe.com/subscriptions/${detail.stripeSubscriptionId}`}
-                    id={detail.stripeSubscriptionId}
-                  />
-                </DetailTile>
-              )}
-            </div>
-
             <SubscriptionSection detail={detail} />
-
+            <StripeSection detail={detail} />
+            <PropertySection property={detail.property} />
             <ActivitySection subscriberId={detail.id} />
-
-            {detail.property && (
-              <div className="rounded-xl border border-border p-3">
-                <div className="text-xs text-muted-foreground">Property</div>
-                <div className="font-medium">
-                  {detail.property.streetAddress}, {detail.property.city}{" "}
-                  {detail.property.postalCode}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {detail.property.propertyType ?? "Type not set"} ·{" "}
-                  {detail.property.hasAccessNotes
-                    ? "Access notes on file"
-                    : "No access notes on file"}
-                </div>
-              </div>
-            )}
-
-            {detail.property?.propertyId && (
-              <PropertySkuForm key={detail.property.propertyId} property={detail.property} />
-            )}
-
-            <div className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
-              Visit history isn't available yet.
-            </div>
           </div>
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** One card/section shell shared by every section of the subscriber detail panel. */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-border p-3">
+      <h3 className="font-display text-sm font-bold">{title}</h3>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/** Compact label/value row, label muted on the left, value right-aligned. */
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 text-sm">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 flex-1 break-words text-right font-medium text-foreground">{value}</dd>
+    </div>
   );
 }
 
@@ -460,8 +490,31 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   const showNoBillingNote = detail.status === "PENDING_ACTIVATION";
 
   return (
-    <div className="rounded-xl border border-border p-3">
-      <h3 className="font-display text-sm font-bold">Subscription</h3>
+    <Section title="Subscription">
+      <dl className="divide-y divide-border">
+        <Row
+          label="Plan"
+          value={
+            detail.planCode ? (PLAN_LABEL[detail.planCode] ?? detail.planCode) : "Not chosen yet"
+          }
+        />
+        <Row
+          label="Billing cycle"
+          value={detail.billingCycle === "ANNUAL" ? "Annual" : "Monthly"}
+        />
+        <Row label="MRR" value={formatCentsCad(detail.mrrCents)} />
+        <Row label="Started" value={detail.startedAt ? formatDateShort(detail.startedAt) : "—"} />
+        {detail.pausedAt && <Row label="Paused" value={formatDateShort(detail.pausedAt)} />}
+        {detail.currentPeriodStart && (
+          <Row label="Current period start" value={formatDateShort(detail.currentPeriodStart)} />
+        )}
+        {detail.currentPeriodEnd && (
+          <Row label="Current period end" value={formatDateShort(detail.currentPeriodEnd)} />
+        )}
+        {detail.cancelledAt && (
+          <Row label="Cancelled" value={formatDateShort(detail.cancelledAt)} />
+        )}
+      </dl>
 
       {(showPause || showResume || showCancel) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -485,7 +538,7 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
 
       {cancellationPending && latestEvent && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Cancellation requested {formatDateTime(latestEvent.occurredAt)}. Waiting for Stripe to end
+          Cancellation requested {formatDateTime(latestEvent.occurredAt)} Waiting for Stripe to end
           the subscription.
         </p>
       )}
@@ -526,7 +579,7 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
         pending={pending}
         error={error}
       />
-    </div>
+    </Section>
   );
 }
 
@@ -706,29 +759,79 @@ function cancellationRequestedDetail(event: AdminSubscriberEvent): string | null
   return parts.length > 0 ? parts.join(". ") : null;
 }
 
+/** Two Stripe object ids, each monospace, truncated with a title tooltip, copyable, and linked out. */
+function StripeSection({ detail }: { detail: AdminSubscriberDetail }) {
+  if (!detail.stripeCustomerId && !detail.stripeSubscriptionId) return null;
+
+  return (
+    <Section title="Stripe">
+      <dl className="divide-y divide-border">
+        {detail.stripeCustomerId && (
+          <StripeIdRow
+            label="Customer"
+            id={detail.stripeCustomerId}
+            href={`https://dashboard.stripe.com/customers/${detail.stripeCustomerId}`}
+          />
+        )}
+        {detail.stripeSubscriptionId && (
+          <StripeIdRow
+            label="Subscription"
+            id={detail.stripeSubscriptionId}
+            href={`https://dashboard.stripe.com/subscriptions/${detail.stripeSubscriptionId}`}
+          />
+        )}
+      </dl>
+    </Section>
+  );
+}
+
+/** Property summary (address, type, access notes) plus the SKU sheet form, one section. */
+function PropertySection({ property }: { property: AdminSubscriberPropertySummary | undefined }) {
+  return (
+    <Section title="Property">
+      {property ? (
+        <div className="space-y-4">
+          <dl className="divide-y divide-border">
+            <Row
+              label="Address"
+              value={`${property.streetAddress}, ${property.city} ${property.postalCode}`}
+            />
+            <Row label="Type" value={property.propertyType ?? "Not set"} />
+            <Row
+              label="Access notes"
+              value={property.hasAccessNotes ? "On file" : "None on file"}
+            />
+          </dl>
+          <PropertySkuForm key={property.propertyId} property={property} />
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No property linked yet.</p>
+      )}
+    </Section>
+  );
+}
+
 function ActivitySection({ subscriberId }: { subscriberId: number }) {
   const { data: events, isLoading, isError, refetch } = useAdminSubscriberEvents(subscriberId);
 
   return (
-    <div className="rounded-xl border border-border p-3">
-      <h3 className="font-display text-sm font-bold">Activity</h3>
-
-      {isLoading && <PanelLoading label="Loading activity." className="mt-3 p-0" />}
+    <Section title="Activity">
+      {isLoading && <PanelLoading label="Loading activity." className="p-0" />}
 
       {isError && !isLoading && (
         <PanelError
           label="We couldn't load activity."
           onRetry={() => void refetch()}
-          className="mt-3 p-0"
+          className="p-0"
         />
       )}
 
       {events && events.length === 0 && (
-        <p className="mt-2 text-xs text-muted-foreground">No activity yet.</p>
+        <p className="text-xs text-muted-foreground">No activity yet.</p>
       )}
 
       {events && events.length > 0 && (
-        <ul className="mt-3 space-y-3">
+        <ul className="space-y-3">
           {events.map((event) => {
             const detail = cancellationRequestedDetail(event);
             return (
@@ -749,7 +852,7 @@ function ActivitySection({ subscriberId }: { subscriberId: number }) {
           })}
         </ul>
       )}
-    </div>
+    </Section>
   );
 }
 
@@ -877,8 +980,8 @@ function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummar
   }
 
   return (
-    <div className="rounded-xl border border-border p-3">
-      <h3 className="font-display text-sm font-bold">SKU sheet</h3>
+    <div className="border-t border-border pt-4">
+      <h4 className="text-sm font-bold">SKU sheet</h4>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Technician prep captured on the walk-through and refined over later visits. Blank fields are
         left unchanged.
@@ -992,27 +1095,50 @@ function PropertySkuForm({ property }: { property: AdminSubscriberPropertySummar
   );
 }
 
-function DetailTile({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * One Stripe object id row: label, a monospace id truncated with a `title`
+ * tooltip (never lets a long id push the panel wider), a link out to the
+ * matching Stripe Dashboard page, and a copy-to-clipboard button.
+ */
+function StripeIdRow({ label, id, href }: { label: string; id: string; href: string }) {
   return (
-    <div className="rounded-xl border border-border p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="font-medium">{children}</div>
+    <div className="flex items-center gap-3 py-2 text-sm">
+      <div className="w-24 shrink-0 text-muted-foreground">{label}</div>
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          title={id}
+          className="min-w-0 truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
+        >
+          {id}
+        </a>
+        <ExternalLink className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+        <span className="sr-only">(opens in Stripe Dashboard, new tab)</span>
+        <CopyIdButton id={id} label={label} />
+      </div>
     </div>
   );
 }
 
-/** Truncated Stripe object id that opens the matching Stripe Dashboard page in a new tab. */
-function StripeLink({ href, id }: { href: string; id: string }) {
+/** Copies a Stripe id to the clipboard, with a "Copied" toast on success. */
+function CopyIdButton({ id, label }: { id: string; label: string }) {
+  function handleCopy() {
+    navigator.clipboard
+      .writeText(id)
+      .then(() => toast.success("Copied"))
+      .catch(() => toast.error("Couldn't copy. Copy it manually instead."));
+  }
+
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 truncate text-primary underline-offset-2 hover:underline"
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-surface hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <span className="truncate">{id}</span>
-      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="sr-only">(opens in Stripe Dashboard, new tab)</span>
-    </a>
+      <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="sr-only">Copy {label.toLowerCase()} Stripe ID</span>
+    </button>
   );
 }

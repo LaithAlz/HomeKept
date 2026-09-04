@@ -26,8 +26,11 @@ import java.util.List;
  * <p>ADMIN role enforced by {@code @PreAuthorize} (second gate after the JWT filter).
  * These endpoints fall under {@code .anyRequest().authenticated()} in SecurityConfig.
  *
- * <p>No PII in responses — IDs, enums, integer cents, and booleans only.
- * Access notes are never decrypted here; only {@code hasAccessNotes} is surfaced.
+ * <p>The list/detail responses carry customer PII (name, email, phone) alongside ids,
+ * enums, integer cents, and booleans — safe only because this whole controller is
+ * ADMIN-gated. Never log these fields, and never move this DTO shape to a
+ * non-admin-gated endpoint. Access notes are never decrypted here; only
+ * {@code hasAccessNotes} is surfaced.
  */
 @RestController
 @RequestMapping("/api/admin/subscribers")
