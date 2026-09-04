@@ -266,6 +266,40 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
         });
     }
 
+    // ── customer.subscription.updated — unknown/retired price id ─────────────
+
+    @Test
+    void subscriptionUpdated_unknownPriceId_syncsPeriodDatesButLeavesPlanTierUnchanged() throws Exception {
+        // A retired/unrecognized Stripe price id (e.g. an old price no longer mapped to any
+        // plan_tier row) must not clear or corrupt the subscriber's plan tier — it logs
+        // webhook_unknown_price_id and otherwise proceeds normally: period dates still sync,
+        // and the webhook still acks 200 (Stripe must not retry).
+        Subscriber sub = seedActiveSubscriber("sub-updated-unknown-price@test.local");
+        Long originalPlanTierId = completePlanTierId();
+        sub.setPlanTierId(originalPlanTierId);
+        subscriberRepository.save(sub);
+
+        String eventId = "evt_sub_updated_unknown_price_1";
+        String payload = subscriptionPayload(eventId, "customer.subscription.updated",
+                sub.getStripeSubscriptionId(), sub.getStripeCustomerId(), "price_retired_no_longer_mapped");
+
+        postSignedWebhook(payload); // asserts 200 — Stripe must not retry
+
+        Subscriber updated = subscriberRepository.findById(sub.getId()).orElseThrow();
+        // Plan tier is untouched — an unresolvable price id must never null out or swap it.
+        assertThat(updated.getPlanTierId()).isEqualTo(originalPlanTierId);
+        // Period dates still synced from the payload — the unknown price only skips the
+        // plan-tier sync, not the rest of the handler.
+        assertThat(updated.getCurrentPeriodStart()).isNotNull();
+        assertThat(updated.getCurrentPeriodEnd()).isNotNull();
+
+        // One subscription_event row must exist — the event is still recorded normally.
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM subscription_event WHERE stripe_event_id = ?",
+                Integer.class, eventId);
+        assertThat(count).isEqualTo(1);
+    }
+
     // ── Ignored event ─────────────────────────────────────────────────────────
 
     @Test
@@ -389,11 +423,21 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
     }
 
     /**
-     * Builds a minimal {@code customer.subscription.*} event payload.
+     * Builds a minimal {@code customer.subscription.*} event payload with the default
+     * (unresolvable) test price id {@code price_test}.
      * The handler resolves the subscriber by {@code data.object.id} (the Stripe subscription id).
      */
     private String subscriptionPayload(String eventId, String eventType,
                                         String subscriptionId, String customerId) {
+        return subscriptionPayload(eventId, eventType, subscriptionId, customerId, "price_test");
+    }
+
+    /**
+     * Overload that lets a test control the subscription item's Stripe price id — used to
+     * exercise the "unknown/retired price id" path in {@code handleSubscriptionUpdated}.
+     */
+    private String subscriptionPayload(String eventId, String eventType,
+                                        String subscriptionId, String customerId, String priceId) {
         long periodStart = System.currentTimeMillis() / 1000L;
         long periodEnd   = periodStart + 30L * 24 * 3600;
         return """
@@ -401,8 +445,8 @@ class StripeWebhookIntegrationTest extends AbstractIntegrationTest {
 "data":{"object":{"id":"%s","object":"subscription","customer":"%s","status":"active",\
 "current_period_start":%d,"current_period_end":%d,\
 "items":{"object":"list","data":[{"id":"si_test","object":"subscription_item",\
-"price":{"id":"price_test","object":"price","recurring":{"interval":"month","interval_count":1}}}]}}}}"""
-                .formatted(eventId, eventType, subscriptionId, customerId, periodStart, periodEnd);
+"price":{"id":"%s","object":"price","recurring":{"interval":"month","interval_count":1}}}]}}}}"""
+                .formatted(eventId, eventType, subscriptionId, customerId, periodStart, periodEnd, priceId);
     }
 
     // ── Helpers: seed data ────────────────────────────────────────────────────

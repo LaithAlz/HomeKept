@@ -17,7 +17,7 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 - [ ] **Cloudflare** — deploy the TanStack Start frontend. From `frontend/`:
       `bun run build && wrangler deploy` (worker config in `wrangler.jsonc`). Build with
       `VITE_API_URL=https://api.homekept.ca` (and `VITE_PUBLIC_POSTHOG_KEY=…` if using analytics).
-- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V10 on boot.
+- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V11 on boot.
 
 ## 2. Secrets (set in the prod environment, never in git)
 
@@ -43,10 +43,20 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 - [ ] PostHog: `POSTHOG_API_KEY` (backend) + `VITE_PUBLIC_POSTHOG_KEY` (frontend build).
 
 ## 3. Stripe (issue #21) — the biggest external step
-- [ ] Create the live **Products + Prices** matching `docs/pricing-and-visits.md` (4 recurring
-      prices: COMPLETE monthly/annual, PREMIER monthly/annual).
-- [ ] Wire the real Price IDs into the catalog: fill in and run
-      **`docs/stripe-price-ids.sql`** against prod (a fill-in-the-blanks `UPDATE` script).
+
+Order matters here — do these in sequence, not in parallel:
+
+- [ ] **First, deploy the V11 build** (the one that includes
+      `V11__remove_essential_and_founding.sql`). V11 nulls out COMPLETE's Stripe price ids
+      on every deploy that runs it for the first time — running the script below before this
+      migration has landed means V11 just nulls them right back out again.
+- [ ] **Then** create the live **Products + Prices**: PREMIER's live prices already exist in
+      production and are unchanged by the repositioning — you only need to create 2 new
+      recurring prices for **COMPLETE** (monthly $169 / annual $1,690), matching
+      `docs/pricing-and-visits.md`.
+- [ ] **Then** wire the new COMPLETE Price IDs into the catalog: fill in and run
+      **`docs/stripe-price-ids.sql`** against prod (a fill-in-the-blanks `UPDATE` script,
+      COMPLETE only — it does not touch PREMIER).
 - [ ] Add the **webhook endpoint** → `https://api.homekept.ca/api/webhooks/stripe`; copy its
       signing secret into `STRIPE_WEBHOOK_SECRET`.
 - [ ] Set `STRIPE_SECRET_KEY` (`sk_live_…`) and the success / cancel / portal URLs.

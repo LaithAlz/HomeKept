@@ -10,7 +10,7 @@ export const Route = createFileRoute("/admin/plans")({
 });
 
 /**
- * Renders the three real plan tiers straight from `@/lib/plans` (the same
+ * Renders the two real plan tiers straight from `@/lib/plans` (the same
  * source the public `/plans` page and checkout use), so the numbers here can
  * never drift from what customers actually see. There is no endpoint for
  * per-plan subscriber counts or derived per-plan MRR, so neither appears

@@ -114,10 +114,16 @@ function usePlanCheckout(billing: "monthly" | "annual") {
       window.location.href = dest;
       // Left in "loading": the page is about to unload.
     } catch (err) {
-      const message =
-        err instanceof ApiError && err.status === 429
-          ? "You've reached the limit for checkout attempts. Please try again in a few minutes."
-          : GENERIC_CHECKOUT_ERROR;
+      let message = GENERIC_CHECKOUT_ERROR;
+      if (err instanceof ApiError) {
+        if (err.status === 429) {
+          message = "You've reached the limit for checkout attempts. Please try again in a few minutes.";
+        } else if (err.status === 409) {
+          // e.g. PLAN_NOT_PURCHASABLE — the backend's message is a pre-canned safe
+          // string ("This plan can't be purchased yet."), not a generic retry prompt.
+          message = err.message;
+        }
+      }
       setState((s) => ({ ...s, [tier.id]: { status: "idle", error: message } }));
     }
   }

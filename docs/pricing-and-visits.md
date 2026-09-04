@@ -35,8 +35,8 @@ public list.
 **Price per visit hour** (visits are 90 minutes; derived, never hardcoded):
 monthly x 12 / visits per year / 1.5 = price per visit hour.
 
-- Complete: $169 x 12 / 8 / 1.5 = **$169.00/visit-hour**
-- Premier: $249 x 12 / 12 / 1.5 = **$166.00/visit-hour**
+- Complete: $169 x 12 / 8 / 1.5 = **$169/visit-hour**
+- Premier: $249 x 12 / 12 / 1.5 = **$166/visit-hour**
 
 ## Every visit, every tier
 
@@ -148,13 +148,14 @@ magnets $200–400 · brand basics $400–600 · starter materials $300–500.
 | Materials (~$15/visit) | $0 | ~$100 | ~$300 |
 | Fuel (~$6/visit) | $0 | ~$40 | ~$120 |
 | Marketing (flyers; organic $0) | ~$100 | ~$150 | ~$200 |
-| Stripe (~3% rev) | $0 | ~$45 | ~$135 |
-| **Burn** | **~$400** | **~$640** | **~$1,115** |
+| Stripe (~3% rev) | $0 | ~$55 | ~$166 |
+| **Burn** | **~$400** | **~$650** | **~$1,146** |
 | **MRR** (mix 24C/6P) | $0 | ~$1,850 | ~$5,550 |
 
 Operating breakeven ≈ customer 4–5. Cash to launch ~$5–7K; cushion $10K ($5K per
-founder). Materials are ~6.6% of revenue at 30 customers and billed-before-consumed —
-labor is the only cost that ever scales against us, and it's founder sweat until Stage 3.
+founder). Materials are ~5.9% of revenue at 30 customers (mix 24C/6P: $120/$180 per
+customer-year x tier ÷ $66,600 annual revenue) and billed-before-consumed — labor is the
+only cost that ever scales against us, and it's founder sweat until Stage 3.
 
 ## Roles
 

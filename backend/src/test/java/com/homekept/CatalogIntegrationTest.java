@@ -1,7 +1,12 @@
 package com.homekept;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,6 +37,8 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
     private static final String PLANS_URL = "/api/catalog/plans";
     private static final String PICKS_URL = "/api/catalog/picks";
     private static final String ME_URL    = "/api/auth/me";
+
+    @Autowired JdbcTemplate jdbc;
 
     // ── /api/catalog/plans — public access ───────────────────────────────────
 
@@ -94,6 +101,36 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[1].includedPicksPerYear").value(6))
                 .andExpect(jsonPath("$[1].maxPremiumPicksPerYear").value(3));
+    }
+
+    // ── Stripe price ids — V11 nulled COMPLETE's, PREMIER untouched ──────────
+
+    @Test
+    void planTier_stripePriceIds_completeNulledByV11_premierUnchanged() {
+        // V11__remove_essential_and_founding.sql cleared COMPLETE's old $149 Stripe price
+        // ids to NULL (they pointed at the retired price) — this is what makes checkout
+        // fail closed with PLAN_NOT_PURCHASABLE until the founder fills in new ones via
+        // docs/stripe-price-ids.sql.
+        Map<String, Object> complete = jdbc.queryForMap(
+                "SELECT stripe_price_id_monthly, stripe_price_id_annual FROM plan_tier WHERE code = 'COMPLETE'");
+        assertThat(complete.get("stripe_price_id_monthly")).isNull();
+        assertThat(complete.get("stripe_price_id_annual")).isNull();
+
+        // PREMIER was never touched by V11. This fresh test database has not run
+        // docs/stripe-price-ids.sql (that only ever runs against production), so PREMIER's
+        // ids are still NULL here too — but if a fixture ever starts seeding real ids,
+        // this assertion flips to "both present" rather than silently passing either way.
+        Map<String, Object> premier = jdbc.queryForMap(
+                "SELECT stripe_price_id_monthly, stripe_price_id_annual FROM plan_tier WHERE code = 'PREMIER'");
+        Object premierMonthly = premier.get("stripe_price_id_monthly");
+        Object premierAnnual = premier.get("stripe_price_id_annual");
+        if (premierMonthly != null || premierAnnual != null) {
+            assertThat(premierMonthly).isNotNull();
+            assertThat(premierAnnual).isNotNull();
+        } else {
+            assertThat(premierMonthly).isNull();
+            assertThat(premierAnnual).isNull();
+        }
     }
 
     // ── Services array populated ──────────────────────────────────────────────

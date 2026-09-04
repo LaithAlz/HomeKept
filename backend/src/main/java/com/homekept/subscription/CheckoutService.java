@@ -94,13 +94,28 @@ public class CheckoutService {
             case ANNUAL  -> plan.getStripePriceIdAnnual();
         };
         if (priceId == null || priceId.isBlank()) {
+            log.warn("checkout_blocked_no_price subscriberId={} planCode={} billingCycle={}",
+                    subscriber.getId(), planCode, billingCycle);
+
+            // Analytics (arch doc §5.7) — enum/flag props only, no PII. capture() is itself
+            // commit-gated and best-effort. Lets the funnel show blocked checkouts, not just
+            // silent 409s in the client.
+            Map<String, Object> blockedProps = new LinkedHashMap<>();
+            blockedProps.put("plan_code", planCode.name());
+            blockedProps.put("billing_cycle", billingCycle.name());
+            blockedProps.put("reason", "no_price");
+            analytics.capture(userId, AnalyticsEvent.CHECKOUT_BLOCKED, blockedProps);
+
             throw new PlanNotPurchasableException();
         }
 
-        // Deterministic idempotency key: same subscriber + plan + cycle always produces
-        // the same key, so a retry of an in-flight checkout returns the same session URL.
+        // Deterministic idempotency key: same subscriber + plan + cycle + resolved Stripe
+        // price id. Including the price id means a reprice (new price id swapped into the
+        // plan tier) mints a fresh key instead of colliding with a stale key and returning
+        // Stripe's idempotency_error for the key's 24h retention window.
         String idempotencyKey = Hashing.sha256Hex(
-                "checkout:" + subscriber.getId() + ":" + planCode.name() + ":" + billingCycle.name());
+                "checkout:" + subscriber.getId() + ":" + planCode.name() + ":" + billingCycle.name()
+                        + ":" + priceId);
 
         log.info("checkout_started subscriberId={} planCode={} cycle={}",
                 subscriber.getId(), planCode, billingCycle);
