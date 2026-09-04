@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { AddTechnicianSheet } from "@/components/admin/AddTechnicianSheet";
 import { useAdminTechnicians, type AdminTechnicianListItem } from "@/lib/admin";
 import { formatCentsCad } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -51,6 +53,7 @@ function humanize(value: string | null): string {
 
 function TechniciansPage() {
   const { data: technicians, isLoading, isError, refetch } = useAdminTechnicians();
+  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <div className="px-6 py-8">
@@ -61,8 +64,12 @@ function TechniciansPage() {
             {technicians ? `${technicians.length} on the roster` : "Loading the roster…"}
           </p>
         </div>
-        <Button size="sm">Add technician</Button>
+        <Button size="sm" onClick={() => setAddOpen(true)}>
+          Add technician
+        </Button>
       </div>
+
+      <AddTechnicianSheet open={addOpen} onOpenChange={setAddOpen} />
 
       {isLoading && <PanelLoading label="Loading technicians." className="mt-6" />}
 
