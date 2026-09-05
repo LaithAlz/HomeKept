@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -34,4 +36,22 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE PasswordResetToken t SET t.consumedAt = :now WHERE t.user.id = :userId AND t.consumedAt IS NULL")
     int consumeAllUnconsumedForUser(@Param("userId") Long userId, @Param("now") Instant now);
+
+    /**
+     * Returns, for each requested user id that has at least one token row (a password reset
+     * OR a staff invite — both mint through this same table), the user id and the
+     * {@code created_at} of its most recently minted token — one row per user id, resolved in
+     * a single grouped query (no N+1 when batching across the technician roster). Used by the
+     * technician admin roster's {@code invitedAt} column; see
+     * {@code PasswordResetTokenService#latestInviteAtByUserIds}.
+     */
+    @Query("SELECT t.user.id AS userId, MAX(t.createdAt) AS latestCreatedAt "
+            + "FROM PasswordResetToken t WHERE t.user.id IN :userIds GROUP BY t.user.id")
+    List<LatestInviteAt> findLatestCreatedAtByUserIdIn(@Param("userIds") Collection<Long> userIds);
+
+    /** Projection for {@link #findLatestCreatedAtByUserIdIn}. */
+    interface LatestInviteAt {
+        Long getUserId();
+        Instant getLatestCreatedAt();
+    }
 }

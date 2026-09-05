@@ -2,7 +2,9 @@ package com.homekept.common;
 
 import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.property.exception.PropertyNotFoundException;
-import com.homekept.technician.TechnicianAlreadyExistsException;
+import com.homekept.technician.InvalidStaffInviteRequestException;
+import com.homekept.technician.StaffEmailAlreadyExistsException;
+import com.homekept.technician.TechnicianNotFoundException;
 import com.homekept.storage.StorageUnavailableException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
 import com.homekept.booking.exception.InvalidBookingRequestException;
@@ -25,6 +27,7 @@ import com.homekept.identity.exception.InvalidAccountUpdateRequestException;
 import com.homekept.identity.exception.InvalidPasswordChangeRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
+import com.homekept.identity.exception.InvalidStaffInviteTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -181,7 +184,8 @@ public class GlobalExceptionHandler {
             InvalidPasswordResetRequestException.class,
             InvalidPasswordChangeRequestException.class,
             InvalidAccountUpdateRequestException.class,
-            InvalidVisitRequestException.class
+            InvalidVisitRequestException.class,
+            InvalidStaffInviteRequestException.class
     })
     public ResponseEntity<ErrorEnvelope> handleInvalidRequest(RuntimeException ex,
                                                               HttpServletRequest request) {
@@ -211,6 +215,19 @@ public class GlobalExceptionHandler {
                                                                           HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorEnvelope.of("INVALID_TOKEN", "Password reset link is invalid or has expired", requestId(request)));
+    }
+
+    /**
+     * Staff invite token invalid, expired, already consumed, or resolved to a user who is no
+     * longer eligible to accept it (not TECHNICIAN/PENDING_ACTIVATION) — 400. Returns a
+     * generic message; the reason is never leaked beyond a safe code (mirrors
+     * {@link #handleInvalidPasswordResetToken}).
+     */
+    @ExceptionHandler(InvalidStaffInviteTokenException.class)
+    public ResponseEntity<ErrorEnvelope> handleInvalidStaffInviteToken(InvalidStaffInviteTokenException ex,
+                                                                        HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorEnvelope.of("INVALID_TOKEN", "Staff invite link is invalid or has expired", requestId(request)));
     }
 
     /**
@@ -325,18 +342,26 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Generic conflict with a pre-canned safe message: a technician profile that already
-     * exists for this user, or a reschedule request that conflicts with the visit's current
+     * Generic conflict with a pre-canned safe message: a staff invite for an email that
+     * already has an account, or a reschedule request that conflicts with the visit's current
      * state (not schedulable, duplicate pending request, already-resolved request) — 409.
      */
     @ExceptionHandler({
-            TechnicianAlreadyExistsException.class,
+            StaffEmailAlreadyExistsException.class,
             RescheduleRequestConflictException.class
     })
     public ResponseEntity<ErrorEnvelope> handleConflict(RuntimeException ex,
                                                         HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
+    }
+
+    /** Technician profile not found (resend-invite target) — 404. */
+    @ExceptionHandler(TechnicianNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleTechnicianNotFound(TechnicianNotFoundException ex,
+                                                                   HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Technician not found", requestId(request)));
     }
 
     /** R2 storage not configured (endpoint or credentials blank) — 503. */

@@ -11,4 +11,7 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmailIgnoreCase(String email);
+
+    /** Case-insensitive existence check, mirroring the {@code idx_users_email_lower} index. */
+    boolean existsByEmailIgnoreCase(String email);
 }

@@ -65,6 +65,21 @@ public class UserQueryService {
     public record UserContact(String email, String firstName) {}
 
     /**
+     * Case-insensitive existence check for a given email address, so other domains (e.g. the
+     * technician staff-invite flow) can pre-flight a duplicate-account conflict with a curated
+     * message before attempting a create — without touching {@link UserRepository} or
+     * {@link User} directly. The DB's unique functional index remains the last line of defence
+     * against a concurrent-registration race; this is a best-effort, not atomic, check.
+     *
+     * @param email the email address to check (whitespace-trimmed before lookup)
+     * @return true if a user with this email (any case) already exists
+     */
+    @Transactional(readOnly = true)
+    public boolean existsByEmail(String email) {
+        return userRepository.existsByEmailIgnoreCase(email.strip());
+    }
+
+    /**
      * Resolves the full name + email for a user id, for the customer app's account/settings
      * page. Never includes the password hash or any other internal field.
      *

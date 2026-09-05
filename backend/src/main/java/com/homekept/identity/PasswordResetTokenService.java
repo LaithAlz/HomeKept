@@ -10,12 +10,18 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.HexFormat;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Mints, validates, and consumes password reset tokens for the forgot/reset password flow.
+ * Also reused (with a longer, caller-supplied TTL) by the technician staff-invite flow —
+ * see {@link #mint(User, Duration)}'s Javadoc — rather than standing up a second token table.
  * Mirrors {@code ActivationTokenService} — see its Javadoc for the general HMAC scheme.
  *
  * <h2>Token structure</h2>
@@ -46,27 +52,50 @@ public class PasswordResetTokenService {
     static final long TOKEN_TTL_SECONDS = 30L * 60; // 30 minutes
 
     private final PasswordResetTokenRepository tokenRepository;
+    private final UserRepository userRepository;
     private final byte[] signingKeyBytes;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public PasswordResetTokenService(PasswordResetTokenRepository tokenRepository,
+                                     UserRepository userRepository,
                                      AppProperties appProperties) {
         this.tokenRepository = tokenRepository;
+        this.userRepository = userRepository;
         String key = appProperties.jwt().signingKey();
         this.signingKeyBytes = (key != null ? key : "").getBytes(StandardCharsets.UTF_8);
     }
 
     /**
-     * Mints a new password reset token for the given user.
-     * Stores the SHA-256 hash in the DB and returns the raw token (for the reset link).
+     * Mints a new password reset token for the given user, with the standard 30-minute
+     * forgot/reset-password expiry.
      *
      * @param user the user requesting a password reset
      * @return the raw token string to embed in the reset URL (never stored)
      */
     @Transactional
     public MintResult mint(User user) {
+        return mint(user, Duration.ofSeconds(TOKEN_TTL_SECONDS));
+    }
+
+    /**
+     * Mints a new token for the given user with a caller-supplied time-to-live. Stores the
+     * SHA-256 hash in the DB and returns the raw token.
+     *
+     * <p>This table is shared by two purposes with different lifetimes: the customer
+     * forgot/reset-password flow ({@link #mint(User)}, 30 minutes) and the staff (technician)
+     * invite flow ({@code TechnicianAdminService}, 7 days — same expiry as the customer
+     * activation magic link). There is no "purpose" column; callers that need to distinguish
+     * the two (e.g. the staff-invite validate/accept endpoints) do so by also checking the
+     * resolved user's role and status — see {@code StaffInviteService}.
+     *
+     * @param user the user this token is minted for
+     * @param ttl  how long the token remains valid
+     * @return the raw token string to embed in the link (never stored)
+     */
+    @Transactional
+    public MintResult mint(User user, Duration ttl) {
         String nonce = generateNonce();
-        Instant expiresAt = Instant.now().plusSeconds(TOKEN_TTL_SECONDS);
+        Instant expiresAt = Instant.now().plus(ttl);
         long expEpoch = expiresAt.getEpochSecond();
 
         String payload = "userId=" + user.getId() + "&nonce=" + nonce + "&exp=" + expEpoch;
@@ -76,7 +105,26 @@ public class PasswordResetTokenService {
         PasswordResetToken token = new PasswordResetToken(user, hash, expiresAt);
         PasswordResetToken saved = tokenRepository.save(token);
 
-        return new MintResult(saved.getId(), rawToken);
+        return new MintResult(saved.getId(), rawToken, saved.getCreatedAt());
+    }
+
+    /**
+     * Mints a new token for a user identified only by id, with a caller-supplied
+     * time-to-live. Convenience overload for cross-domain callers (e.g. the technician
+     * domain's staff-invite flow) that have a bare {@code userId} rather than a loaded
+     * {@link User} entity — keeps {@link User}/{@link UserRepository} from crossing the
+     * identity domain boundary.
+     *
+     * @param userId the id of the user this token is minted for
+     * @param ttl    how long the token remains valid
+     * @return the raw token string to embed in the link (never stored)
+     * @throws IllegalStateException if no such user exists
+     */
+    @Transactional
+    public MintResult mint(Long userId, Duration ttl) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("User not found: " + userId));
+        return mint(user, ttl);
     }
 
     /**
@@ -102,13 +150,19 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Validates a raw reset token without consuming it.
-     * Returns a {@link ValidationResult} describing validity, user id, and reason if invalid.
+     * Validates a raw token without consuming it. Public (unlike a purely-internal helper)
+     * because the staff-invite validate endpoint needs a non-consuming check too — see
+     * {@code StaffInviteService.validate}, which additionally checks the resolved user's role
+     * and status before treating this as a legitimate invite (see {@link #mint(User, Duration)}
+     * Javadoc on why the shared table needs that extra check).
      *
-     * @param rawToken the raw token from the reset link
+     * <p>Returns a {@link ValidationResult} describing validity, user id, and reason if invalid.
+     *
+     * @param rawToken the raw token from the link
      * @return validation outcome
      */
-    private ValidationResult validate(String rawToken) {
+    @Transactional(readOnly = true)
+    public ValidationResult validate(String rawToken) {
         if (rawToken == null || rawToken.isBlank()) {
             return ValidationResult.invalid("INVALID");
         }
@@ -184,6 +238,39 @@ public class PasswordResetTokenService {
         tokenRepository.consumeAllUnconsumedForUser(result.userId(), now);
 
         return result.userId();
+    }
+
+    /**
+     * Invalidates every outstanding (unconsumed) token belonging to a user, by marking them
+     * consumed. Used by the technician admin resend-invite flow to burn a prior unconsumed
+     * invite link before minting a fresh one, so the old link stops working.
+     *
+     * @param userId the user whose outstanding tokens should be invalidated
+     */
+    @Transactional
+    public void invalidateAllForUser(Long userId) {
+        tokenRepository.consumeAllUnconsumedForUser(userId, Instant.now());
+    }
+
+    /**
+     * Returns the most recent token-mint timestamp for each of the given user ids, for the
+     * technician admin roster's {@code invitedAt} column (mirrors
+     * {@code ActivationTokenService.latestInviteAtByBookingIds}).
+     *
+     * @param userIds the user ids to resolve; may be empty
+     * @return a map from user id to the latest token's {@code createdAt}; user ids with no
+     *         token row are simply absent from the map (never mapped to null). Empty input
+     *         returns an empty map without querying the database.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Instant> latestInviteAtByUserIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return tokenRepository.findLatestCreatedAtByUserIdIn(userIds).stream()
+                .collect(Collectors.toMap(
+                        PasswordResetTokenRepository.LatestInviteAt::getUserId,
+                        PasswordResetTokenRepository.LatestInviteAt::getLatestCreatedAt));
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -264,7 +351,7 @@ public class PasswordResetTokenService {
 
     // ── Result types ──────────────────────────────────────────────────────────
 
-    public record MintResult(Long tokenId, String rawToken) {}
+    public record MintResult(Long tokenId, String rawToken, Instant createdAt) {}
 
     public record ValidationResult(boolean valid, Long userId, String reason) {
         static ValidationResult valid(Long userId) {

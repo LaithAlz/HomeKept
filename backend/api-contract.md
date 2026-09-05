@@ -95,6 +95,46 @@ subscriber (not the user) to `ACTIVE`.
 
 ---
 
+## Public staff invite (token-authed, not session-authed)
+
+Invite-by-email flow for onboarding a technician: admin invites → technician sets their
+own password. Token reuses the same table/HMAC scheme as `PasswordResetToken` (no
+dedicated staff-invite table), single-use, with a 7-day expiry.
+
+The staff invite email links to `{FRONTEND_BASE_URL}/staff/activate?token=<rawToken>`
+(token URL-encoded). The frontend staff-activation page calls
+`/api/staff/invite/validate` then `/api/staff/invite/accept` with that token.
+
+Both endpoints are IP rate-limited (10/IP/hour) — invite links leak via forwarded emails,
+same as the customer activation link.
+
+### `POST /api/staff/invite/validate`
+`{ "token": "..." }` → `200 { "valid": true, "firstName": "Priya" }`
+or `200 { "valid": false, "reason": "EXPIRED" | "USED" | "INVALID" }`
+(First name only — never the email or role.) Because the underlying token table is shared
+with the customer forgot/reset-password flow, the resolved user is independently
+re-checked for `role == TECHNICIAN` and `status == PENDING_ACTIVATION`; any other token
+(e.g. a customer's password-reset token, or a technician's own token after they've
+already accepted or been suspended) reports `"INVALID"` rather than leaking that a token
+exists for a different kind of account.
+
+### `POST /api/staff/invite/accept`
+`{ "token": "...", "password": "..." }` → validates and consumes the token, sets the
+password, flips the technician `PENDING_ACTIVATION` → `ACTIVE`, and signs them in
+(auth cookies set exactly as `/api/activation/complete` does). The role is always
+server-set to TECHNICIAN — never read from the request or the token.
+→ `201 { "userId": 9 }`
+
+**Critical guard:** accept rejects any user whose current status is not
+`PENDING_ACTIVATION` (or whose role is not TECHNICIAN) with the same generic `400
+INVALID_TOKEN` as a malformed/expired/used token — without this, a still-valid invite
+token would be a way to reactivate a SUSPENDED account or silently reset an ACTIVE
+technician's password outside the normal reset flow. If this guard rejects the request,
+the token's consumption is rolled back too (same transaction), so a rejected attempt
+never burns the token.
+
+---
+
 ## Auth
 
 | Endpoint | Body | Result |
@@ -216,8 +256,9 @@ checklist response, are not yet built.
 | `GET /api/admin/reschedule-requests` | PENDING customer reschedule requests (oldest first): `[{ id, visitId, subscriberId, status, preferredDates, adminNote, confirmedVisitId, createdAt }]` |
 | `POST /api/admin/reschedule-requests/{id}/confirm` | `{ scheduledFor: Instant, adminNote? }` — reschedules the visit (RESCHEDULED old + new SCHEDULED via the state machine), marks the request CONFIRMED with `confirmedVisitId`. 404 if missing; 409 if already resolved or the visit is not reschedulable |
 | `POST /api/admin/reschedule-requests/{id}/decline` | `{ adminNote }` (required) — marks the request DECLINED. 404 if missing; 409 if already resolved |
-| `GET /api/admin/technicians` | full technician roster (small at MVP, no pagination): `[{ id, userId, firstName, lastName, email, role, userStatus, employeeStatus, hireDate, fullyLoadedHourlyCostCents, createdAt }]`. Identity fields resolved from the `users` table via the identity domain's service; internal staff data, not customer PII |
-| `POST /api/admin/technicians` | `{ userId, fullyLoadedHourlyCostCents, employeeStatus?, hireDate? }` — onboard a technician: creates a `technician_profile` for an existing user (the user's TECHNICIAN role is managed separately). 409 if a profile already exists for that user |
+| `GET /api/admin/technicians` | full technician roster (small at MVP, no pagination): `[{ id, userId, firstName, lastName, email, role, userStatus, employeeStatus, hireDate, fullyLoadedHourlyCostCents, createdAt, invitedAt }]`. Identity fields resolved from the `users` table via the identity domain's service; internal staff data, not customer PII. `invitedAt` (`Instant`, `null` until an invite has ever been sent) is the most recently minted staff-invite token's timestamp, resolved from the shared invite-token table — same "never a frontend-only flag" semantics as the walk-through pipeline's `invitedAt` |
+| `POST /api/admin/technicians` | `{ firstName, lastName, email, phone? }` — invite a new technician by identity only (no `userId`). In one transaction: creates the `User` (TECHNICIAN, `PENDING_ACTIVATION`, an unusable random password — the account cannot authenticate until the invite is accepted), the `technician_profile` (cost/employee status/hire date left `null` — set later on a technician-edit screen, not at invite time), mints a 7-day invite token, and emails the invite link. The role is always server-set to TECHNICIAN. → `201 { id, userId, firstName, lastName, email, userStatus, invitedAt }`. `409` if a user with that email already exists (`"An account already exists for that email address."`) |
+| `POST /api/admin/technicians/{id}/invite` | Resends the staff invite for an existing technician profile (`{id}` is the `technician_profile` id, the roster row's `id` — not `userId`): invalidates that user's prior unconsumed invite tokens, then mints a fresh one and re-sends the email, in one transaction, so the old link stops working the moment the new one is sent. → `202`. Unknown `id` → `404` |
 | `GET /api/admin/dashboard` | aggregate metrics for the admin home / operational dashboard (#43): `{ activeSubscribers, mrrCents, pendingWalkthroughs, upcomingVisits }`. `mrrCents` sums the current monthly price across ACTIVE subscribers only; `pendingWalkthroughs` counts PENDING (unconfirmed) bookings; `upcomingVisits` counts SCHEDULED visits with `scheduledFor` at or after now. No "at-risk subscribers" field — there is no backing status/column for that concept yet |
 
 All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).

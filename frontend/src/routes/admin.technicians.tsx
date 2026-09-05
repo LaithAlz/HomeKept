@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { AddTechnicianSheet } from "@/components/admin/AddTechnicianSheet";
-import { useAdminTechnicians, type AdminTechnicianListItem } from "@/lib/admin";
-import { formatCentsCad } from "@/lib/format";
+import {
+  useAdminTechnicians,
+  useResendTechnicianInvite,
+  type AdminTechnicianListItem,
+} from "@/lib/admin";
+import { formatCentsCad, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/technicians")({
@@ -65,7 +70,7 @@ function TechniciansPage() {
           </p>
         </div>
         <Button size="sm" onClick={() => setAddOpen(true)}>
-          Add technician
+          Invite technician
         </Button>
       </div>
 
@@ -89,6 +94,7 @@ function TechniciansPage() {
                 <th className="px-4 py-3">Name</th>
                 <th className="px-2 py-3">Role</th>
                 <th className="px-2 py-3">Status</th>
+                <th className="px-2 py-3">Invite</th>
                 <th className="px-2 py-3">Employee status</th>
                 <th className="px-2 py-3">Hire date</th>
                 <th className="px-2 py-3 text-right">Hourly cost</th>
@@ -100,7 +106,7 @@ function TechniciansPage() {
               ))}
               {technicians.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No technicians on the roster yet.
                   </td>
                 </tr>
@@ -136,6 +142,9 @@ function TechnicianRow({ technician: t }: { technician: AdminTechnicianListItem 
           "—"
         )}
       </td>
+      <td className="px-2 py-3">
+        <InviteCell technician={t} />
+      </td>
       <td className="px-2 py-3">{humanize(t.employeeStatus)}</td>
       <td className="px-2 py-3">{formatHireDate(t.hireDate)}</td>
       <td className="px-2 py-3 text-right tabular-nums">
@@ -144,5 +153,53 @@ function TechnicianRow({ technician: t }: { technician: AdminTechnicianListItem 
           : "—"}
       </td>
     </tr>
+  );
+}
+
+/**
+ * Shows when the invite was last sent (or resent), and — only while the technician is
+ * still pending — a Resend button. Mirrors the walk-through pipeline's
+ * `invitedAt` + resend pattern (`routes/admin.walkthroughs.tsx`'s `PerformedActions`):
+ * the mutation invalidates the roster query, so the refreshed `invitedAt` from the
+ * server is the only source of truth here (no local "just resent" flag needed — the
+ * button stays visible either way while pending).
+ */
+function InviteCell({ technician: t }: { technician: AdminTechnicianListItem }) {
+  const resend = useResendTechnicianInvite();
+  const [error, setError] = useState<string | null>(null);
+  const isPending = t.userStatus === "PENDING_ACTIVATION";
+
+  function handleResend() {
+    setError(null);
+    resend.mutate(t.id, {
+      onError: () => setError("Couldn't resend the invite. Please try again."),
+    });
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="text-xs text-muted-foreground">
+        {t.invitedAt ? `Invited ${formatDateTime(t.invitedAt)}` : "—"}
+      </span>
+      {isPending && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={resend.isPending}
+          aria-busy={resend.isPending}
+          onClick={handleResend}
+        >
+          {resend.isPending && (
+            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+          )}
+          Resend invite
+        </Button>
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

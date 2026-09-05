@@ -5,6 +5,7 @@ import com.homekept.identity.exception.AuthenticationException;
 import com.homekept.identity.exception.InvalidPasswordChangeRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
+import com.homekept.identity.exception.InvalidStaffInviteTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
 import com.homekept.identity.exception.TokenException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -164,9 +165,23 @@ public class AuthService {
     @Transactional
     public User createUser(String email, String rawPassword, String firstName, String lastName,
                            Role role, UserStatus initialStatus) {
+        return createUser(email, rawPassword, firstName, lastName, null, role, initialStatus);
+    }
+
+    /**
+     * Same as {@link #createUser(String, String, String, String, Role, UserStatus)} but also
+     * sets the optional phone number — used by the technician staff-invite flow
+     * ({@code TechnicianAdminService}), which collects a phone at invite time.
+     *
+     * @param phone the user's phone number, or null/blank if not supplied
+     */
+    @Transactional
+    public User createUser(String email, String rawPassword, String firstName, String lastName,
+                           String phone, Role role, UserStatus initialStatus) {
         String hash = passwordEncoder.encode(rawPassword);
         User user = new User(email.strip().toLowerCase(java.util.Locale.ROOT),
                 hash, firstName, lastName, role, initialStatus);
+        user.setPhone(phone);
         return userRepository.save(user);
     }
 
@@ -300,6 +315,37 @@ public class AuthService {
         refreshTokenService.revokeAll(user.getId());
 
         return issueTokensFor(user);
+    }
+
+    /**
+     * Completes a staff (technician) invite acceptance: sets the chosen password and flips
+     * the invited user from {@link UserStatus#PENDING_ACTIVATION} to {@link UserStatus#ACTIVE}.
+     *
+     * <p><b>Critical guard:</b> rejects any user who is not currently a {@link Role#TECHNICIAN}
+     * in {@link UserStatus#PENDING_ACTIVATION}. Without this, a still-valid (unexpired,
+     * unconsumed) invite token could be replayed to reactivate a SUSPENDED account or to
+     * silently reset an already-ACTIVE technician's password outside the normal reset flow.
+     * Called only after the caller ({@code StaffInviteService.accept}) has already validated
+     * and consumed the invite token in the same {@code @Transactional} method — if this guard
+     * throws, that token consumption is rolled back too, so a rejected attempt does not burn
+     * a token that might otherwise have belonged to some other, unrelated flow.
+     *
+     * @param userId      the user id resolved from the (already-consumed) invite token
+     * @param rawPassword the plaintext password chosen by the technician (bcrypt-hashed here)
+     * @return the now-ACTIVE user
+     * @throws InvalidStaffInviteTokenException if the user does not exist, is not a
+     *         TECHNICIAN, or is not currently PENDING_ACTIVATION
+     */
+    @Transactional
+    public User activateInvitedTechnician(Long userId, String rawPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new InvalidStaffInviteTokenException("INVALID"));
+        if (user.getRole() != Role.TECHNICIAN || user.getStatus() != UserStatus.PENDING_ACTIVATION) {
+            throw new InvalidStaffInviteTokenException("INVALID");
+        }
+        user.setPasswordHash(passwordEncoder.encode(rawPassword));
+        user.setStatus(UserStatus.ACTIVE);
+        return userRepository.save(user);
     }
 
     /**
