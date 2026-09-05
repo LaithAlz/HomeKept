@@ -15,7 +15,7 @@ import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 /**
- * Append-only per-visit activity log (V14 migration) — mirrors
+ * Append-only per-visit activity log (V16 migration) — mirrors
  * {@link com.homekept.subscription.SubscriptionEvent} deliberately (same
  * id / entity_id / event_type / payload / source / created_at shape).
  *

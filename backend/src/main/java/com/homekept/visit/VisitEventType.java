@@ -4,7 +4,7 @@ package com.homekept.visit;
  * Known {@code visit_event.event_type} string literals shared by this domain's producers
  * ({@link VisitAdminService}, {@link RescheduleService}).
  *
- * <p>Per the V14 migration comment, {@code event_type} is deliberately NOT a DB-level
+ * <p>Per the V16 migration comment, {@code event_type} is deliberately NOT a DB-level
  * enum/CHECK — a new kind of event should never require a migration. This class is just a
  * convenience so the two current producers don't duplicate the same string literals; it is
  * NOT an exhaustive list and callers must not treat it as one (e.g. {@link

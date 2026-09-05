@@ -1,6 +1,5 @@
 package com.homekept.visit.dto;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
 
@@ -30,7 +29,13 @@ import java.time.Instant;
  * list (heavy) that {@link AdminVisitResponse} carries — those belong to the single-visit
  * detail view ({@code AdminVisitDetail}).
  */
-@JsonInclude(JsonInclude.Include.NON_NULL)
+// Deliberately NOT @JsonInclude(NON_NULL). This is a pre-existing DTO with a live
+// consumer: the admin Routes dispatch board reads `technicianId === null` to find
+// unassigned visits, group them, sort them first, and flag them. Omitting the key instead
+// of sending null turns every one of those checks into `undefined`, which silently renders
+// "Technician #undefined" and a zeroed unassigned counter rather than failing loudly.
+// It also matches the documented convention in api-contract.md: the booking, visit and
+// technician DTOs send explicit nulls, and only the subscriber DTOs omit.
 public record AdminVisitListItem(
         Long id,
         Long subscriberId,
