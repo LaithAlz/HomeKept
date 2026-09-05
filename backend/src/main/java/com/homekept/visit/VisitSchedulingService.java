@@ -35,28 +35,40 @@ import java.util.List;
  * <h2>Idempotency</h2>
  * <p>Idempotency is per-template <em>and per-occurrence</em>, not per-subscriber and not
  * unbounded: for each of the subscriber's tier-eligible templates that falls in the lookahead
- * window, a visit is created only if the subscriber doesn't already have one tied to that
- * template <em>for this same yearly occurrence</em> ({@link
- * VisitRepository#existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear}, any status,
- * keyed on {@link Visit#getTemplateOccurrenceYear()}). Templates whose occurrence already has a
- * visit are skipped; templates newly inside the window (because time has passed since the last
- * call) still get one. This keeps the Stripe webhook safe to retry (a replay finds every
- * in-window template's occurrence already has a visit and creates nothing new) while also
- * letting {@link VisitTopUpScheduler} call this method repeatedly, over months, to keep the
- * rolling window populated as it advances.
+ * window, a visit is created only if the subscriber doesn't already have one that counts as
+ * this same yearly occurrence ({@link
+ * VisitRepository#existsAlreadyScheduledForOccurrence}, any status). Templates whose
+ * occurrence already has a visit are skipped; templates newly inside the window (because time
+ * has passed since the last call) still get one. This keeps the Stripe webhook safe to retry
+ * (a replay finds every in-window template's occurrence already has a visit and creates
+ * nothing new) while also letting {@link VisitTopUpScheduler} call this method repeatedly,
+ * over months, to keep the rolling window populated as it advances.
  *
- * <p><strong>This guard used to be window-scoped instead</strong> — a visit counted as
- * "already scheduled" if its {@code scheduledFor} fell inside {@code [today, windowEnd)} —
- * which only worked because a reschedule used to leave the original row in place and add a
- * replacement, so one row was always still sitting inside the window. That broke once
- * reschedule started updating the single visit row in place (V16): a visit rescheduled outside
- * the window, in either direction (pushed forward past the lookahead, or moved to a past date),
- * would make the old guard go false and this method would create a duplicate for the same
- * occurrence — the customer double-booked, and the admin list carrying exactly the extra row
- * in-place reschedule existed to remove. The guard is now keyed on {@code
- * templateOccurrenceYear} (V17 migration) instead of {@code scheduledFor}, a value a reschedule
- * MUST NEVER write (see {@link Visit#getTemplateOccurrenceYear()}'s javadoc), so moving a visit
- * cannot make its occurrence invisible to this check.
+ * <p><strong>This guard used to be window-scoped only</strong> — a visit counted as "already
+ * scheduled" if its {@code scheduledFor} fell inside {@code [today, windowEnd)} — which only
+ * worked because a reschedule used to leave the original row in place and add a replacement,
+ * so one row was always still sitting inside the window. That broke once reschedule started
+ * updating the single visit row in place (V16): a visit rescheduled outside the window, in
+ * either direction (pushed forward past the lookahead, or moved to a past date), would make
+ * the old guard go false and this method would create a duplicate for the same occurrence —
+ * the customer double-booked, and the admin list carrying exactly the extra row in-place
+ * reschedule existed to remove.
+ *
+ * <p>The guard is now keyed on {@code templateOccurrenceYear} (V17) for any visit that has
+ * one — a value a reschedule MUST NEVER move once it's set (see
+ * {@link Visit#getTemplateOccurrenceYear()}'s javadoc), so moving a visit cannot make its
+ * occurrence invisible to this check. But V17 deliberately does NOT backfill this column: a
+ * migration cannot verify that no pre-V16 reschedule ever landed a replacement visit's {@code
+ * scheduledFor} in a different calendar year than the occurrence it actually was, so guessing
+ * a year from {@code scheduledFor} at backfill time risked stamping the WRONG year and
+ * silently suppressing a real future occurrence forever — worse than the bug it would have
+ * fixed. So every pre-V17 row starts {@code NULL}, and the guard falls back to the old
+ * window rule for exactly those rows (see {@link VisitRepository#existsAlreadyScheduledForOccurrence}
+ * for the two-branch query). That fallback is correct for a {@code NULL}-year row because such
+ * a row, by construction, has never had {@code scheduledFor} moved in place since V16/V17
+ * shipped — a legacy row gets its occurrence year assigned lazily, from wherever it currently
+ * sits, the first time it IS rescheduled in place (see {@code VisitAdminService#rescheduleInternal}),
+ * at which point it graduates to the year-keyed branch above for good.
  *
  * <p>The per-occurrence (rather than unbounded "ever") scope still matters because
  * {@link VisitTemplate templates} recur <em>annually</em> — one row per (month, min tier) — so
@@ -156,6 +168,12 @@ public class VisitSchedulingService {
         LocalDate today = LocalDate.now(renderZoneId);
         LocalDate windowEnd = today.plusMonths(LOOKAHEAD_MONTHS);
 
+        // Instant bounds of the current window (start-of-day in the render zone). Used ONLY
+        // by the guard's legacy (NULL-occurrence-year) fallback branch below — see class
+        // Javadoc "Idempotency" and VisitRepository#existsAlreadyScheduledForOccurrence.
+        Instant windowStartInstant = today.atStartOfDay(renderZoneId).toInstant();
+        Instant windowEndInstant = windowEnd.atStartOfDay(renderZoneId).toInstant();
+
         List<Visit> createdVisits = new ArrayList<>();
         int alreadyScheduled = 0;
 
@@ -167,19 +185,19 @@ public class VisitSchedulingService {
             }
 
             // The occurrence year is the Toronto-local calendar year of the candidate date
-            // itself (which becomes scheduledFor's date component below) — matches exactly
-            // how the V17 migration's backfill derives templateOccurrenceYear for existing
-            // rows (EXTRACT(YEAR FROM scheduled_for AT TIME ZONE 'America/Toronto')).
+            // itself (which becomes scheduledFor's date component below).
             int occurrenceYear = candidateDate.getYear();
 
             // Per-template, per-occurrence idempotency guard (see class Javadoc
             // "Idempotency"): skip only this template if the subscriber already has a visit
-            // tied to this exact yearly occurrence of it — other eligible templates newly in
-            // the window still get scheduled, and next year's occurrence of this same
-            // template (a different occurrenceYear) schedules again regardless of where this
+            // that counts as this exact yearly occurrence of it (either a year-tagged visit
+            // for this occurrence, or an untagged legacy visit sitting in the window) — other
+            // eligible templates newly in the window still get scheduled, and next year's
+            // occurrence of this same template schedules again regardless of where this
             // year's visit currently sits.
-            if (visitRepository.existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
-                    subscriber.getId(), template.getId(), occurrenceYear)) {
+            if (visitRepository.existsAlreadyScheduledForOccurrence(
+                    subscriber.getId(), template.getId(), occurrenceYear,
+                    windowStartInstant, windowEndInstant)) {
                 alreadyScheduled++;
                 continue;
             }

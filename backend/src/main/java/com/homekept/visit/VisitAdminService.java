@@ -168,9 +168,9 @@ public class VisitAdminService {
         );
         // templateOccurrenceYear stays null: it identifies which yearly occurrence of a
         // TEMPLATE this visit is, and this visit has no template. The scheduling guard
-        // (VisitRepository#existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear)
-        // is keyed on visitTemplateId too, so a null-template row like this one is never a
-        // candidate match regardless — there is nothing to set it TO even if we wanted to.
+        // (VisitRepository#existsAlreadyScheduledForOccurrence) is keyed on visitTemplateId
+        // too, so a null-template row like this one is never a candidate match regardless —
+        // there is nothing to set it TO even if we wanted to.
 
         if (request.technicianUserId() != null) {
             visit.setTechnicianId(request.technicianUserId());
@@ -499,12 +499,21 @@ public class VisitAdminService {
      * reporting this as an attempted transition to {@code RESCHEDULED} would tell the
      * operator they tried something no code path can actually do), same as before.
      *
-     * <p><strong>This method (and every caller of it) must NEVER write
-     * {@code templateOccurrenceYear}.</strong> That field identifies which occurrence of a
-     * template a visit IS, not where it currently sits on the calendar — the whole point of
-     * the V17 migration is that it survives exactly this method moving {@code scheduledFor}
-     * around. Touching it here would silently reintroduce the double-booking bug it fixes
-     * (see {@link VisitSchedulingService} class Javadoc "Idempotency").
+     * <p><strong>This method must NEVER MOVE an already-recorded {@code
+     * templateOccurrenceYear}.</strong> That field identifies which occurrence of a template
+     * a visit IS, not where it currently sits on the calendar — the whole point of the V17
+     * migration is that it survives exactly this method moving {@code scheduledFor} around.
+     * Overwriting an existing value here would silently reintroduce the double-booking bug it
+     * fixes (see {@link VisitSchedulingService} class Javadoc "Idempotency"). This is
+     * deliberately NOT the same rule as "never touch the field": V17 does not backfill, so a
+     * legacy visit (one that predates the column, or one created before its first in-place
+     * reschedule) can arrive here with a {@code null} occurrence year and a template. For
+     * exactly that case — {@code null} AND templated — this method assigns the year ONCE,
+     * inferred from the visit's CURRENT {@code scheduledFor} (rendered in the render zone)
+     * BEFORE overwriting it. That instant is the last moment {@code scheduledFor} is still
+     * guaranteed to BE the occurrence (the row has never been moved in place before now), so
+     * it's the correct and only safe moment to infer it — see the V17 migration's comment
+     * block. A visit with no template, or one that already has a recorded year, is untouched.
      */
     private Visit rescheduleInternal(Visit visit, Instant newScheduledFor, Long technicianUserId,
                                      Long actingUserId, VisitEventSource source) {
@@ -513,8 +522,22 @@ public class VisitAdminService {
         }
 
         Instant oldScheduledFor = visit.getScheduledFor();
-        // Only scheduledFor (and, below, technicianId) move. templateOccurrenceYear is
-        // deliberately never read or written here — see this method's javadoc.
+
+        // Lazy occurrence-year assignment for a legacy row (see this method's javadoc): a
+        // templated visit that has never had its occurrence recorded gets it ONCE, now, from
+        // where it currently sits — the last instant that's still guaranteed to be true.
+        // Every subsequent reschedule of this row takes the branch below instead (year
+        // already set, never overwritten).
+        if (visit.getVisitTemplateId() != null && visit.getTemplateOccurrenceYear() == null) {
+            int inferredOccurrenceYear = oldScheduledFor.atZone(renderZoneId).getYear();
+            visit.setTemplateOccurrenceYear(inferredOccurrenceYear);
+            log.info("visit_occurrence_year_inferred_on_reschedule visitId={} occurrenceYear={}",
+                    visit.getId(), inferredOccurrenceYear);
+        }
+
+        // Only scheduledFor (and, below, technicianId) move. An already-recorded
+        // templateOccurrenceYear is deliberately never re-read or overwritten past this point
+        // — see this method's javadoc.
         visit.setScheduledFor(newScheduledFor);
 
         Long oldTechnicianId = visit.getTechnicianId();

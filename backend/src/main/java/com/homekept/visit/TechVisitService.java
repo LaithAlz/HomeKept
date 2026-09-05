@@ -607,6 +607,13 @@ public class TechVisitService {
         );
         // Carry the technician assignment forward.
         followUp.setTechnicianId(visit.getTechnicianId());
+        // Carry the occurrence forward too: a follow-up IS the same occurrence as the
+        // INCOMPLETE visit it replaces (the original just didn't get finished), not a new
+        // one — so it inherits the SAME templateOccurrenceYear rather than getting one
+        // inferred fresh. If the original had none recorded (a legacy, never-rescheduled
+        // visit), this is simply null, same as the original — no different from any other
+        // template-driven visit awaiting its first in-place reschedule.
+        followUp.setTemplateOccurrenceYear(visit.getTemplateOccurrenceYear());
 
         Visit savedFollowUp = visitRepository.save(followUp);
 

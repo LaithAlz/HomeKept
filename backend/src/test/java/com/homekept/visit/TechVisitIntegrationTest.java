@@ -51,7 +51,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>start → IN_PROGRESS; wrong tech → 404; illegal state → 409.</li>
  *   <li>checklist tick updates the row; cross-visit visitServiceId → 404.</li>
  *   <li>complete from IN_PROGRESS → COMPLETED, fields persisted; complete from SCHEDULED → 409.</li>
- *   <li>incomplete from IN_PROGRESS → INCOMPLETE + follow-up SCHEDULED visit created.</li>
+ *   <li>incomplete from IN_PROGRESS → INCOMPLETE + follow-up SCHEDULED visit created; a
+ *       templated visit's follow-up inherits its {@code templateOccurrenceYear} (it's the
+ *       same occurrence, not a new one).</li>
  *   <li>flags POST creates an OPEN flag with the subscriber from the visit.</li>
  *   <li>Authz: anon → 401; CUSTOMER → 403; wrong-tech visit → 404.</li>
  * </ul>
@@ -565,6 +567,44 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         assertThat(followUp.getSubscriberId()).isEqualTo(subscriber.getId());
         // Follow-up is in the future.
         assertThat(followUp.getScheduledFor()).isAfter(Instant.now());
+    }
+
+    /**
+     * The follow-up visit created by an INCOMPLETE must inherit the ORIGINAL visit's
+     * {@code templateOccurrenceYear} rather than getting none (or a freshly inferred one) —
+     * a follow-up IS the same occurrence as the visit it replaces, not a new one. Without
+     * this, a template's follow-up chain would mint templated NULL-year rows forever,
+     * falsifying the invariant that a NULL year means "no template, or predates V17"
+     * ({@link Visit#getTemplateOccurrenceYear()}).
+     */
+    @Test
+    void incompleteVisit_templatedVisit_followUpInheritsOccurrenceYear() throws Exception {
+        Long templateId = fallWinterizationTemplateId();
+        Visit templatedVisit = visitRepository.save(new Visit(
+                subscriber.getId(), property.getId(), templateId,
+                todayVisit.getScheduledFor(), 120, VisitType.ROUTINE));
+        templatedVisit.setTechnicianId(techUser.getId());
+        templatedVisit.setTemplateOccurrenceYear(2026);
+        templatedVisit = visitRepository.save(templatedVisit);
+
+        mockMvc.perform(post(START_URL, templatedVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(post(INCOMPLETE_URL, templatedVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"No access — owner not home\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.followUpVisitId").isNumber())
+                .andReturn();
+
+        Long followUpId = idFrom(result, "$.followUpVisitId");
+        Visit followUp = visitRepository.findById(followUpId).orElseThrow();
+        assertThat(followUp.getVisitTemplateId()).isEqualTo(templateId);
+        assertThat(followUp.getTemplateOccurrenceYear())
+                .as("a follow-up is the SAME occurrence as the INCOMPLETE visit it replaces")
+                .isEqualTo(2026);
     }
 
     // ── POST /api/tech/visits/{id}/flags ──────────────────────────────────────

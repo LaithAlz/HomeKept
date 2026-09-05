@@ -39,6 +39,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>The {@code templateOccurrenceYear}-keyed guard survives an in-place reschedule that
  *       pushes a visit outside the lookahead window (forward or into the past) — the
  *       regression this class exists to pin down after V16/V17.</li>
+ *   <li>The legacy (NULL {@code templateOccurrenceYear}) path: V17 does not backfill, so an
+ *       untagged, in-window row must still read as "already scheduled" via the guard's
+ *       window fallback, must get its occurrence assigned from where it WAS on its first
+ *       in-place reschedule, and from that point on must survive being pushed outside the
+ *       window exactly like a row that was always tagged.</li>
  * </ul>
  *
  * <p>Expected counts are derived at runtime by calling the same package-local helper
@@ -459,16 +464,127 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
                 .as("reschedule must never change which occurrence a visit is recorded as")
                 .isEqualTo(occurrenceYear);
 
+        // Window bounds are irrelevant here — this visit already has a non-null occurrence
+        // year, so the guard's year-match branch decides the outcome regardless of what these
+        // are (they only matter for the NULL-year legacy fallback, exercised separately
+        // below). Computed for realism anyway, matching how the service derives them.
+        LocalDate today = LocalDate.now(TORONTO);
+        Instant windowStart = today.atStartOfDay(TORONTO).toInstant();
+        Instant windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS).atStartOfDay(TORONTO).toInstant();
+
         // Next year's occurrence guard is untouched by the move: the far-forward visit is
         // still tagged with THIS year's occurrence, so it cannot shadow next year's.
-        assertThat(visitRepository.existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
-                subscriber.getId(), templateId, occurrenceYear + 1))
+        assertThat(visitRepository.existsAlreadyScheduledForOccurrence(
+                subscriber.getId(), templateId, occurrenceYear + 1, windowStart, windowEnd))
                 .as("a visit moved far forward must not appear to satisfy next year's occurrence")
                 .isFalse();
         // And this year's occurrence is still correctly recognized as already scheduled.
-        assertThat(visitRepository.existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
-                subscriber.getId(), templateId, occurrenceYear))
+        assertThat(visitRepository.existsAlreadyScheduledForOccurrence(
+                subscriber.getId(), templateId, occurrenceYear, windowStart, windowEnd))
                 .isTrue();
+    }
+
+    // ── Legacy (NULL templateOccurrenceYear) rows — the V17 no-backfill fallback ─
+
+    /**
+     * V17 does not backfill: every visit that existed before the column shipped has
+     * {@code templateOccurrenceYear == null}, and stays that way until its first in-place
+     * reschedule. The guard's fallback branch must treat such a row, sitting inside the
+     * current lookahead window, as "already scheduled" — the pre-V16 rule, which is correct
+     * for a row that (by definition of being untagged) has never been moved in place. Without
+     * this fallback every legacy row would be invisible to the guard and get duplicated on
+     * the very next top-up run: the original bug, now aimed at existing customers instead of
+     * new ones.
+     */
+    @Test
+    void scheduleInitialVisits_legacyNullOccurrenceVisitInWindow_isNotDuplicated() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-legacy-null@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        assertThat(inWindow).isNotEmpty();
+
+        VisitTemplate template = inWindow.get(0);
+
+        // A legacy row: templated, in-window, but no occurrence year recorded — exactly what
+        // every visit looked like before V17, and what an untouched one looks like today.
+        Visit legacyVisit = visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), template.getId(),
+                Instant.now().plus(Duration.ofDays(30)),
+                120, VisitType.ROUTINE));
+        assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        long countForTemplate = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .filter(v -> template.getId().equals(v.getVisitTemplateId()))
+                .count();
+        assertThat(countForTemplate)
+                .as("a legacy in-window visit with no recorded occurrence year must not be duplicated")
+                .isEqualTo(1);
+    }
+
+    /**
+     * The full legacy lifecycle, end to end — the path the reviewer flagged as the one that
+     * matters most. A NULL-year row gets its occurrence assigned lazily, exactly once, on its
+     * first in-place reschedule, computed from where {@code scheduledFor} sits at that moment
+     * (the last instant that's still guaranteed to be the true occurrence) — NOT from where
+     * the reschedule moves it to. From that point on it behaves exactly like a row that was
+     * always tagged: the top-up guard survives it being pushed outside the lookahead window.
+     */
+    @Test
+    void topUp_legacyVisitRescheduledOutsideWindow_assignsOccurrenceFromOldDate_doesNotDuplicate() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-legacy-reschedule@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        assertThat(inWindow).isNotEmpty();
+        VisitTemplate template = inWindow.get(0);
+
+        Instant originalScheduledFor = Instant.now().plus(Duration.ofDays(30));
+        int expectedOccurrenceYear = originalScheduledFor.atZone(TORONTO).getYear();
+
+        Visit legacyVisit = visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), template.getId(),
+                originalScheduledFor, 120, VisitType.ROUTINE));
+        assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
+
+        // Push it far outside the window — same "customer asks to move it" scenario as the
+        // non-legacy regression tests above, but starting from a NULL occurrence year.
+        Instant farFuture = Instant.now().plus(Duration.ofDays(400));
+        visitAdminService.rescheduleVisit(legacyVisit.getId(), farFuture, null, VisitEventSource.ADMIN);
+
+        Visit reloaded = visitRepository.findById(legacyVisit.getId()).orElseThrow();
+        assertThat(reloaded.getScheduledFor()).isEqualTo(farFuture);
+        // Assigned from where it WAS (originalScheduledFor's year) — never from where the
+        // reschedule moved it to.
+        assertThat(reloaded.getTemplateOccurrenceYear())
+                .as("a legacy row's occurrence year must be inferred from where it was, not where it moved to")
+                .isEqualTo(expectedOccurrenceYear);
+
+        // Nightly top-up: the now-year-tagged visit must not be duplicated even though it
+        // currently sits outside the window.
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        long countForTemplate = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .filter(v -> template.getId().equals(v.getVisitTemplateId()))
+                .count();
+        assertThat(countForTemplate)
+                .as("a legacy visit, once rescheduled and assigned an occurrence year, must not be "
+                        + "duplicated after moving outside the window")
+                .isEqualTo(1);
     }
 
     // ── No-plan-tier guard ────────────────────────────────────────────────────
