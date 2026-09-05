@@ -1,31 +1,34 @@
 package com.homekept.technician.dto;
 
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-
-import java.time.LocalDate;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
- * Request body for {@code POST /api/admin/technicians}.
+ * Request body for {@code POST /api/admin/technicians} — invite a new technician by
+ * identity only (name, email, optional phone). The account is created
+ * {@code PENDING_ACTIVATION} with an unusable random password; the invited person sets
+ * their own password via the staff-invite accept link ({@code StaffInviteController}). The
+ * role is always server-set to TECHNICIAN — never read from this request.
  *
- * <p>Role assignment to TECHNICIAN is the founder's concern (done at the identity layer
- * before calling this endpoint) — this endpoint only creates the
- * {@code technician_profile} row for an existing user who already has the TECHNICIAN role.
- *
- * <p>{@code fullyLoadedHourlyCostCents} is in integer cents. Set a notional value from
- * day 1 so per-visit unit economics are real numbers from the first visit.
+ * <p>{@code fullyLoadedHourlyCostCents}, {@code employeeStatus}, and {@code hireDate} are
+ * deliberately not on this form — they belong on a later technician-edit screen (not yet
+ * built), not the invite step.
  */
 public record CreateTechnicianRequest(
-        @NotNull Long userId,
+        @NotBlank(message = "First name is required")
+        @Size(max = 100, message = "First name must be 100 characters or fewer")
+        String firstName,
 
-        /**
-         * Fully-loaded hourly cost in integer cents (salary + benefits + overhead).
-         * Nullable at onboarding time — update via a separate admin endpoint or DB patch
-         * once the cost is known.
-         */
-        @Positive Integer fullyLoadedHourlyCostCents,
+        @NotBlank(message = "Last name is required")
+        @Size(max = 100, message = "Last name must be 100 characters or fewer")
+        String lastName,
 
-        String employeeStatus,
+        @NotBlank(message = "Email is required")
+        @Email(message = "Must be a valid email address")
+        @Size(max = 255, message = "Email must be 255 characters or fewer")
+        String email,
 
-        LocalDate hireDate
+        @Size(max = 30, message = "Phone must be 30 characters or fewer")
+        String phone
 ) {}

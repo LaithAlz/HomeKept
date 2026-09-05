@@ -41,6 +41,19 @@ public final class EmailTemplates {
                         "Activate my membership", activationUrl));
     }
 
+    /**
+     * Staff (technician) invite link (7-day expiry). Second person, plain, one sentence of
+     * context, the link, and the expiry — no password, no role, no ids anywhere in the body.
+     */
+    public static RenderedEmail staffInvite(String firstName, String inviteUrl) {
+        String body = paragraph("You've been invited to join the HomeKept team. Set your "
+                + "password to get started. This link expires in 7 days.");
+        return new RenderedEmail(
+                "Set up your HomeKept staff account",
+                layout("You're invited to HomeKept", greeting(firstName) + body,
+                        "Set my password", inviteUrl, "your HomeKept staff account"));
+    }
+
     /** Welcome, on PENDING_ACTIVATION → ACTIVE. */
     public static RenderedEmail welcome(String firstName, String dashboardUrl) {
         String body = paragraph("Your membership is active. We'll look after the seasonal "

@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -58,16 +57,19 @@ public class AuthController {
     private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
     private final LoginIpRateLimiter loginIpRateLimiter;
     private final ChangePasswordRateLimiter changePasswordRateLimiter;
+    private final ResetPasswordRateLimiter resetPasswordRateLimiter;
 
     public AuthController(AuthService authService, CookieHelper cookieHelper,
                           ForgotPasswordRateLimiter forgotPasswordRateLimiter,
                           LoginIpRateLimiter loginIpRateLimiter,
-                          ChangePasswordRateLimiter changePasswordRateLimiter) {
+                          ChangePasswordRateLimiter changePasswordRateLimiter,
+                          ResetPasswordRateLimiter resetPasswordRateLimiter) {
         this.authService = authService;
         this.cookieHelper = cookieHelper;
         this.forgotPasswordRateLimiter = forgotPasswordRateLimiter;
         this.loginIpRateLimiter = loginIpRateLimiter;
         this.changePasswordRateLimiter = changePasswordRateLimiter;
+        this.resetPasswordRateLimiter = resetPasswordRateLimiter;
     }
 
     /**
@@ -218,30 +220,27 @@ public class AuthController {
 
     /**
      * POST /api/auth/reset
-     * Consumes the reset token, sets the new password, and revokes all the user's refresh
-     * tokens. Fresh auth cookies (auto-sign-in) are set only if the user is ACTIVE — see
-     * {@link AuthService#resetPassword}. Always 200 either way: the password change itself
-     * succeeds regardless of auto-sign-in eligibility.
+     * Rate-limited: 5 attempts per IP per hour (same shape as {@code /api/auth/forgot} — this
+     * was previously the only public auth-mutating endpoint with no throttle at all).
      *
-     * <p>Response body {@code { "signedIn": boolean }} tells the caller whether fresh
-     * cookies were set. When {@code false}, this endpoint also clears any auth cookies the
-     * requesting browser already held: a browser can arrive here holding a *different*
-     * account's stale session (e.g. an admin resetting a customer's password on their
-     * behalf, or two accounts sharing a browser), and leaving that stale session in place
-     * would let the frontend route the person into the wrong console after the reset.
+     * <p>Consumes the reset token, sets the new password, revokes all the user's refresh
+     * tokens, and signs the user back in — see {@link AuthService#resetPassword} for the
+     * purpose and ACTIVE-status guards. A rejected reset (wrong purpose, non-ACTIVE account,
+     * or an ordinarily-invalid token) is a {@code 400 INVALID_TOKEN} and never reaches this
+     * method's cookie-setting code, so a failed attempt cannot disturb any cookies already on
+     * the request.
      */
     @PostMapping("/reset")
     public ResponseEntity<ResetPasswordResponse> reset(@Valid @RequestBody ResetPasswordRequest request,
                                       HttpServletRequest httpRequest,
                                       HttpServletResponse httpResponse) {
-        Optional<AuthService.TokenPair> tokens = authService.resetPassword(request.token(), request.password());
-        if (tokens.isPresent()) {
-            AuthService.TokenPair t = tokens.get();
-            cookieHelper.setAuthCookies(httpResponse, t.accessToken(), t.refreshToken(), httpRequest.isSecure());
-        } else {
-            cookieHelper.clearAuthCookies(httpResponse, httpRequest.isSecure());
+        String ip = ClientIpResolver.resolve(httpRequest);
+        if (!resetPasswordRateLimiter.tryConsume(ip)) {
+            throw new RateLimitExceededException();
         }
-        return ResponseEntity.ok(new ResetPasswordResponse(tokens.isPresent()));
+        AuthService.TokenPair tokens = authService.resetPassword(request.token(), request.password());
+        cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(), httpRequest.isSecure());
+        return ResponseEntity.ok(new ResetPasswordResponse(true));
     }
 
     /**

@@ -1,25 +1,17 @@
 /**
- * Add technician sheet — onboards a `technician_profile` for a user who already
- * exists and already has the TECHNICIAN role (role assignment happens separately,
- * outside this form — see `POST /api/admin/technicians`, api-contract.md line 206).
- *
- * There is currently no admin UI to create the technician *user* itself (no invite
- * or "create staff account" flow) — that's a real product gap, not something this
- * form can paper over. See the report for this issue for a flagged follow-up.
+ * Add technician sheet — invites a new technician by identity only (first name, last
+ * name, email, optional phone). `POST /api/admin/technicians` creates the account
+ * PENDING_ACTIVATION with an unusable password and emails a staff-invite link; the
+ * invited person sets their own password there (see `routes/staff.activate.tsx`) —
+ * there is no admin-set temporary password. The role is always server-set to
+ * TECHNICIAN; hourly cost, employee status, and hire date are set later on a
+ * technician-edit screen, not here.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -28,61 +20,47 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ApiError } from "@/lib/api";
-import {
-  EMPLOYEE_STATUS_OPTIONS,
-  useCreateTechnician,
-  type CreateTechnicianRequest,
-} from "@/lib/admin";
+import { EMAIL_RE } from "@/lib/booking";
+import { useCreateTechnician, type CreateTechnicianRequest } from "@/lib/admin";
 
 interface AddTechnicianFormData {
-  userId: string;
-  hourlyCostDollars: string;
-  employeeStatus: string;
-  hireDate: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
 }
 
 const EMPTY_FORM: AddTechnicianFormData = {
-  userId: "",
-  hourlyCostDollars: "",
-  employeeStatus: "",
-  hireDate: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
 };
 
-type FieldErrors = Partial<Record<"userId" | "hourlyCostDollars", string>>;
+type FieldErrors = Partial<Record<keyof AddTechnicianFormData, string>>;
 
 function validate(f: AddTechnicianFormData): FieldErrors {
   const errs: FieldErrors = {};
-  const userId = Number(f.userId.trim());
-  if (!f.userId.trim() || !Number.isInteger(userId) || userId <= 0) {
-    errs.userId = "Enter a valid user id";
-  }
-  const dollars = Number.parseFloat(f.hourlyCostDollars.trim());
-  if (!f.hourlyCostDollars.trim() || Number.isNaN(dollars) || dollars <= 0) {
-    errs.hourlyCostDollars = "Enter the fully loaded hourly cost";
-  }
+  if (!f.firstName.trim()) errs.firstName = "Enter a first name";
+  if (!f.lastName.trim()) errs.lastName = "Enter a last name";
+  if (!EMAIL_RE.test(f.email.trim())) errs.email = "Enter a valid email address";
   return errs;
 }
 
 /**
- * Both a nonexistent `userId` and an already-onboarded `userId` currently surface
- * as the same 409 CONFLICT from the backend (a DB FK violation for the former, the
- * dedicated `TechnicianAlreadyExistsException` for the latter — see
- * `GlobalExceptionHandler.handleDataIntegrity`/`handleConflict`). The two are told
- * apart here by matching on the duplicate-profile message text; anything else on a
- * 409 is the FK-violation path, i.e. no such user.
+ * 409 (duplicate email) shows the backend's curated message verbatim; 400 with field
+ * errors maps them onto the matching inputs (the backend's field names already match
+ * this form's keys 1:1); any other 400 falls back to the backend's message; anything
+ * else is the generic line.
  */
-function describeError(err: unknown): string {
+function describeError(err: unknown, setFieldErrors: (e: FieldErrors) => void): string | null {
   if (err instanceof ApiError) {
     if (err.status === 409) {
-      return err.message.toLowerCase().includes("already exists")
-        ? "That user already has a technician profile."
-        : "No user with that id.";
-    }
-    if (err.status === 404) {
-      return "No user with that id.";
+      return err.message;
     }
     if (err.status === 400 && err.fields && Object.keys(err.fields).length > 0) {
-      return Object.values(err.fields).join(" ");
+      setFieldErrors(err.fields as FieldErrors);
+      return null;
     }
     if (err.status === 400) {
       return err.message;
@@ -115,9 +93,9 @@ export function AddTechnicianSheet({
     setData((d) => ({ ...d, ...updates }));
     const keys = Object.keys(updates) as (keyof AddTechnicianFormData)[];
     setErrors((prev) => {
-      if (!keys.some((k) => k in prev && prev[k as keyof FieldErrors])) return prev;
+      if (!keys.some((k) => prev[k])) return prev;
       const next = { ...prev };
-      for (const k of keys) delete next[k as keyof FieldErrors];
+      for (const k of keys) delete next[k];
       return next;
     });
   }
@@ -133,22 +111,18 @@ export function AddTechnicianSheet({
     setFormError(null);
 
     const request: CreateTechnicianRequest = {
-      userId: Number(data.userId.trim()),
-      // Dollars -> integer cents: parse the decimal string, then round — never
-      // float math on the display value itself (CLAUDE.md "money is integer cents").
-      fullyLoadedHourlyCostCents: Math.round(
-        Number.parseFloat(data.hourlyCostDollars.trim()) * 100,
-      ),
-      employeeStatus: data.employeeStatus || undefined,
-      hireDate: data.hireDate || undefined,
+      firstName: data.firstName.trim(),
+      lastName: data.lastName.trim(),
+      email: data.email.trim(),
+      phone: data.phone.trim() || undefined,
     };
 
     mutation.mutate(request, {
       onSuccess: () => {
-        toast.success("Technician added");
+        toast.success("Invitation sent");
         onOpenChange(false);
       },
-      onError: (err) => setFormError(describeError(err)),
+      onError: (err) => setFormError(describeError(err, setErrors)),
     });
   }
 
@@ -157,10 +131,11 @@ export function AddTechnicianSheet({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="font-display text-2xl font-extrabold tracking-tight">
-            Add technician
+            Invite technician
           </SheetTitle>
           <SheetDescription>
-            Create a technician profile for an existing account so it appears on the roster.
+            Send an invite by email. They&rsquo;ll set their own password and appear on the roster
+            as pending until they accept.
           </SheetDescription>
         </SheetHeader>
 
@@ -170,83 +145,44 @@ export function AddTechnicianSheet({
             aria-busy={mutation.isPending}
             className="space-y-4"
           >
-            <legend className="sr-only">Technician onboarding details</legend>
+            <legend className="sr-only">Technician invite details</legend>
 
-            <div>
-              <Label htmlFor="add-tech-user-id">User id</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="First name" error={errors.firstName}>
+                <Input
+                  placeholder="Jordan"
+                  value={data.firstName}
+                  onChange={(e) => patch({ firstName: e.target.value })}
+                  aria-invalid={!!errors.firstName}
+                />
+              </Field>
+              <Field label="Last name" error={errors.lastName}>
+                <Input
+                  placeholder="Lee"
+                  value={data.lastName}
+                  onChange={(e) => patch({ lastName: e.target.value })}
+                  aria-invalid={!!errors.lastName}
+                />
+              </Field>
+            </div>
+            <Field label="Email" error={errors.email}>
               <Input
-                id="add-tech-user-id"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                step={1}
-                value={data.userId}
-                onChange={(e) => patch({ userId: e.target.value })}
-                aria-invalid={!!errors.userId}
-                aria-describedby="add-tech-user-id-help"
-                className="mt-1"
+                type="email"
+                placeholder="jordan@example.com"
+                value={data.email}
+                onChange={(e) => patch({ email: e.target.value })}
+                aria-invalid={!!errors.email}
               />
-              <p id="add-tech-user-id-help" className="mt-1 text-xs text-muted-foreground">
-                The person must already have an account with the technician role.
-              </p>
-              {errors.userId && (
-                <p role="alert" className="mt-1 text-xs font-semibold text-destructive">
-                  {errors.userId}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="add-tech-hourly-cost">Fully loaded hourly cost</Label>
+            </Field>
+            <Field label="Phone (optional)" error={errors.phone}>
               <Input
-                id="add-tech-hourly-cost"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="0.01"
-                placeholder="0.00"
-                value={data.hourlyCostDollars}
-                onChange={(e) => patch({ hourlyCostDollars: e.target.value })}
-                aria-invalid={!!errors.hourlyCostDollars}
-                className="mt-1"
+                type="tel"
+                placeholder="(905) 555-0123"
+                value={data.phone}
+                onChange={(e) => patch({ phone: e.target.value })}
+                aria-invalid={!!errors.phone}
               />
-              {errors.hourlyCostDollars && (
-                <p role="alert" className="mt-1 text-xs font-semibold text-destructive">
-                  {errors.hourlyCostDollars}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="add-tech-employee-status">Employee status</Label>
-              <Select
-                value={data.employeeStatus}
-                onValueChange={(v) => patch({ employeeStatus: v })}
-                disabled={mutation.isPending}
-              >
-                <SelectTrigger id="add-tech-employee-status" className="mt-1">
-                  <SelectValue placeholder="Not set" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EMPLOYEE_STATUS_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="add-tech-hire-date">Hire date</Label>
-              <Input
-                id="add-tech-hire-date"
-                type="date"
-                value={data.hireDate}
-                onChange={(e) => patch({ hireDate: e.target.value })}
-                className="mt-1"
-              />
-            </div>
+            </Field>
           </fieldset>
 
           {formError && (
@@ -266,11 +202,35 @@ export function AddTechnicianSheet({
             </Button>
             <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending}>
               {mutation.isPending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-              Add technician
+              Send invite
             </Button>
           </div>
         </form>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      {children}
+      {error && (
+        <span role="alert" className="mt-1 block text-xs font-semibold text-destructive">
+          {error}
+        </span>
+      )}
+    </label>
   );
 }

@@ -27,6 +27,7 @@ import { Route as ActivateRouteImport } from './routes/activate'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIndexRouteImport } from './routes/app.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
+import { Route as StaffActivateRouteImport } from './routes/staff.activate'
 import { Route as LearnSlugRouteImport } from './routes/learn.$slug'
 import { Route as AppVisitsRouteImport } from './routes/app.visits'
 import { Route as AppSettingsRouteImport } from './routes/app.settings'
@@ -135,6 +136,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminRoute,
+} as any)
+const StaffActivateRoute = StaffActivateRouteImport.update({
+  id: '/staff/activate',
+  path: '/staff/activate',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const LearnSlugRoute = LearnSlugRouteImport.update({
   id: '/learn/$slug',
@@ -261,6 +267,7 @@ export interface FileRoutesByFullPath {
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
+  '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
@@ -297,6 +304,7 @@ export interface FileRoutesByTo {
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
+  '/staff/activate': typeof StaffActivateRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
@@ -336,6 +344,7 @@ export interface FileRoutesById {
   '/app/settings': typeof AppSettingsRoute
   '/app/visits': typeof AppVisitsRouteWithChildren
   '/learn/$slug': typeof LearnSlugRoute
+  '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
@@ -376,6 +385,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/visits'
     | '/learn/$slug'
+    | '/staff/activate'
     | '/admin/'
     | '/app/'
     | '/app/visits/$id'
@@ -412,6 +422,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/visits'
     | '/learn/$slug'
+    | '/staff/activate'
     | '/admin'
     | '/app'
     | '/app/visits/$id'
@@ -450,6 +461,7 @@ export interface FileRouteTypes {
     | '/app/settings'
     | '/app/visits'
     | '/learn/$slug'
+    | '/staff/activate'
     | '/admin/'
     | '/app/'
     | '/app/visits/$id'
@@ -473,6 +485,7 @@ export interface RootRouteChildren {
   TechRoute: typeof TechRoute
   TermsRoute: typeof TermsRoute
   LearnSlugRoute: typeof LearnSlugRoute
+  StaffActivateRoute: typeof StaffActivateRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -602,6 +615,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/'
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRoute
+    }
+    '/staff/activate': {
+      id: '/staff/activate'
+      path: '/staff/activate'
+      fullPath: '/staff/activate'
+      preLoaderRoute: typeof StaffActivateRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/learn/$slug': {
       id: '/learn/$slug'
@@ -814,6 +834,7 @@ const rootRouteChildren: RootRouteChildren = {
   TechRoute: TechRoute,
   TermsRoute: TermsRoute,
   LearnSlugRoute: LearnSlugRoute,
+  StaffActivateRoute: StaffActivateRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

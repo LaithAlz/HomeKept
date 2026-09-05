@@ -118,9 +118,10 @@ function ResetPasswordForm({ token, onDeadEnd }: { token: string; onDeadEnd: () 
         const session = await getSession().catch(() => null);
         window.location.assign(session ? homeFor(session.role) : "/app");
       } else {
-        // Not auto-signed-in: the backend has also cleared any auth cookies
-        // this browser held, so send the customer to sign in with the new
-        // password rather than guessing at a session that no longer exists.
+        // Defensive only: the backend returns signedIn: true on every 200 (a
+        // reset for a non-ACTIVE account is rejected outright, see
+        // ResetPasswordResponse). If that ever changes, don't guess at a
+        // session — send the customer to sign in with the new password.
         window.location.assign("/signin");
       }
     } catch (err) {

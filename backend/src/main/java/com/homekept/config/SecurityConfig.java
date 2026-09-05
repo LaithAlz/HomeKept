@@ -112,6 +112,13 @@ public class SecurityConfig {
                         // Rate-limited 10/IP/hour in ActivationController; token is HMAC-signed + single-use.
                         .requestMatchers(HttpMethod.POST, "/api/activation/validate").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/activation/complete").permitAll()
+                        // Staff (technician) invite acceptance flow — the TECHNICIAN-role
+                        // counterpart to the customer activation magic link above. Rate-limited
+                        // 10/IP/hour in StaffInviteController; the token reuses
+                        // PasswordResetTokenService's HMAC-signed, single-use scheme with a
+                        // 7-day TTL (api-contract.md §Public staff invite).
+                        .requestMatchers(HttpMethod.POST, "/api/staff/invite/validate").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/staff/invite/accept").permitAll()
                         // Stripe webhook — public; signature is verified by StripeWebhookController
                         // using the STRIPE_WEBHOOK_SECRET (Stripe-Signature header, HMAC-SHA256).
                         // Auth cookies are never sent for this endpoint (Stripe does not send them).

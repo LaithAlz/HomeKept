@@ -521,6 +521,12 @@ export interface AdminTechnicianListItem {
   hireDate: string | null;
   fullyLoadedHourlyCostCents: number | null;
   createdAt: string;
+  /**
+   * ISO instant the most recent staff invite (or resend) was sent, `null` if none has ever
+   * been sent for this profile. Resolved server-side from the shared invite-token table —
+   * mirrors the walk-through pipeline's `invitedAt` (never a frontend-only flag).
+   */
+  invitedAt: string | null;
 }
 
 /**
@@ -535,31 +541,35 @@ export function useAdminTechnicians() {
 
 /**
  * Request body for `POST /api/admin/technicians` (`CreateTechnicianRequest.java`).
- * Onboards an existing user (who already has the TECHNICIAN role, assigned separately)
- * by creating their `technician_profile` row.
+ * Invites a new technician by identity only — the account is created
+ * `PENDING_ACTIVATION` and the invited person sets their own password via the emailed
+ * staff-invite link. The role is always server-set to TECHNICIAN.
+ * `fullyLoadedHourlyCostCents`/`employeeStatus`/`hireDate` are intentionally not here —
+ * they belong on a later technician-edit screen (not yet built), not the invite step.
  */
 export interface CreateTechnicianRequest {
-  userId: number;
-  fullyLoadedHourlyCostCents: number;
-  employeeStatus?: string;
-  hireDate?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
 }
 
-/** Response body for `POST /api/admin/technicians` (`TechnicianProfileResponse.java`). */
-export interface TechnicianProfileResponse {
+/** Response body for `POST /api/admin/technicians` (`CreateTechnicianResponse.java`). */
+export interface CreateTechnicianResponse {
   id: number;
   userId: number;
-  employeeStatus: string | null;
-  hireDate: string | null;
-  fullyLoadedHourlyCostCents: number | null;
-  createdAt: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  userStatus: string;
+  invitedAt: string;
 }
 
 /**
  * `employeeStatus` is a free-form `VARCHAR(50)` on the backend (no CHECK constraint,
- * no Java enum — see `TechnicianProfile.java`/the V7 migration), so this option list
- * is a frontend convention, not a contract. Keep in sync with `humanize()`'s display
- * in `routes/admin.technicians.tsx` if it changes.
+ * no Java enum — see `TechnicianProfile.java`/the V7 migration). Not settable at invite
+ * time (see `CreateTechnicianRequest`); kept here only as a display-humanization
+ * reference for `routes/admin.technicians.tsx`'s `humanize()` if it changes.
  */
 export const EMPLOYEE_STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "ACTIVE", label: "Active" },
@@ -568,15 +578,36 @@ export const EMPLOYEE_STATUS_OPTIONS: { value: string; label: string }[] = [
 ];
 
 /**
- * `POST /api/admin/technicians` — onboard a technician profile for an existing user
- * (issue audit #1). Invalidates the roster so the new row appears immediately.
+ * `POST /api/admin/technicians` — invite a new technician by identity only. Invalidates
+ * the roster so the new (PENDING_ACTIVATION) row appears immediately.
  */
 export function useCreateTechnician() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: CreateTechnicianRequest) =>
-      post<TechnicianProfileResponse>("/api/admin/technicians", request),
+      post<CreateTechnicianResponse>("/api/admin/technicians", request),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "technicians"] });
+    },
+  });
+}
+
+/**
+ * `POST /api/admin/technicians/{id}/invite` — resend the staff invite for an existing
+ * (typically still-pending) technician profile; invalidates the previous unconsumed
+ * invite token before sending a new one. `id` is the `technician_profile` id (the roster
+ * row's `id`, not the `userId`). Invalidates the roster so the refreshed `invitedAt`
+ * lands on refetch.
+ */
+export function useResendTechnicianInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (profileId: number) => post<void>(`/api/admin/technicians/${profileId}/invite`),
+    // Invalidate on settle, not just success: a 409 (the technician turned out to already
+    // be ACTIVE/SUSPENDED — the backend checks fresh, never trusting this list's cached
+    // userStatus) means the roster is stale and should refetch too, so the "Resend invite"
+    // button and status badge correct themselves instead of staying wrong on screen.
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "technicians"] });
     },
   });

@@ -8,6 +8,7 @@ import com.homekept.identity.PasswordResetToken;
 import com.homekept.identity.PasswordResetTokenRepository;
 import com.homekept.identity.PasswordResetTokenService;
 import com.homekept.identity.Role;
+import com.homekept.identity.TokenPurpose;
 import com.homekept.identity.User;
 import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
@@ -43,18 +44,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>POST /api/auth/forgot — only the token hash is persisted, never the raw token</li>
  *   <li>POST /api/auth/forgot — rate limit: 6th attempt from the same IP → 429</li>
  *   <li>POST /api/auth/reset — happy path: sets the new password, revokes existing refresh
- *       tokens, sets fresh auth cookies, auto-signs-in an ACTIVE user, and returns
+ *       tokens, sets fresh auth cookies, signs in an ACTIVE user, and returns
  *       {@code { "signedIn": true }}</li>
- *   <li>POST /api/auth/reset — non-ACTIVE user: password is still updated, but no auto
- *       sign-in — mirrors the login/refresh ACTIVE gate (#115) — the response returns
- *       {@code { "signedIn": false }} and clears any auth cookies the browser already
- *       held, so a stale session for a different account can't survive a reset</li>
+ *   <li>POST /api/auth/reset — non-ACTIVE (SUSPENDED) user: rejected outright, 400
+ *       INVALID_TOKEN, password unchanged, token consumption rolled back — closes an
+ *       account-takeover path (a SUSPENDED account's password must never change via a reset
+ *       that also doesn't sign anyone in)</li>
+ *   <li>POST /api/auth/reset — PENDING_ACTIVATION user: rejected the same way — a password
+ *       reset for an account that has never had a real password is meaningless, and this is
+ *       the other half of the takeover path the V13 migration closes</li>
+ *   <li>POST /api/auth/reset — a STAFF_INVITE-purpose token is rejected with the same
+ *       INVALID_TOKEN as a malformed token — purpose is checked at the token-service root,
+ *       not as a special case here</li>
  *   <li>POST /api/auth/reset — a successful reset invalidates the user's other outstanding
- *       reset tokens, not just the one used (#115)</li>
+ *       PASSWORD_RESET tokens, not just the one used (#115)</li>
  *   <li>POST /api/auth/reset — re-using a consumed token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — expired token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — garbage token → 400 INVALID_TOKEN</li>
  *   <li>POST /api/auth/reset — password too short → 400</li>
+ *   <li>POST /api/auth/reset — rate limit: 6th attempt from the same IP → 429 (previously
+ *       this endpoint had no throttle at all)</li>
  *   <li>POST /api/auth/forgot — known and unknown email both pad to the same fixed
  *       response-time budget, closing the enumeration-timing oracle regardless of whether
  *       the outbound SendGrid send is configured (#115, #120)</li>
@@ -74,12 +83,14 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
     @Autowired PasswordResetTokenRepository tokenRepository;
     @Autowired PasswordResetTokenService tokenService;
     @Autowired ForgotPasswordRateLimiter forgotPasswordRateLimiter;
+    @Autowired com.homekept.identity.ResetPasswordRateLimiter resetPasswordRateLimiter;
     @Autowired RecordingEmailSender email;
 
     @BeforeEach
     void setUp() {
         email.reset();
         forgotPasswordRateLimiter.reset("127.0.0.1");
+        resetPasswordRateLimiter.reset("127.0.0.1");
     }
 
     // ── POST /api/auth/forgot ─────────────────────────────────────────────────
@@ -217,42 +228,95 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn_andClearsAnyExistingCookies() throws Exception {
-        // Mirrors the login/refresh ACTIVE gate (#115 finding 2): the password change must
-        // still happen, but a non-ACTIVE user must not be auto-signed-in via reset — that
-        // would be a future login-lockout bypass once a suspend feature ships.
-        //
-        // Also asserts the response tells the caller signedIn:false AND clears any auth
-        // cookies on the response — a browser holding a *different* account's stale session
-        // must not come out of this reset still signed in as that other account (the bug
-        // where a customer's reset landed on /admin).
+    void reset_suspendedUser_isRejected_passwordUnchanged_tokenNotConsumed() throws Exception {
+        // Account-takeover fix: a reset must never change a SUSPENDED account's password —
+        // previously this succeeded (200, password changed) with signedIn:false, which was
+        // half of a real takeover path (the other half: a resent staff invite reaching a
+        // wrong account and being redeemable here instead of at /api/staff/invite/accept).
         User user = createTestUserWithStatus("reset-suspended@test.local", "OldPassword1", UserStatus.SUSPENDED);
         PasswordResetTokenService.MintResult mint = tokenService.mint(user);
 
         mockMvc.perform(post(RESET_URL)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.signedIn").value(false))
-                .andExpect(cookie().value("hk_access", ""))
-                .andExpect(cookie().maxAge("hk_access", 0))
-                .andExpect(cookie().value("hk_refresh", ""))
-                .andExpect(cookie().maxAge("hk_refresh", 0));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
 
-        // Password is still changed even though the user isn't auto-signed-in.
+        // Password is unchanged.
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        assertThat(passwordEncoder.matches("NewPassword2", reloaded.getPasswordHash())).isTrue();
-        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isFalse();
+        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isTrue();
 
-        // The token is still consumed (single-use is unaffected by the status gate).
+        // The token's consumption is rolled back with the rest of the failed transaction —
+        // a rejected attempt doesn't burn the token (mirrors the staff-invite accept guard).
         PasswordResetToken token = tokenRepository.findById(mint.tokenId()).orElseThrow();
-        assertThat(token.isConsumed()).isTrue();
+        assertThat(token.isConsumed()).isFalse();
+    }
+
+    @Test
+    void reset_pendingActivationUser_isRejected_passwordUnchanged_tokenNotConsumed() throws Exception {
+        // The other non-ACTIVE case: a PENDING_ACTIVATION account (e.g. an invited-but-not-
+        // yet-accepted technician) has never had a real password — a PASSWORD_RESET token
+        // for one (possible since /api/auth/forgot doesn't check status) must be rejected too.
+        User user = createTestUserWithStatus(
+                "reset-pending@test.local", "OldPassword1", UserStatus.PENDING_ACTIVATION);
+        PasswordResetTokenService.MintResult mint = tokenService.mint(user);
+
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+
+        User reloaded = userRepository.findById(user.getId()).orElseThrow();
+        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isTrue();
+
+        PasswordResetToken token = tokenRepository.findById(mint.tokenId()).orElseThrow();
+        assertThat(token.isConsumed()).isFalse();
+    }
+
+    @Test
+    void reset_staffInviteToken_isRejected_passwordUnchanged_tokenNotConsumed() throws Exception {
+        // The account-takeover path itself: a STAFF_INVITE token (long-lived, 7 days, minted
+        // for an account with no password yet) must never be redeemable here instead of at
+        // /api/staff/invite/accept, regardless of the resolved account's status.
+        User tech = userRepository.save(new User(
+                "staff-invite-at-reset@test.local",
+                passwordEncoder.encode(java.util.UUID.randomUUID().toString()),
+                "Tech", "User", Role.TECHNICIAN, UserStatus.PENDING_ACTIVATION));
+        PasswordResetTokenService.MintResult mint = tokenService.mintStaffInvite(tech.getId());
+
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + mint.rawToken() + "\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+
+        User reloaded = userRepository.findById(tech.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(UserStatus.PENDING_ACTIVATION);
+
+        // Never even reaches the consumed/expired checks for the wrong purpose — the token
+        // is untouched either way.
+        PasswordResetToken token = tokenRepository.findById(mint.tokenId()).orElseThrow();
+        assertThat(token.isConsumed()).isFalse();
+    }
+
+    @Test
+    void reset_rateLimitExceeded_returns429() throws Exception {
+        // Previously the only public auth-mutating endpoint with no throttle at all.
+        for (int i = 0; i < com.homekept.identity.ResetPasswordRateLimiter.MAX_ATTEMPTS; i++) {
+            resetPasswordRateLimiter.tryConsume("127.0.0.1");
+        }
+        mockMvc.perform(post(RESET_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"garbage.token\",\"password\":\"NewPassword2\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
     }
 
     @Test
     void reset_activeUser_autoSignsIn_setsCookies() throws Exception {
-        // Contrast case for reset_nonActiveUser_updatesPassword_butDoesNotAutoSignIn — an
-        // ACTIVE user's behavior must be unchanged: fresh cookies ARE set.
+        // Contrast case for reset_suspendedUser_isRejected/reset_pendingActivationUser_isRejected
+        // — an ACTIVE user's behavior must be unchanged: fresh cookies ARE set.
         User user = createTestUser("reset-active@test.local", "OldPassword1");
         PasswordResetTokenService.MintResult mint = tokenService.mint(user);
 
@@ -316,7 +380,7 @@ class PasswordResetIntegrationTest extends AbstractIntegrationTest {
         String rawToken = buildSignedToken(payload);
 
         PasswordResetToken expiredToken = new PasswordResetToken(
-                user, Hashing.sha256Hex(rawToken), Instant.now().minusSeconds(60));
+                user, Hashing.sha256Hex(rawToken), Instant.now().minusSeconds(60), TokenPurpose.PASSWORD_RESET);
         tokenRepository.save(expiredToken);
 
         mockMvc.perform(post(RESET_URL)
