@@ -12,8 +12,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Optional;
-
 /**
  * Orchestrates login, token refresh, logout, and identity fetching.
  * All credential failures return the same generic exception to prevent user enumeration.
@@ -237,42 +235,60 @@ public class AuthService {
 
     /**
      * Completes a password reset: validates and consumes the token, sets the new bcrypt
-     * password, and revokes all the user's refresh tokens.
+     * password, revokes all the user's refresh tokens, and signs the user back in.
      *
-     * <p>Auto-sign-in gate: a fresh token pair is issued (per api-contract.md) only if the
-     * user's status is {@link UserStatus#ACTIVE} — the same check {@link #login} and
-     * {@link #refresh} use to reject non-ACTIVE users. The password is still changed and the
-     * old tokens still revoked either way; a non-ACTIVE user simply isn't auto-signed-in by
-     * this call (mirrors the login-lockout so a reset can't be used to bypass it once a
-     * suspend feature ships). The caller must not set auth cookies when this returns empty.
+     * <p><b>Guards:</b>
+     * <ol>
+     *   <li>The token must be {@link TokenPurpose#PASSWORD_RESET} — a
+     *       {@link TokenPurpose#STAFF_INVITE} token (or any other purpose that might exist in
+     *       future) is rejected with the same generic {@code INVALID_TOKEN} as a malformed
+     *       token, never distinguished. This is what closes the path where a staff invite
+     *       token — long-lived (7 days) and mailed to an account that has no password set
+     *       yet — could otherwise be redeemed here instead of at
+     *       {@code /api/staff/invite/accept}.</li>
+     *   <li>The resolved user must be {@link UserStatus#ACTIVE}. A password reset for an
+     *       account that has never had a real password (still {@code PENDING_ACTIVATION}) or
+     *       that has been {@code SUSPENDED} is meaningless — and, combined with the first
+     *       guard, is the second half of the account-takeover path this method now closes:
+     *       an admin resending a staff invite to the wrong (already-{@code ACTIVE}) account
+     *       used to be the only thing standing between a stray token and a live session; now
+     *       even a wrongly-issued {@code PASSWORD_RESET} token for a non-{@code ACTIVE}
+     *       account is rejected outright. Every genuine customer is created {@code ACTIVE}
+     *       (see {@code ActivationService.complete}), so this never fires for a real
+     *       customer reset.</li>
+     * </ol>
+     * Both guards run AFTER {@code validateAndConsume} in this same {@code @Transactional}
+     * method, so a rejection rolls back that consumption too — a rejected attempt never burns
+     * the token (mirrors {@link #activateInvitedTechnician}'s exact pattern).
      *
      * @param rawToken    the raw reset token from the reset link
      * @param newPassword the new plaintext password (bcrypt-hashed here)
-     * @return a fresh token pair if the user is ACTIVE, otherwise {@link Optional#empty()}
+     * @return a fresh token pair for the now-signed-in user
      * @throws InvalidPasswordResetRequestException if the password is null or shorter than
      *         8 characters
-     * @throws InvalidPasswordResetTokenException if the token is invalid, expired, or consumed
+     * @throws InvalidPasswordResetTokenException if the token is invalid, expired, consumed,
+     *         of the wrong purpose, or resolves to a non-ACTIVE user
      */
     @Transactional
-    public Optional<TokenPair> resetPassword(String rawToken, String newPassword) {
+    public TokenPair resetPassword(String rawToken, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
             throw new InvalidPasswordResetRequestException("Password must be at least 8 characters");
         }
 
-        Long userId = passwordResetTokenService.validateAndConsume(rawToken);
+        Long userId = passwordResetTokenService.validateAndConsume(rawToken, TokenPurpose.PASSWORD_RESET);
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new InvalidPasswordResetTokenException("INVALID"));
+
+        if (user.getStatus() != UserStatus.ACTIVE) {
+            throw new InvalidPasswordResetTokenException("INVALID");
+        }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
 
         refreshTokenService.revokeAll(user.getId());
 
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            return Optional.empty();
-        }
-
-        return Optional.of(issueTokensFor(user));
+        return issueTokensFor(user);
     }
 
     /**

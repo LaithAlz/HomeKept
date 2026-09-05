@@ -13,7 +13,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -49,9 +48,6 @@ import java.util.stream.Collectors;
 public class TechnicianAdminService {
 
     private static final Logger log = LoggerFactory.getLogger(TechnicianAdminService.class);
-
-    /** Same expiry as the customer activation magic link. */
-    private static final Duration INVITE_TOKEN_TTL = Duration.ofDays(7);
 
     private final TechnicianProfileRepository technicianProfileRepository;
     private final UserQueryService userQueryService;
@@ -101,7 +97,7 @@ public class TechnicianAdminService {
         TechnicianProfile saved = technicianProfileRepository.save(profile);
 
         PasswordResetTokenService.MintResult mint =
-                passwordResetTokenService.mint(user.getId(), INVITE_TOKEN_TTL);
+                passwordResetTokenService.mintStaffInvite(user.getId());
         staffInviteNotifier.sendInvite(user.getEmail(), user.getFirstName(), mint.rawToken());
 
         log.info("staff_invite_created profileId={} userId={}", saved.getId(), user.getId());
@@ -112,12 +108,21 @@ public class TechnicianAdminService {
 
     /**
      * Resends the invite for an existing (typically still-pending) technician profile:
-     * invalidates the user's prior unconsumed invite tokens, then mints a fresh one and
+     * invalidates the user's prior unconsumed staff-invite tokens, then mints a fresh one and
      * queues a new invite email — in one transaction, so the old link stops working the
      * moment the new one is sent.
      *
+     * <p><b>Resolve-before-touch:</b> the target user's identity and status are resolved and
+     * checked BEFORE any token is invalidated or minted. Without this ordering, resending to
+     * an already-{@code ACTIVE} technician (e.g. an admin clicking "Resend" on a roster row
+     * rendered from a stale cached status) would mail that account a fresh, 7-day,
+     * password-setting link — redeemable to take over the account. Only a still-eligible
+     * {@code PENDING_ACTIVATION} {@code TECHNICIAN} may be re-invited.
+     *
      * @param profileId the {@code technician_profile} id (the roster row's {@code id})
      * @throws TechnicianNotFoundException if no profile exists with this id
+     * @throws TechnicianNotEligibleForInviteException if the linked user is not currently an
+     *         eligible PENDING_ACTIVATION TECHNICIAN
      */
     @Transactional
     public void resendInvite(Long profileId) {
@@ -125,20 +130,21 @@ public class TechnicianAdminService {
                 .orElseThrow(() -> new TechnicianNotFoundException(
                         "No technician profile with id=" + profileId));
 
-        passwordResetTokenService.invalidateAllForUser(profile.getUserId());
-
         Map<Long, UserQueryService.UserSummary> summaries =
                 userQueryService.findSummariesByIds(List.of(profile.getUserId()));
         UserQueryService.UserSummary summary = summaries.get(profile.getUserId());
-        if (summary == null) {
-            // The linked user is missing under an existing profile — shouldn't happen in
-            // normal operation (see TechnicianProfile Javadoc). Nothing sensible to email.
-            log.warn("staff_invite_resend_skipped_no_user profileId={}", profileId);
-            return;
+
+        if (summary == null
+                || !Role.TECHNICIAN.name().equals(summary.role())
+                || !UserStatus.PENDING_ACTIVATION.name().equals(summary.status())) {
+            throw new TechnicianNotEligibleForInviteException(
+                    "This technician is not eligible for a new invite.");
         }
 
+        passwordResetTokenService.invalidateAllForUser(profile.getUserId());
+
         PasswordResetTokenService.MintResult mint =
-                passwordResetTokenService.mint(profile.getUserId(), INVITE_TOKEN_TTL);
+                passwordResetTokenService.mintStaffInvite(profile.getUserId());
         staffInviteNotifier.sendInvite(summary.email(), summary.firstName(), mint.rawToken());
 
         log.info("staff_invite_resent profileId={} userId={}", profileId, profile.getUserId());

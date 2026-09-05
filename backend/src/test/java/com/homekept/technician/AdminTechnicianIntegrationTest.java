@@ -2,6 +2,10 @@ package com.homekept.technician;
 
 import com.homekept.AbstractIntegrationTest;
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
+import com.homekept.common.Hashing;
+import com.homekept.identity.ForgotPasswordRateLimiter;
+import com.homekept.identity.PasswordResetToken;
+import com.homekept.identity.PasswordResetTokenRepository;
 import com.homekept.identity.Role;
 import com.homekept.identity.User;
 import com.homekept.identity.UserStatus;
@@ -39,6 +43,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *       email.</li>
  *   <li>Resend for an unknown profile id → 404.</li>
  *   <li>Resend as CUSTOMER → 403; anonymous → 401.</li>
+ *   <li>Resend against an already-ACTIVE (or SUSPENDED) technician → 409, no new token
+ *       minted, no new email sent — the account-takeover fix (resolve-before-touch).</li>
+ *   <li>Resend does not consume a PASSWORD_RESET-purpose token the same person separately
+ *       holds — invalidateAllForUser is scoped to STAFF_INVITE only.</li>
+ *   <li>The roster's {@code invitedAt} is unaffected by that same person requesting a
+ *       password reset — latestInviteAtByUserIds is scoped to STAFF_INVITE only.</li>
  * </ul>
  */
 class AdminTechnicianIntegrationTest extends AbstractIntegrationTest {
@@ -46,8 +56,10 @@ class AdminTechnicianIntegrationTest extends AbstractIntegrationTest {
     private static final String TECHNICIANS_URL = "/api/admin/technicians";
 
     @Autowired TechnicianProfileRepository techProfileRepository;
+    @Autowired PasswordResetTokenRepository tokenRepository;
     @Autowired RecordingEmailSender email;
     @Autowired StaffInviteRateLimiter staffInviteRateLimiter;
+    @Autowired ForgotPasswordRateLimiter forgotPasswordRateLimiter;
 
     private String adminToken;
     private String customerToken;
@@ -56,10 +68,11 @@ class AdminTechnicianIntegrationTest extends AbstractIntegrationTest {
     void seedData() throws Exception {
         long nano = System.nanoTime();
         email.reset();
-        // Shared singleton across the whole (cached) Spring test context — reset so this
-        // class's own /api/staff/invite/validate call (in the resend test) never trips the
-        // 10/IP/hour cap left over from another test class's run in the same JVM.
+        // Shared singletons across the whole (cached) Spring test context — reset so this
+        // class's own /api/staff/invite/validate and /api/auth/forgot calls never trip a
+        // cap left over from another test class's run in the same JVM.
         staffInviteRateLimiter.reset("127.0.0.1");
+        forgotPasswordRateLimiter.reset("127.0.0.1");
 
         User adminUser = userRepository.save(new User(
                 "admin-tech-admin-" + nano + "@test.local",
@@ -336,6 +349,104 @@ class AdminTechnicianIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ── POST /api/admin/technicians/{id}/invite — account-takeover fix ────────
+
+    @Test
+    void resendInvite_activeTechnician_returns409_noNewTokenMinted() throws Exception {
+        // The account-takeover path this closes: an admin clicking "Resend" on a roster row
+        // that (per the issue) can render off a stale cached userStatus must not mail a
+        // fresh, redeemable password-setting link to an account that has already accepted.
+        String inviteEmail = "resend-active-" + System.nanoTime() + "@test.local";
+        MvcResult inviteResult = invite("Casey", "Nguyen", inviteEmail);
+        Long profileId = idFrom(inviteResult);
+
+        String rawToken = extractTokenFromLink(email.sent.get(0).htmlBody());
+        mockMvc.perform(post("/api/staff/invite/accept")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + rawToken + "\",\"password\":\"newpassword1\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(TECHNICIANS_URL + "/" + profileId + "/invite")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isConflict());
+
+        // No second (resend) email was sent — only the original invite.
+        assertThat(email.sent).hasSize(1);
+    }
+
+    @Test
+    void resendInvite_suspendedTechnician_returns409_noNewTokenMinted() throws Exception {
+        // Same guard, different ineligible state: resending must not be a way to reactivate
+        // a suspended technician's ability to sign in either.
+        String inviteEmail = "resend-suspended-" + System.nanoTime() + "@test.local";
+        MvcResult inviteResult = invite("Drew", "Okafor", inviteEmail);
+        Long profileId = idFrom(inviteResult);
+
+        User tech = userRepository.findByEmailIgnoreCase(inviteEmail).orElseThrow();
+        tech.setStatus(UserStatus.SUSPENDED);
+        userRepository.save(tech);
+
+        mockMvc.perform(post(TECHNICIANS_URL + "/" + profileId + "/invite")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isConflict());
+
+        assertThat(email.sent).hasSize(1);
+    }
+
+    @Test
+    void resendInvite_doesNotConsumeACustomerPurposeToken() throws Exception {
+        // Point 5: invalidateAllForUser must be scoped to STAFF_INVITE only. Without that
+        // scoping, resending an invite would also silently burn a password-reset token the
+        // same person separately (and legitimately) requested.
+        String inviteEmail = "resend-scoped-" + System.nanoTime() + "@test.local";
+        MvcResult inviteResult = invite("Jamie", "Alvarez", inviteEmail);
+        Long profileId = idFrom(inviteResult);
+
+        mockMvc.perform(post("/api/auth/forgot")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + inviteEmail + "\"}"))
+                .andExpect(status().isAccepted());
+        assertThat(email.sent).hasSize(2);
+        String resetRawToken = extractResetTokenFromLink(email.sent.get(1).htmlBody());
+
+        mockMvc.perform(post(TECHNICIANS_URL + "/" + profileId + "/invite")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isAccepted());
+
+        // The customer-side (PASSWORD_RESET) token is still unconsumed after the resend,
+        // which only invalidates STAFF_INVITE tokens for this user.
+        PasswordResetToken resetToken = tokenRepository.findByTokenHash(Hashing.sha256Hex(resetRawToken))
+                .orElseThrow();
+        assertThat(resetToken.isConsumed()).isFalse();
+    }
+
+    @Test
+    void theRostersInvitedAt_isUnaffectedByAPasswordReset() throws Exception {
+        // Point 6: latestInviteAtByUserIds must be scoped to STAFF_INVITE only — a
+        // technician's own password-reset request must never show up on the roster as an
+        // invite that was never actually (re)sent.
+        String inviteEmail = "invited-at-scoped-" + System.nanoTime() + "@test.local";
+        MvcResult inviteResult = invite("Morgan", "Singh", inviteEmail);
+        Long profileId = idFrom(inviteResult);
+        String originalInvitedAt = com.jayway.jsonpath.JsonPath.read(
+                inviteResult.getResponse().getContentAsString(), "$.invitedAt");
+
+        mockMvc.perform(post("/api/auth/forgot")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"" + inviteEmail + "\"}"))
+                .andExpect(status().isAccepted());
+
+        MvcResult rosterResult = mockMvc.perform(get(TECHNICIANS_URL)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String body = rosterResult.getResponse().getContentAsString();
+        java.util.List<String> invitedAts = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + profileId + ")].invitedAt");
+
+        assertThat(invitedAts).containsExactly(originalInvitedAt);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     private String inviteBody(String firstName, String lastName, String email, String phone) {
@@ -356,9 +467,18 @@ class AdminTechnicianIntegrationTest extends AbstractIntegrationTest {
 
     /** Extracts the raw token query param from a {@code /staff/activate?token=...} link. */
     private String extractTokenFromLink(String htmlBody) {
-        int idx = htmlBody.indexOf("/staff/activate?token=");
+        return extractTokenFromLink(htmlBody, "/staff/activate?token=");
+    }
+
+    /** Extracts the raw token query param from a {@code /reset-password?token=...} link. */
+    private String extractResetTokenFromLink(String htmlBody) {
+        return extractTokenFromLink(htmlBody, "/reset-password?token=");
+    }
+
+    private String extractTokenFromLink(String htmlBody, String marker) {
+        int idx = htmlBody.indexOf(marker);
         assertThat(idx).isGreaterThan(-1);
-        int start = idx + "/staff/activate?token=".length();
+        int start = idx + marker.length();
         int end = start;
         while (end < htmlBody.length() && htmlBody.charAt(end) != '"' && htmlBody.charAt(end) != '&') {
             end++;

@@ -3,11 +3,12 @@ package com.homekept.identity.dto;
 /**
  * Response body for POST /api/auth/reset.
  *
- * <p>{@code signedIn} tells the caller whether fresh auth cookies were set on this
- * response (only when the user is {@link com.homekept.identity.UserStatus#ACTIVE} — see
- * {@link com.homekept.identity.AuthService#resetPassword}). When {@code false}, the
- * caller must not assume any existing session cookie is still valid: the controller has
- * cleared the auth cookies on this response, since a browser holding a stale session for
- * a different account must not be left signed in after a reset.
+ * <p>{@code signedIn} is always {@code true}: {@link com.homekept.identity.AuthService#resetPassword}
+ * now rejects a reset outright (400 {@code INVALID_TOKEN}, no cookies touched) for any
+ * account that is not {@link com.homekept.identity.UserStatus#ACTIVE}, rather than
+ * succeeding without auto-sign-in — a reset that changes a non-ACTIVE account's password
+ * behind the scenes was half of an account-takeover path (the other half being a staff
+ * invite token wrongly redeemable here; see {@code TokenPurpose}). The field is kept
+ * (rather than dropped) only to avoid a frontend contract change.
  */
 public record ResetPasswordResponse(boolean signedIn) {}

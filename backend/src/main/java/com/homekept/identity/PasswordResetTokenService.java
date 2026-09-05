@@ -19,13 +19,13 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Mints, validates, and consumes password reset tokens for the forgot/reset password flow.
- * Also reused (with a longer, caller-supplied TTL) by the technician staff-invite flow —
- * see {@link #mint(User, Duration)}'s Javadoc — rather than standing up a second token table.
+ * Mints, validates, and consumes tokens in {@code password_reset_tokens} — used by both the
+ * customer forgot/reset-password flow and the technician staff-invite flow (V13 migration
+ * added {@link TokenPurpose} to separate them; see that enum's Javadoc for why one table).
  * Mirrors {@code ActivationTokenService} — see its Javadoc for the general HMAC scheme.
  *
  * <h2>Token structure</h2>
- * <p>The raw token placed in the reset link is a Base64-URL encoded string of:
+ * <p>The raw token placed in the link is a Base64-URL encoded string of:
  * <pre>
  *   HMAC-SHA256(key, "userId=123&nonce=abc&exp=1234567890")
  *   encoded as: base64url(payload) + "." + base64url(hmac)
@@ -37,19 +37,29 @@ import java.util.stream.Collectors;
  *
  * <p>Only the SHA-256 hash of the raw token is stored in {@code password_reset_tokens.token_hash}.
  *
+ * <h2>Minting: two shapes only</h2>
+ * <p>{@link #mint(User)} (customer reset, 30 minutes, {@code PASSWORD_RESET}) and
+ * {@link #mintStaffInvite(Long)} (staff invite, 7 days, {@code STAFF_INVITE}) are the only
+ * public entry points. Neither lets a caller choose an arbitrary purpose/TTL combination for
+ * an arbitrary user — {@code mintStaffInvite} owns its own 7-day lifetime internally. This
+ * closes the path where a caller bug (e.g. resending an invite to the wrong account) could
+ * mint a long-lived, broadly-redeemable token.
+ *
  * <h2>Validation rules</h2>
  * <ol>
  *   <li>HMAC signature must verify (integrity + authenticity).</li>
- *   <li>{@code exp} must be in the future (not expired).</li>
+ *   <li>The stored row must exist for the exact (hash, purpose) pair — a hash that exists
+ *       under a different purpose is indistinguishable from a hash that does not exist.</li>
  *   <li>Token must not be consumed ({@code consumed_at} must be null).</li>
- *   <li>Token hash must exist in the database (not forged/unknown).</li>
+ *   <li>Token must not be expired ({@code expires_at} must be in the future).</li>
  * </ol>
  */
 @Service
 public class PasswordResetTokenService {
 
     private static final String HMAC_ALGORITHM = "HmacSHA256";
-    static final long TOKEN_TTL_SECONDS = 30L * 60; // 30 minutes
+    static final long TOKEN_TTL_SECONDS = 30L * 60; // 30 minutes (PASSWORD_RESET)
+    static final Duration STAFF_INVITE_TTL = Duration.ofDays(7); // STAFF_INVITE
 
     private final PasswordResetTokenRepository tokenRepository;
     private final UserRepository userRepository;
@@ -66,34 +76,39 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Mints a new password reset token for the given user, with the standard 30-minute
-     * forgot/reset-password expiry.
+     * Mints a new password-reset token ({@link TokenPurpose#PASSWORD_RESET}) for the given
+     * user, with the standard 30-minute expiry.
      *
      * @param user the user requesting a password reset
      * @return the raw token string to embed in the reset URL (never stored)
      */
     @Transactional
     public MintResult mint(User user) {
-        return mint(user, Duration.ofSeconds(TOKEN_TTL_SECONDS));
+        return mint(user, Duration.ofSeconds(TOKEN_TTL_SECONDS), TokenPurpose.PASSWORD_RESET);
     }
 
     /**
-     * Mints a new token for the given user with a caller-supplied time-to-live. Stores the
-     * SHA-256 hash in the DB and returns the raw token.
+     * Mints a new staff-invite token ({@link TokenPurpose#STAFF_INVITE}) for the given user
+     * id, with a fixed 7-day expiry that this method owns — the caller (the technician
+     * admin flow) cannot request a different lifetime or purpose. Resolves the {@link User}
+     * internally so cross-domain callers never need to load one themselves.
      *
-     * <p>This table is shared by two purposes with different lifetimes: the customer
-     * forgot/reset-password flow ({@link #mint(User)}, 30 minutes) and the staff (technician)
-     * invite flow ({@code TechnicianAdminService}, 7 days — same expiry as the customer
-     * activation magic link). There is no "purpose" column; callers that need to distinguish
-     * the two (e.g. the staff-invite validate/accept endpoints) do so by also checking the
-     * resolved user's role and status — see {@code StaffInviteService}.
-     *
-     * @param user the user this token is minted for
-     * @param ttl  how long the token remains valid
-     * @return the raw token string to embed in the link (never stored)
+     * @param userId the id of the technician this invite is for
+     * @return the raw token string to embed in the invite link (never stored)
+     * @throws IllegalStateException if no such user exists
      */
     @Transactional
-    public MintResult mint(User user, Duration ttl) {
+    public MintResult mintStaffInvite(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("User not found: " + userId));
+        return mint(user, STAFF_INVITE_TTL, TokenPurpose.STAFF_INVITE);
+    }
+
+    /**
+     * Core mint, parameterized by TTL and purpose. Deliberately private: the only public
+     * shapes are {@link #mint(User)} and {@link #mintStaffInvite(Long)} — see class Javadoc.
+     */
+    private MintResult mint(User user, Duration ttl, TokenPurpose purpose) {
         String nonce = generateNonce();
         Instant expiresAt = Instant.now().plus(ttl);
         long expEpoch = expiresAt.getEpochSecond();
@@ -102,36 +117,18 @@ public class PasswordResetTokenService {
         String rawToken = buildSignedToken(payload);
         String hash = Hashing.sha256Hex(rawToken);
 
-        PasswordResetToken token = new PasswordResetToken(user, hash, expiresAt);
+        PasswordResetToken token = new PasswordResetToken(user, hash, expiresAt, purpose);
         PasswordResetToken saved = tokenRepository.save(token);
 
         return new MintResult(saved.getId(), rawToken, saved.getCreatedAt());
     }
 
     /**
-     * Mints a new token for a user identified only by id, with a caller-supplied
-     * time-to-live. Convenience overload for cross-domain callers (e.g. the technician
-     * domain's staff-invite flow) that have a bare {@code userId} rather than a loaded
-     * {@link User} entity — keeps {@link User}/{@link UserRepository} from crossing the
-     * identity domain boundary.
-     *
-     * @param userId the id of the user this token is minted for
-     * @param ttl    how long the token remains valid
-     * @return the raw token string to embed in the link (never stored)
-     * @throws IllegalStateException if no such user exists
-     */
-    @Transactional
-    public MintResult mint(Long userId, Duration ttl) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalStateException("User not found: " + userId));
-        return mint(user, ttl);
-    }
-
-    /**
-     * Performs the same nonce-generation and HMAC computation as {@link #mint} but persists
-     * nothing. Called on the "email not found" branch of forgot-password so that branch's
-     * CPU cost is closer to the "email found" branch's cost — the same enumeration-timing
-     * idea as {@code AuthService}'s dummy bcrypt comparison on unknown-email login.
+     * Performs the same nonce-generation and HMAC computation as {@link #mint(User)} but
+     * persists nothing. Called on the "email not found" branch of forgot-password so that
+     * branch's CPU cost is closer to the "email found" branch's cost — the same
+     * enumeration-timing idea as {@code AuthService}'s dummy bcrypt comparison on
+     * unknown-email login.
      *
      * <p>This closes only the CPU-time gap. The wall-clock gap (the found-email branch's DB
      * insert plus outbound SendGrid attempt vs. this branch's few-ms HMAC computation) is
@@ -150,19 +147,21 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Validates a raw token without consuming it. Public (unlike a purely-internal helper)
-     * because the staff-invite validate endpoint needs a non-consuming check too — see
-     * {@code StaffInviteService.validate}, which additionally checks the resolved user's role
-     * and status before treating this as a legitimate invite (see {@link #mint(User, Duration)}
-     * Javadoc on why the shared table needs that extra check).
+     * Validates a raw token without consuming it, scoped to a single purpose. Public (unlike
+     * a purely-internal helper) because the staff-invite validate endpoint needs a
+     * non-consuming check too — see {@code StaffInviteService.validate}.
      *
-     * <p>Returns a {@link ValidationResult} describing validity, user id, and reason if invalid.
+     * <p>The purpose-scoped lookup (rather than look-up-then-check-purpose) is what makes a
+     * wrong-purpose token report the same {@code "INVALID"} as a token that does not exist at
+     * all — see class Javadoc. {@code EXPIRED}/{@code USED} are only ever returned for a
+     * token that really is the requested purpose; api-contract.md documents this precisely.
      *
      * @param rawToken the raw token from the link
+     * @param purpose  the purpose this token must have to be considered at all
      * @return validation outcome
      */
     @Transactional(readOnly = true)
-    public ValidationResult validate(String rawToken) {
+    public ValidationResult validate(String rawToken, TokenPurpose purpose) {
         if (rawToken == null || rawToken.isBlank()) {
             return ValidationResult.invalid("INVALID");
         }
@@ -179,24 +178,23 @@ public class PasswordResetTokenService {
             return ValidationResult.invalid("INVALID");
         }
 
-        // 3. Check expiry from the payload
-        if (Instant.now().getEpochSecond() > fields.expEpoch()) {
-            return ValidationResult.invalid("EXPIRED");
-        }
-
-        // 4. Look up in DB by hash
+        // 3. Look up in DB by (hash, purpose) — a wrong-purpose match is treated as absent,
+        // BEFORE any expiry/consumed check runs, so a wrong-purpose token can never reach
+        // (and therefore never reveal) an EXPIRED or USED reason.
         String hash = Hashing.sha256Hex(rawToken);
-        PasswordResetToken token = tokenRepository.findByTokenHash(hash).orElse(null);
+        PasswordResetToken token = tokenRepository.findByTokenHashAndPurpose(hash, purpose).orElse(null);
         if (token == null) {
             return ValidationResult.invalid("INVALID");
         }
 
-        // 5. Check consumed
+        // 4. Check consumed
         if (token.isConsumed()) {
             return ValidationResult.invalid("USED");
         }
 
-        // 6. Double-check DB expiry
+        // 5. Check expiry (the stored row, not the payload's embedded copy — they are set
+        // from the same instant at mint time, so checking the DB row is sufficient and is
+        // the single source of truth).
         if (token.isExpired()) {
             return ValidationResult.invalid("EXPIRED");
         }
@@ -205,19 +203,24 @@ public class PasswordResetTokenService {
     }
 
     /**
-     * Validates and consumes the token (sets {@code consumed_at}), then invalidates every
-     * other outstanding reset token belonging to the same user, so a successful reset retires
-     * all of that user's live reset links, not just the one used.
-     * MUST be called within the same transaction as the password update.
+     * Validates and consumes the token (sets {@code consumed_at}) for the given purpose, then
+     * invalidates every other outstanding token of that SAME purpose belonging to the same
+     * user, so a successful reset/accept retires all of that user's live links for that flow,
+     * not just the one used — without touching a token from the other flow (e.g. a password
+     * reset the same person separately requested).
+     * MUST be called within the same transaction as the resulting state change.
      *
-     * @param rawToken the raw token from the reset link
+     * @param rawToken the raw token from the link
+     * @param purpose  the purpose this token must have to be considered at all
      * @return the resolved user id
-     * @throws InvalidPasswordResetTokenException if the token is invalid, expired, or consumed
+     * @throws InvalidPasswordResetTokenException if the token is invalid, expired, consumed,
+     *         or of the wrong purpose (all indistinguishable as "INVALID")
      */
     @Transactional
-    public Long validateAndConsume(String rawToken) {
-        // Stateless checks first (HMAC signature + payload expiry + existence + not-yet-consumed).
-        ValidationResult result = validate(rawToken);
+    public Long validateAndConsume(String rawToken, TokenPurpose purpose) {
+        // Stateless checks first (HMAC signature + purpose-scoped lookup + not-yet-consumed
+        // + not-expired).
+        ValidationResult result = validate(rawToken, purpose);
         if (!result.valid()) {
             throw new InvalidPasswordResetTokenException(result.reason());
         }
@@ -232,42 +235,47 @@ public class PasswordResetTokenService {
             throw new InvalidPasswordResetTokenException("USED");
         }
 
-        // Retire any other still-outstanding reset tokens for this user (#115 finding 3):
-        // otherwise an earlier, unexpired reset link would stay valid for up to 30 minutes
-        // after the password has already been changed via this one.
-        tokenRepository.consumeAllUnconsumedForUser(result.userId(), now);
+        // Retire any other still-outstanding SAME-purpose tokens for this user (#115 finding
+        // 3, extended to be purpose-scoped): otherwise an earlier, unexpired link for this
+        // same flow would stay valid after this one has already been redeemed. Scoped so a
+        // password reset never burns a staff invite for the same person, and vice versa.
+        tokenRepository.consumeAllUnconsumedForUserAndPurpose(result.userId(), purpose, now);
 
         return result.userId();
     }
 
     /**
-     * Invalidates every outstanding (unconsumed) token belonging to a user, by marking them
-     * consumed. Used by the technician admin resend-invite flow to burn a prior unconsumed
-     * invite link before minting a fresh one, so the old link stops working.
+     * Invalidates every outstanding (unconsumed) {@link TokenPurpose#STAFF_INVITE} token
+     * belonging to a user, by marking them consumed. Used by the technician admin
+     * resend-invite flow to burn a prior unconsumed invite link before minting a fresh one,
+     * so the old link stops working. Deliberately scoped to {@code STAFF_INVITE} only — a
+     * password-reset token the same person separately requested is never touched.
      *
-     * @param userId the user whose outstanding tokens should be invalidated
+     * @param userId the user whose outstanding staff-invite tokens should be invalidated
      */
     @Transactional
     public void invalidateAllForUser(Long userId) {
-        tokenRepository.consumeAllUnconsumedForUser(userId, Instant.now());
+        tokenRepository.consumeAllUnconsumedForUserAndPurpose(userId, TokenPurpose.STAFF_INVITE, Instant.now());
     }
 
     /**
-     * Returns the most recent token-mint timestamp for each of the given user ids, for the
-     * technician admin roster's {@code invitedAt} column (mirrors
-     * {@code ActivationTokenService.latestInviteAtByBookingIds}).
+     * Returns the most recent {@link TokenPurpose#STAFF_INVITE} mint timestamp for each of
+     * the given user ids, for the technician admin roster's {@code invitedAt} column (mirrors
+     * {@code ActivationTokenService.latestInviteAtByBookingIds}). Scoped to {@code
+     * STAFF_INVITE} so a technician's own password reset never shows up on the roster as an
+     * invite that was never sent.
      *
      * @param userIds the user ids to resolve; may be empty
-     * @return a map from user id to the latest token's {@code createdAt}; user ids with no
-     *         token row are simply absent from the map (never mapped to null). Empty input
-     *         returns an empty map without querying the database.
+     * @return a map from user id to the latest staff-invite token's {@code createdAt}; user
+     *         ids with no staff-invite token row are simply absent from the map (never mapped
+     *         to null). Empty input returns an empty map without querying the database.
      */
     @Transactional(readOnly = true)
     public Map<Long, Instant> latestInviteAtByUserIds(Collection<Long> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Map.of();
         }
-        return tokenRepository.findLatestCreatedAtByUserIdIn(userIds).stream()
+        return tokenRepository.findLatestCreatedAtByUserIdInAndPurpose(userIds, TokenPurpose.STAFF_INVITE).stream()
                 .collect(Collectors.toMap(
                         PasswordResetTokenRepository.LatestInviteAt::getUserId,
                         PasswordResetTokenRepository.LatestInviteAt::getLatestCreatedAt));

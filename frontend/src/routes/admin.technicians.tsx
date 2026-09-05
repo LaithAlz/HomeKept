@@ -9,6 +9,7 @@ import {
   useResendTechnicianInvite,
   type AdminTechnicianListItem,
 } from "@/lib/admin";
+import { ApiError } from "@/lib/api";
 import { formatCentsCad, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -172,7 +173,16 @@ function InviteCell({ technician: t }: { technician: AdminTechnicianListItem }) 
   function handleResend() {
     setError(null);
     resend.mutate(t.id, {
-      onError: () => setError("Couldn't resend the invite. Please try again."),
+      // A 409 (e.g. this technician already accepted, or was suspended, since this list
+      // was loaded) carries the backend's specific reason; anything else gets the generic
+      // line. Either way the roster query also refetches (see useResendTechnicianInvite),
+      // so a 409 here corrects the row's status/button on screen.
+      onError: (err) =>
+        setError(
+          err instanceof ApiError && err.status === 409
+            ? err.message
+            : "Couldn't resend the invite. Please try again.",
+        ),
     });
   }
 

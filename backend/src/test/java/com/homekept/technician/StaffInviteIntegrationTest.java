@@ -2,10 +2,12 @@ package com.homekept.technician;
 
 import com.homekept.AbstractIntegrationTest;
 import com.homekept.FakeEmailSenderConfig.RecordingEmailSender;
+import com.homekept.common.Hashing;
 import com.homekept.identity.PasswordResetToken;
 import com.homekept.identity.PasswordResetTokenRepository;
 import com.homekept.identity.PasswordResetTokenService;
 import com.homekept.identity.Role;
+import com.homekept.identity.TokenPurpose;
 import com.homekept.identity.User;
 import com.homekept.identity.UserStatus;
 import jakarta.servlet.http.Cookie;
@@ -15,7 +17,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MvcResult;
 
-import java.time.Duration;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,8 +41,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>validate — garbage token → {valid:false, reason:"INVALID"}</li>
  *   <li>validate — expired token → {valid:false, reason:"EXPIRED"}</li>
  *   <li>validate — consumed (already-accepted) token → {valid:false, reason:"USED"}</li>
- *   <li>validate — a customer's password-reset token never validates here (role/status
- *       cross-check closes the shared-table leak)</li>
+ *   <li>validate — a customer's password-reset token never validates here (purpose-scoped
+ *       lookup closes the shared-table leak at the root)</li>
  *   <li>accept — happy path: 201, sets auth cookies, flips ACTIVE, consumes the token, and
  *       the technician can log in with the new password afterwards</li>
  *   <li>accept — on an already-ACTIVE user → rejected, password unchanged</li>
@@ -49,6 +55,12 @@ class StaffInviteIntegrationTest extends AbstractIntegrationTest {
 
     private static final String VALIDATE_URL = "/api/staff/invite/validate";
     private static final String ACCEPT_URL = "/api/staff/invite/accept";
+
+    // Must match src/test/resources/application.yml app.jwt.signing-key — used to hand-craft
+    // an already-expired, correctly-signed fixture STAFF_INVITE token (mintStaffInvite owns
+    // its own 7-day TTL and can't mint a pre-expired one, same idea as
+    // PasswordResetIntegrationTest's expired-token fixture).
+    private static final String TEST_SIGNING_KEY = "test-only-not-a-real-signing-key-placeholder-xx";
 
     @Autowired PasswordResetTokenRepository tokenRepository;
     @Autowired PasswordResetTokenService tokenService;
@@ -97,11 +109,16 @@ class StaffInviteIntegrationTest extends AbstractIntegrationTest {
     @Test
     void validate_expiredToken_returns200WithExpiredReason() throws Exception {
         User tech = createPendingTechnician("Expired", "invite-expired@test.local");
-        PasswordResetTokenService.MintResult mint = tokenService.mint(tech, Duration.ofSeconds(-1));
+
+        long pastExpEpoch = Instant.now().minusSeconds(60).getEpochSecond();
+        String payload = "userId=" + tech.getId() + "&nonce=deadbeefdeadbeef&exp=" + pastExpEpoch;
+        String rawToken = buildSignedToken(payload);
+        tokenRepository.save(new PasswordResetToken(
+                tech, Hashing.sha256Hex(rawToken), Instant.now().minusSeconds(60), TokenPurpose.STAFF_INVITE));
 
         mockMvc.perform(post(VALIDATE_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"token\":\"" + mint.rawToken() + "\"}"))
+                        .content("{\"token\":\"" + rawToken + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid").value(false))
                 .andExpect(jsonPath("$.reason").value("EXPIRED"));
@@ -127,9 +144,10 @@ class StaffInviteIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void validate_customerPasswordResetToken_neverValidatesHere() throws Exception {
-        // The shared password_reset_tokens table has no "purpose" column — a customer's
-        // ordinary forgot-password token must not also work as a staff invite, and must not
-        // leak that customer's first name via this endpoint.
+        // A customer's ordinary forgot-password token (PASSWORD_RESET purpose) must not also
+        // work as a staff invite (STAFF_INVITE purpose), and must not leak that customer's
+        // first name via this endpoint — closed at the root by the purpose-scoped lookup in
+        // PasswordResetTokenService.validate.
         User customer = userRepository.save(new User(
                 "customer-reset-" + System.nanoTime() + "@test.local",
                 passwordEncoder.encode("Cust1234!"),
@@ -293,6 +311,21 @@ class StaffInviteIntegrationTest extends AbstractIntegrationTest {
     }
 
     private PasswordResetTokenService.MintResult mintInvite(User user) {
-        return tokenService.mint(user, Duration.ofDays(7));
+        return tokenService.mintStaffInvite(user.getId());
+    }
+
+    /**
+     * Hand-signs a fixture token matching PasswordResetTokenService's format, so a
+     * PasswordResetToken row can be constructed directly for the expired-token test case
+     * (mintStaffInvite owns its own 7-day TTL and cannot mint a pre-expired token).
+     */
+    private String buildSignedToken(String payload) throws Exception {
+        String encodedPayload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(TEST_SIGNING_KEY.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        byte[] hmacBytes = mac.doFinal(encodedPayload.getBytes(StandardCharsets.UTF_8));
+        String hmac = Base64.getUrlEncoder().withoutPadding().encodeToString(hmacBytes);
+        return encodedPayload + "." + hmac;
     }
 }

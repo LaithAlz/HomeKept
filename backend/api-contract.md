@@ -99,7 +99,10 @@ subscriber (not the user) to `ACTIVE`.
 
 Invite-by-email flow for onboarding a technician: admin invites → technician sets their
 own password. Token reuses the same table/HMAC scheme as `PasswordResetToken` (no
-dedicated staff-invite table), single-use, with a 7-day expiry.
+dedicated staff-invite table), single-use, with a 7-day expiry. The V13 migration added a
+`purpose` column (`PASSWORD_RESET` | `STAFF_INVITE`) to that shared table — every lookup
+(here and in `/api/auth/reset`) filters by it, and a token of the wrong purpose is always
+indistinguishable from one that does not exist at all.
 
 The staff invite email links to `{FRONTEND_BASE_URL}/staff/activate?token=<rawToken>`
 (token URL-encoded). The frontend staff-activation page calls
@@ -111,12 +114,19 @@ same as the customer activation link.
 ### `POST /api/staff/invite/validate`
 `{ "token": "..." }` → `200 { "valid": true, "firstName": "Priya" }`
 or `200 { "valid": false, "reason": "EXPIRED" | "USED" | "INVALID" }`
-(First name only — never the email or role.) Because the underlying token table is shared
-with the customer forgot/reset-password flow, the resolved user is independently
-re-checked for `role == TECHNICIAN` and `status == PENDING_ACTIVATION`; any other token
-(e.g. a customer's password-reset token, or a technician's own token after they've
-already accepted or been suspended) reports `"INVALID"` rather than leaking that a token
-exists for a different kind of account.
+(First name only — never the email or role.)
+
+`EXPIRED`/`USED` are only ever returned for a token that really is `STAFF_INVITE`-purpose
+and belongs to a still-eligible account — i.e. these two reasons only ever tell the caller
+something about a token they already hold the raw bytes of, never about someone else's
+account. Every other case reports the same `"INVALID"`, indistinguishable from a token
+that never existed:
+- a token of any other purpose (e.g. a customer's password-reset token) — the
+  purpose-scoped lookup never reaches the consumed/expired checks for it, so it cannot
+  report `EXPIRED`/`USED` either;
+- a well-formed, unconsumed, unexpired `STAFF_INVITE` token whose resolved account is no
+  longer an eligible `PENDING_ACTIVATION` `TECHNICIAN` (e.g. already accepted via a
+  different token, or suspended).
 
 ### `POST /api/staff/invite/accept`
 `{ "token": "...", "password": "..." }` → validates and consumes the token, sets the
@@ -143,8 +153,8 @@ never burns the token.
 | `POST /api/auth/refresh` | — (refresh cookie) | `200` + rotated cookies |
 | `POST /api/auth/logout` | — | `204`, revokes all refresh tokens |
 | `GET /api/auth/me` | — | `200 { id, firstName, lastName, email, role }` |
-| `POST /api/auth/forgot` | `{ email }` | always `202` (same response whether the account exists — no enumeration); emails a single-use HMAC reset token, 30-min expiry · rate limit 5/IP/hour |
-| `POST /api/auth/reset` | `{ token, password }` | `200 { "signedIn": true \| false }`, consumes token, revokes all refresh tokens, updates the password either way; sets fresh cookies and `signedIn: true` only if the user is ACTIVE (no auto-sign-in for a non-ACTIVE user) — otherwise `signedIn: false` and any auth cookies already on the request are cleared, so a browser can never come out of a reset holding a stale session for a different account |
+| `POST /api/auth/forgot` | `{ email }` | always `202` (same response whether the account exists — no enumeration); emails a single-use HMAC `PASSWORD_RESET`-purpose token, 30-min expiry · rate limit 5/IP/hour |
+| `POST /api/auth/reset` | `{ token, password }` | `200 { "signedIn": true }`, consumes the token, revokes all refresh tokens, updates the password, and signs the user in · rate limit 5/IP/hour. The token must be `PASSWORD_RESET`-purpose (a `STAFF_INVITE` token is rejected — see "Public staff invite" above) AND resolve to an `ACTIVE` user; either failure is the same `400 INVALID_TOKEN` as a malformed/expired/used token, and rolls back the token's consumption (so a rejected attempt doesn't burn it). Every genuine customer is `ACTIVE`, so this never fires for a real reset — it exists to close a token-confusion path, not to affect normal use |
 | `POST /api/auth/change-password` | `{ currentPassword, newPassword }` | any authenticated role · verifies `currentPassword` with the existing encoder, requires `newPassword` to be at least 8 characters and different from `currentPassword`, sets it, revokes all of the caller's refresh tokens, and sets fresh cookies so the caller stays signed in → `204`. Wrong `currentPassword` → `400` (same generic, nothing-else-revealed wording style as the reset flow); `newPassword` too short or equal to `currentPassword` → `400` · rate limit 10/IP/hour |
 
 There is **no** `POST /api/auth/register` at MVP. Customer accounts are created only via
@@ -258,7 +268,7 @@ checklist response, are not yet built.
 | `POST /api/admin/reschedule-requests/{id}/decline` | `{ adminNote }` (required) — marks the request DECLINED. 404 if missing; 409 if already resolved |
 | `GET /api/admin/technicians` | full technician roster (small at MVP, no pagination): `[{ id, userId, firstName, lastName, email, role, userStatus, employeeStatus, hireDate, fullyLoadedHourlyCostCents, createdAt, invitedAt }]`. Identity fields resolved from the `users` table via the identity domain's service; internal staff data, not customer PII. `invitedAt` (`Instant`, `null` until an invite has ever been sent) is the most recently minted staff-invite token's timestamp, resolved from the shared invite-token table — same "never a frontend-only flag" semantics as the walk-through pipeline's `invitedAt` |
 | `POST /api/admin/technicians` | `{ firstName, lastName, email, phone? }` — invite a new technician by identity only (no `userId`). In one transaction: creates the `User` (TECHNICIAN, `PENDING_ACTIVATION`, an unusable random password — the account cannot authenticate until the invite is accepted), the `technician_profile` (cost/employee status/hire date left `null` — set later on a technician-edit screen, not at invite time), mints a 7-day invite token, and emails the invite link. The role is always server-set to TECHNICIAN. → `201 { id, userId, firstName, lastName, email, userStatus, invitedAt }`. `409` if a user with that email already exists (`"An account already exists for that email address."`) |
-| `POST /api/admin/technicians/{id}/invite` | Resends the staff invite for an existing technician profile (`{id}` is the `technician_profile` id, the roster row's `id` — not `userId`): invalidates that user's prior unconsumed invite tokens, then mints a fresh one and re-sends the email, in one transaction, so the old link stops working the moment the new one is sent. → `202`. Unknown `id` → `404` |
+| `POST /api/admin/technicians/{id}/invite` | Resends the staff invite for an existing technician profile (`{id}` is the `technician_profile` id, the roster row's `id` — not `userId`). Resolves and checks the target user BEFORE touching any token: only a still-eligible `PENDING_ACTIVATION` `TECHNICIAN` may be re-invited, else `409` (e.g. the roster's "Resend" was clicked against an already-accepted or suspended account — a stale-cache click must not mail that account a fresh, redeemable password-setting link). When eligible: invalidates that user's prior unconsumed `STAFF_INVITE` tokens only (a password reset the same person separately requested is untouched), then mints a fresh one and re-sends the email, in one transaction, so the old link stops working the moment the new one is sent. → `202`. Unknown `id` → `404`; ineligible target → `409` |
 | `GET /api/admin/dashboard` | aggregate metrics for the admin home / operational dashboard (#43): `{ activeSubscribers, mrrCents, pendingWalkthroughs, upcomingVisits }`. `mrrCents` sums the current monthly price across ACTIVE subscribers only; `pendingWalkthroughs` counts PENDING (unconfirmed) bookings; `upcomingVisits` counts SCHEDULED visits with `scheduledFor` at or after now. No "at-risk subscribers" field — there is no backing status/column for that concept yet |
 
 All admin mutations write audit rows (Stage 2 formalizes this; log from day 1).

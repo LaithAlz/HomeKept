@@ -603,7 +603,11 @@ export function useResendTechnicianInvite() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (profileId: number) => post<void>(`/api/admin/technicians/${profileId}/invite`),
-    onSuccess: () => {
+    // Invalidate on settle, not just success: a 409 (the technician turned out to already
+    // be ACTIVE/SUSPENDED — the backend checks fresh, never trusting this list's cached
+    // userStatus) means the roster is stale and should refetch too, so the "Resend invite"
+    // button and status badge correct themselves instead of staying wrong on screen.
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "technicians"] });
     },
   });

@@ -3,6 +3,7 @@ package com.homekept.technician;
 import com.homekept.identity.AuthService;
 import com.homekept.identity.PasswordResetTokenService;
 import com.homekept.identity.Role;
+import com.homekept.identity.TokenPurpose;
 import com.homekept.identity.UserQueryService;
 import com.homekept.identity.UserStatus;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
@@ -19,13 +20,15 @@ import java.util.Map;
  * counterpart of the customer magic-link activation flow ({@code ActivationService}).
  *
  * <p>Reuses the identity domain's {@link PasswordResetTokenService} rather than a dedicated
- * token table (no migration needed for this issue). Because that table is shared with the
- * customer forgot/reset-password flow (and has no "purpose" column), a resolved token's user
- * is always re-checked here for {@code role == TECHNICIAN} and
- * {@code status == PENDING_ACTIVATION} before this service treats it as a legitimate, still
- * -open staff invite. Without that check, a stray password-reset token for some unrelated
- * account (or a technician's own token from *before* they accepted, replayed after
- * suspension) would otherwise also resolve here.
+ * token table. Every lookup here is scoped to {@link TokenPurpose#STAFF_INVITE} (V13
+ * migration) — a token of any other purpose (e.g. a customer's password-reset token) reports
+ * the same {@code "INVALID"} as one that does not exist, at the token-service layer itself.
+ *
+ * <p>On top of that purpose scoping, a resolved token's user is independently re-checked
+ * here for {@code role == TECHNICIAN} and {@code status == PENDING_ACTIVATION} before this
+ * service treats it as a legitimate, still-open staff invite — defense in depth for the
+ * (should-not-happen-by-design) case of two simultaneously-live STAFF_INVITE tokens for the
+ * same user, e.g. if one were ever accepted while another remained technically unconsumed.
  *
  * <p>Domain crossings go only through service interfaces — {@link PasswordResetTokenService},
  * {@link AuthService}, {@link UserQueryService} — never identity's repository or
@@ -50,12 +53,23 @@ public class StaffInviteService {
      * Validates a staff-invite token without consuming it. Returns the invited technician's
      * first name on success, or a safe reason label on failure — never the email or role.
      *
+     * <p>{@code EXPIRED}/{@code USED} are only ever returned for a token that really is
+     * {@link TokenPurpose#STAFF_INVITE}-purpose and belongs to a still-eligible account —
+     * i.e. reasons about a token the caller already possesses the raw bytes of. A token of
+     * any other purpose, or one whose account is no longer an eligible PENDING_ACTIVATION
+     * TECHNICIAN, reports {@code "INVALID"} — indistinguishable from a token that never
+     * existed. (This is a documentation correction, not a behavior change here: the
+     * cross-purpose case was already fixed at the root in
+     * {@link PasswordResetTokenService#validate}, which never reaches the
+     * consumed/expired checks for a wrong-purpose lookup — see api-contract.md.)
+     *
      * @param rawToken the raw token from the invite link
      * @return validate response (valid+firstName or invalid+reason)
      */
     @Transactional(readOnly = true)
     public StaffInviteValidateResponse validate(String rawToken) {
-        PasswordResetTokenService.ValidationResult result = passwordResetTokenService.validate(rawToken);
+        PasswordResetTokenService.ValidationResult result =
+                passwordResetTokenService.validate(rawToken, TokenPurpose.STAFF_INVITE);
         if (!result.valid()) {
             return StaffInviteValidateResponse.invalid(result.reason());
         }
@@ -97,7 +111,7 @@ public class StaffInviteService {
 
         Long userId;
         try {
-            userId = passwordResetTokenService.validateAndConsume(rawToken);
+            userId = passwordResetTokenService.validateAndConsume(rawToken, TokenPurpose.STAFF_INVITE);
         } catch (InvalidPasswordResetTokenException e) {
             // Re-thrown under the staff-invite-specific exception so the error copy reads
             // correctly for this flow ("Staff invite link..." not "Password reset link...").

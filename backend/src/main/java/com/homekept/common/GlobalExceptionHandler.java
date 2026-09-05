@@ -4,6 +4,7 @@ import com.homekept.booking.exception.BookingNotFoundException;
 import com.homekept.property.exception.PropertyNotFoundException;
 import com.homekept.technician.InvalidStaffInviteRequestException;
 import com.homekept.technician.StaffEmailAlreadyExistsException;
+import com.homekept.technician.TechnicianNotEligibleForInviteException;
 import com.homekept.technician.TechnicianNotFoundException;
 import com.homekept.storage.StorageUnavailableException;
 import com.homekept.booking.exception.IllegalBookingTransitionException;
@@ -343,11 +344,13 @@ public class GlobalExceptionHandler {
 
     /**
      * Generic conflict with a pre-canned safe message: a staff invite for an email that
-     * already has an account, or a reschedule request that conflicts with the visit's current
-     * state (not schedulable, duplicate pending request, already-resolved request) — 409.
+     * already has an account, a resend-invite target that is no longer an eligible pending
+     * technician, or a reschedule request that conflicts with the visit's current state (not
+     * schedulable, duplicate pending request, already-resolved request) — 409.
      */
     @ExceptionHandler({
             StaffEmailAlreadyExistsException.class,
+            TechnicianNotEligibleForInviteException.class,
             RescheduleRequestConflictException.class
     })
     public ResponseEntity<ErrorEnvelope> handleConflict(RuntimeException ex,
