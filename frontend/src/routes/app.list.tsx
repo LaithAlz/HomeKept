@@ -4,9 +4,12 @@ import { AlertCircle, CalendarCheck, Check, Circle, Loader2, Plus, Trash2 } from
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ListAccessNotice } from "@/components/app/list-access-notice";
 import { ApiError } from "@/lib/api";
+import { useSubscription } from "@/lib/account";
 import { useSessionExpiredRedirect } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/format";
+import { isListServiceable } from "@/lib/list-access";
 import { useCreateTodo, useDeleteTodo, useTodos, type TodoResponse } from "@/lib/todos";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +24,9 @@ export const Route = createFileRoute("/app/list")({
 
 function YourListPage() {
   const todosQuery = useTodos();
+  const subscriptionQuery = useSubscription();
   useSessionExpiredRedirect(todosQuery.error);
+  useSessionExpiredRedirect(subscriptionQuery.error);
 
   const items = todosQuery.data ?? [];
 
@@ -33,14 +38,28 @@ function YourListPage() {
         here and your technician takes care of it on your next scheduled visit.
       </p>
 
-      <section
-        aria-labelledby="add-heading"
-        className="mt-8 rounded-3xl border border-border bg-card p-6"
-      >
-        <h2 id="add-heading" className="font-display text-lg font-bold">
-          Add something
-        </h2>
-        <AddTodoForm />
+      <section aria-label="Add to your list" className="mt-8">
+        {subscriptionQuery.isLoading ? (
+          <div
+            className="flex items-center gap-3 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Checking your plan.
+          </div>
+        ) : subscriptionQuery.isError ? (
+          <p className="rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
+            We couldn't check your plan. Try refreshing the page.
+          </p>
+        ) : subscriptionQuery.data && !isListServiceable(subscriptionQuery.data) ? (
+          <ListAccessNotice subscription={subscriptionQuery.data} />
+        ) : (
+          <div className="rounded-3xl border border-border bg-card p-6">
+            <h2 className="font-display text-lg font-bold">Add something</h2>
+            <AddTodoForm />
+          </div>
+        )}
       </section>
 
       <section className="mt-8" aria-labelledby="list-heading">
