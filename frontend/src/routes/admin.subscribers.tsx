@@ -171,7 +171,6 @@ function SubscribersPage() {
               <tr>
                 <th className="px-4 py-3">ID</th>
                 <th className="px-2 py-3">Name</th>
-                <th className="px-2 py-3">City</th>
                 <th className="px-2 py-3">Plan</th>
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3 text-right">MRR</th>
@@ -183,7 +182,7 @@ function SubscribersPage() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No subscribers match these filters.
                   </td>
                 </tr>
@@ -225,7 +224,6 @@ function SubscriberRow({
           <span className="text-muted-foreground">—</span>
         )}
       </td>
-      <td className="px-2 py-3">{s.city ?? <span className="text-muted-foreground">—</span>}</td>
       <td className="px-2 py-3">{s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "—"}</td>
       <td className="px-2 py-3">
         <span

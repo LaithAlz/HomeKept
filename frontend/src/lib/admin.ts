@@ -160,16 +160,12 @@ export interface AdminSubscriberListItem {
   planCode?: string;
   mrrCents?: number;
   /**
-   * Name/contact/city fields the backend is landing separately on
-   * `AdminSubscriberListItem` (name+email alongside `AdminSubscriberDetail`,
-   * city for the admin list's new City column). Optional here — same
-   * `@JsonInclude(NON_NULL)` convention as `planCode`/`mrrCents` above — so
-   * this ships and degrades gracefully whether or not that lands first.
+   * Contact fields, resolved from the identity domain. Optional here, matching the
+   * backend's `@JsonInclude(NON_NULL)` convention on `planCode`/`mrrCents` above.
    */
   firstName?: string;
   lastName?: string;
   email?: string;
-  city?: string;
 }
 
 export interface AdminSubscriberPropertySummary {
