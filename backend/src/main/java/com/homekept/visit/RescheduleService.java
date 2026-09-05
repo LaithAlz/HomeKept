@@ -250,7 +250,7 @@ public class RescheduleService {
                 .map(Subscriber::getUserId)
                 .orElse(null);
 
-        // Reschedules the underlying visit in place. Throws IllegalVisitTransitionException
+        // Reschedules the underlying visit in place. Throws VisitNotReschedulableException
         // (409) if the visit is no longer reschedulable.
         Visit visit = visitAdminService.rescheduleVisit(
                 request.getVisitId(), scheduledFor, requestingUserId, VisitEventSource.CUSTOMER);

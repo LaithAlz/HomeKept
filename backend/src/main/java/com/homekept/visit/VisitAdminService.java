@@ -25,6 +25,7 @@ import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.VisitNotFoundException;
+import com.homekept.visit.exception.VisitNotReschedulableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -165,6 +166,11 @@ public class VisitAdminService {
                 request.durationMinutes(),
                 VisitType.ROUTINE
         );
+        // templateOccurrenceYear stays null: it identifies which yearly occurrence of a
+        // TEMPLATE this visit is, and this visit has no template. The scheduling guard
+        // (VisitRepository#existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear)
+        // is keyed on visitTemplateId too, so a null-template row like this one is never a
+        // candidate match regardless — there is nothing to set it TO even if we wanted to.
 
         if (request.technicianUserId() != null) {
             visit.setTechnicianId(request.technicianUserId());
@@ -457,8 +463,8 @@ public class VisitAdminService {
      * @param source          the {@code visit_event} source ({@code CUSTOMER} for the
      *                        confirm flow)
      * @return the updated visit
-     * @throws VisitNotFoundException           if the visit does not exist
-     * @throws IllegalVisitTransitionException if the visit is not in a reschedulable state
+     * @throws VisitNotFoundException         if the visit does not exist
+     * @throws VisitNotReschedulableException if the visit is not in a reschedulable state
      */
     @Transactional
     public Visit rescheduleVisit(Long visitId, Instant newScheduledFor, Long actingUserId, VisitEventSource source) {
@@ -488,15 +494,27 @@ public class VisitAdminService {
      * {@code SCHEDULED}), so a transition check against that target would be checking
      * something that can no longer happen. Only a {@code SCHEDULED} visit may be
      * rescheduled — an {@code IN_PROGRESS}, {@code COMPLETED}, {@code INCOMPLETE}, or
-     * {@code CANCELLED} visit is rejected with a 409, same as before.
+     * {@code CANCELLED} visit is rejected with a 409 ({@link VisitNotReschedulableException},
+     * not {@link IllegalVisitTransitionException} — see that exception's javadoc for why:
+     * reporting this as an attempted transition to {@code RESCHEDULED} would tell the
+     * operator they tried something no code path can actually do), same as before.
+     *
+     * <p><strong>This method (and every caller of it) must NEVER write
+     * {@code templateOccurrenceYear}.</strong> That field identifies which occurrence of a
+     * template a visit IS, not where it currently sits on the calendar — the whole point of
+     * the V17 migration is that it survives exactly this method moving {@code scheduledFor}
+     * around. Touching it here would silently reintroduce the double-booking bug it fixes
+     * (see {@link VisitSchedulingService} class Javadoc "Idempotency").
      */
     private Visit rescheduleInternal(Visit visit, Instant newScheduledFor, Long technicianUserId,
                                      Long actingUserId, VisitEventSource source) {
         if (!stateMachine.canReschedule(visit.getStatus())) {
-            throw new IllegalVisitTransitionException(visit.getStatus(), VisitStatus.RESCHEDULED);
+            throw new VisitNotReschedulableException(visit.getStatus());
         }
 
         Instant oldScheduledFor = visit.getScheduledFor();
+        // Only scheduledFor (and, below, technicianId) move. templateOccurrenceYear is
+        // deliberately never read or written here — see this method's javadoc.
         visit.setScheduledFor(newScheduledFor);
 
         Long oldTechnicianId = visit.getTechnicianId();

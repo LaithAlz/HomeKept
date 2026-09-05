@@ -107,22 +107,36 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
 
     /**
      * Returns true if the subscriber already has a visit (any status) tied to this specific
-     * template with {@code scheduledFor} inside {@code [windowStart, windowEnd]}. Used by
-     * {@link VisitSchedulingService} as a per-template, per-window scheduling guard: a
-     * template that already produced a visit for this subscriber <em>within the current
-     * lookahead window</em> is skipped, while other eligible templates newly in the window are
-     * still scheduled.
+     * template AND this specific yearly occurrence of it. Used by
+     * {@link VisitSchedulingService} as a per-template, per-occurrence scheduling guard: a
+     * template whose occurrence for the target year already has a visit is skipped, while
+     * other eligible templates newly in the window are still scheduled.
      *
-     * <p>The window bound (rather than an unbounded "ever" check) is what allows a template's
-     * <em>next year's</em> occurrence to be scheduled once the current window has rolled past
-     * this year's visit — templates recur annually, so an unbounded check would permanently
-     * cap a subscriber at one lifetime visit per template. This is what makes both webhook
-     * replay (the activation listener) and the recurring {@link VisitTopUpScheduler} top-up
-     * job safe to call repeatedly without duplicating visits, while still scheduling each
-     * template's fresh occurrence every year.
+     * <p>Keyed on {@code templateOccurrenceYear} (V17 migration) rather than {@code
+     * scheduledFor} falling in the current window (the pre-V17 rule) — that rule broke once
+     * reschedule started moving the single visit row in place instead of leaving the
+     * original in place and adding a replacement: a visit rescheduled outside the window (in
+     * either direction — a customer pushing a visit out, or one moved to a past date) would
+     * make the old window-based guard go false and the scheduler would create a duplicate
+     * for the same occurrence. Keying on the occurrence itself, which reschedule never
+     * touches (see {@code Visit#templateOccurrenceYear}), makes the guard correct regardless
+     * of where the visit currently sits on the calendar.
+     *
+     * <p>{@code occurrenceYear} is a boxed {@link Integer} because callers pass {@code null}
+     * for nothing in practice — the derived query's generated SQL uses {@code =}, and SQL's
+     * three-valued logic means a row with a {@code NULL templateOccurrenceYear} (a
+     * pre-V17 row, or a template-less visit) never satisfies {@code = ?} for any non-null
+     * parameter. Such a row is therefore correctly treated as "no recorded occurrence" and
+     * cannot suppress a fresh visit for the same template/year — see that field's javadoc.
+     *
+     * <p>This is what makes both webhook replay (the activation listener) and the recurring
+     * {@link VisitTopUpScheduler} top-up job safe to call repeatedly without duplicating
+     * visits, while still scheduling each template's fresh occurrence every year: next
+     * year's occurrence has a different {@code templateOccurrenceYear}, so it is never
+     * shadowed by this year's (possibly since-moved) visit.
      */
-    boolean existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween(
-            Long subscriberId, Long visitTemplateId, java.time.Instant windowStart, java.time.Instant windowEnd);
+    boolean existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
+            Long subscriberId, Long visitTemplateId, Integer templateOccurrenceYear);
 
     /**
      * Ownership check: returns the visit by id and subscriber id.

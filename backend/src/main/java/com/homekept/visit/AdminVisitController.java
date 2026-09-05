@@ -114,7 +114,8 @@ public class AdminVisitController {
      * 409. Missing visit → 404.
      *
      * @param id      the visit id
-     * @param request the patch request
+     * @param request the patch request — validated: a present {@code scheduledFor} must be
+     *                in the future (400 {@code VALIDATION_FAILED} otherwise)
      * @param auth    the authenticated admin — its principal is recorded as the acting user
      *                on any {@code visit_event} this patch produces
      * @return 200 with the updated visit
@@ -122,7 +123,7 @@ public class AdminVisitController {
     @PatchMapping("/{id}")
     public ResponseEntity<AdminVisitResponse> patchVisit(
             @PathVariable Long id,
-            @RequestBody AdminPatchVisitRequest request,
+            @Valid @RequestBody AdminPatchVisitRequest request,
             Authentication auth) {
         Long adminUserId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(visitAdminService.patchVisit(id, request, adminUserId));

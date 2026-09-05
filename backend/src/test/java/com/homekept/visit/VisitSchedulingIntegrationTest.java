@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -34,6 +36,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>All created visits are SCHEDULED + ROUTINE + in the future.</li>
  *   <li>Each visit has exactly 4 VisitService rows (source=TEMPLATE, the 4 standing items).</li>
  *   <li>Idempotency: second call creates no new visits.</li>
+ *   <li>The {@code templateOccurrenceYear}-keyed guard survives an in-place reschedule that
+ *       pushes a visit outside the lookahead window (forward or into the past) — the
+ *       regression this class exists to pin down after V16/V17.</li>
  * </ul>
  *
  * <p>Expected counts are derived at runtime by calling the same package-local helper
@@ -46,6 +51,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
     private static final int STANDING_ITEMS_PER_VISIT = 4;
 
     @Autowired VisitSchedulingService visitSchedulingService;
+    @Autowired VisitAdminService visitAdminService;
     @Autowired VisitRepository visitRepository;
     @Autowired VisitServiceRepository visitServiceRepository;
     @Autowired VisitTemplateRepository visitTemplateRepository;
@@ -261,11 +267,20 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
 
         // Pre-seed a visit for the FIRST in-window template only — simulates "this template's
         // visit was already scheduled by a previous run," without going through the service.
+        // templateOccurrenceYear is set explicitly to what a real scheduling run would have
+        // recorded (the candidate date's year) — the guard is now keyed on that column, not
+        // on scheduledFor falling inside the window, so a fixture that omits it would no
+        // longer be recognized as "already scheduled" and this test would (correctly) start
+        // failing under the new guard.
         VisitTemplate preScheduled = inWindow.get(0);
-        visitRepository.save(new Visit(
+        LocalDate preScheduledCandidate =
+                VisitSchedulingService.nextOccurrenceInWindow(preScheduled.getMonth(), today, windowEnd, TORONTO);
+        Visit preScheduledVisit = new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), preScheduled.getId(),
-                java.time.Instant.now().plus(java.time.Duration.ofDays(30)),
-                120, VisitType.ROUTINE));
+                Instant.now().plus(Duration.ofDays(30)),
+                120, VisitType.ROUTINE);
+        preScheduledVisit.setTemplateOccurrenceYear(preScheduledCandidate.getYear());
+        visitRepository.save(preScheduledVisit);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
 
@@ -285,8 +300,8 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
     /**
      * Visit templates recur annually (one row per month, reused every year). A visit from a
      * <em>prior year's</em> occurrence of a template must not block this year's occurrence
-     * once it enters the current window — the idempotency guard is scoped to the current
-     * window, not "has this subscriber ever had a visit for this template" (see
+     * once it enters the current window — the idempotency guard is per-occurrence, not
+     * "has this subscriber ever had a visit for this template" (see
      * {@link VisitSchedulingService} class Javadoc "Idempotency"). An unbounded guard would
      * permanently cap a subscriber at one lifetime visit per template instead of a fresh one
      * every year.
@@ -305,13 +320,20 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(inWindow).isNotEmpty();
 
         VisitTemplate template = inWindow.get(0);
+        int currentOccurrenceYear =
+                VisitSchedulingService.nextOccurrenceInWindow(template.getMonth(), today, windowEnd, TORONTO).getYear();
 
-        // Pre-seed a visit for this same template dated a full year in the past — simulates
-        // last year's occurrence, well outside the current [today, windowEnd) window.
-        visitRepository.save(new Visit(
+        // Pre-seed a visit for this same template dated a full year in the past, tagged with
+        // LAST year's occurrence — simulates last year's occurrence, explicitly distinct from
+        // the occurrence the guard will look up this run (currentOccurrenceYear). Setting this
+        // explicitly (rather than leaving it null) is what makes this a real test of
+        // year-scoping rather than an accident of NULL never matching an equality lookup.
+        Visit priorYearVisit = new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), template.getId(),
-                java.time.Instant.now().minus(java.time.Duration.ofDays(365)),
-                120, VisitType.ROUTINE));
+                Instant.now().minus(Duration.ofDays(365)),
+                120, VisitType.ROUTINE);
+        priorYearVisit.setTemplateOccurrenceYear(currentOccurrenceYear - 1);
+        visitRepository.save(priorYearVisit);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
 
@@ -327,6 +349,126 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(templateVisits.stream().filter(v -> v.getScheduledFor().isAfter(now)).count())
                 .as("a fresh visit for this template must exist in the current window")
                 .isEqualTo(1);
+    }
+
+    // ── In-place reschedule must not defeat the guard (V16/V17 regression) ───────
+
+    /**
+     * The bug this class exists to pin down: reschedule used to leave the original visit row
+     * in place and add a replacement, so the guard (then keyed on {@code scheduledFor} falling
+     * inside the window) always found a row in-window. Once reschedule started moving the
+     * single row in place (V16), pushing a visit outside the lookahead window made the old
+     * guard go false and the next top-up run created a duplicate for the same occurrence —
+     * the customer double-booked. Exercises the REAL reschedule path
+     * ({@link VisitAdminService#rescheduleVisit}), not a raw repository write, so this would
+     * have failed against the pre-V17 guard.
+     */
+    @Test
+    void topUp_rescheduledVisitPushedOutsideWindow_doesNotDuplicateTemplate() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-reschedule-forward@test.local", PlanCode.PREMIER);
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+        List<Visit> initial = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .toList();
+        assertThat(initial).isNotEmpty();
+        Visit target = initial.get(0);
+        Long templateId = target.getVisitTemplateId();
+        assertThat(templateId).isNotNull();
+
+        // Customer says "push it out" — reschedule it well past the 4-month lookahead window.
+        visitAdminService.rescheduleVisit(
+                target.getId(), Instant.now().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
+
+        // The nightly top-up run: under the old scheduledFor-window guard, this visit is now
+        // outside the window and the guard would go false, creating a duplicate.
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        long countForTemplate = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .filter(v -> templateId.equals(v.getVisitTemplateId()))
+                .count();
+        assertThat(countForTemplate)
+                .as("rescheduling a visit outside the lookahead window must not duplicate its template's occurrence")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Same regression, past-date direction: the founder's report noted "a reschedule to a
+     * past date does the same thing" — a visit moved behind {@code today} also falls outside
+     * {@code [today, windowEnd)} under the old guard.
+     */
+    @Test
+    void topUp_rescheduledVisitMovedToPastDate_doesNotDuplicateTemplate() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-reschedule-past@test.local", PlanCode.PREMIER);
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+        List<Visit> initial = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .toList();
+        assertThat(initial).isNotEmpty();
+        Visit target = initial.get(0);
+        Long templateId = target.getVisitTemplateId();
+        assertThat(templateId).isNotNull();
+
+        // Called on the service directly (bypassing the controller's @Future validation,
+        // which only guards the PATCH endpoint) to isolate exactly the guard behaviour this
+        // regression is about — a past scheduledFor is also outside [today, windowEnd).
+        visitAdminService.rescheduleVisit(
+                target.getId(), Instant.now().minus(Duration.ofDays(30)), null, VisitEventSource.ADMIN);
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        long countForTemplate = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .filter(v -> templateId.equals(v.getVisitTemplateId()))
+                .count();
+        assertThat(countForTemplate)
+                .as("rescheduling a visit to a past date must not duplicate its template's occurrence")
+                .isEqualTo(1);
+    }
+
+    /**
+     * Proves the fix does not silently reintroduce the bug the founder explicitly rejected as
+     * an alternative: widening the guard's window would make a visit moved far forward
+     * suppress NEXT year's occurrence of the same template, costing the customer a visit they
+     * paid for. Since the guard is keyed on {@code templateOccurrenceYear} (never written by
+     * reschedule), a visit moved arbitrarily far forward keeps its OWN occurrence year and can
+     * never satisfy a lookup for a different one.
+     */
+    @Test
+    void topUp_visitRescheduledFarForward_nextYearsOccurrenceGuardStaysOpen() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-reschedule-nextyear@test.local", PlanCode.PREMIER);
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+        List<Visit> initial = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .toList();
+        assertThat(initial).isNotEmpty();
+        Visit target = initial.get(0);
+        Long templateId = target.getVisitTemplateId();
+        Integer occurrenceYear = target.getTemplateOccurrenceYear();
+        assertThat(templateId).isNotNull();
+        assertThat(occurrenceYear).isNotNull();
+
+        visitAdminService.rescheduleVisit(
+                target.getId(), Instant.now().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
+
+        Visit reloaded = visitRepository.findById(target.getId()).orElseThrow();
+        assertThat(reloaded.getTemplateOccurrenceYear())
+                .as("reschedule must never change which occurrence a visit is recorded as")
+                .isEqualTo(occurrenceYear);
+
+        // Next year's occurrence guard is untouched by the move: the far-forward visit is
+        // still tagged with THIS year's occurrence, so it cannot shadow next year's.
+        assertThat(visitRepository.existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
+                subscriber.getId(), templateId, occurrenceYear + 1))
+                .as("a visit moved far forward must not appear to satisfy next year's occurrence")
+                .isFalse();
+        // And this year's occurrence is still correctly recognized as already scheduled.
+        assertThat(visitRepository.existsBySubscriberIdAndVisitTemplateIdAndTemplateOccurrenceYear(
+                subscriber.getId(), templateId, occurrenceYear))
+                .isTrue();
     }
 
     // ── No-plan-tier guard ────────────────────────────────────────────────────

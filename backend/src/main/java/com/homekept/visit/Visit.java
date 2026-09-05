@@ -61,6 +61,26 @@ public class Visit {
     @Column(name = "visit_template_id")
     private Long visitTemplateId;
 
+    /**
+     * Which yearly occurrence of {@link #visitTemplateId} this visit is (V17 migration).
+     * Set ONCE, at creation, by whichever path created the visit — see
+     * {@link VisitSchedulingService#scheduleInitialVisits} for the template-driven case.
+     * A reschedule (see {@link VisitAdminService}) MUST NEVER write this field: it
+     * identifies which occurrence the row is, not where it currently sits on the calendar.
+     * {@code VisitRepository}'s idempotency guard keys on
+     * {@code (subscriberId, visitTemplateId, templateOccurrenceYear)} instead of
+     * {@code scheduledFor} precisely so that moving a visit (by reschedule) cannot make the
+     * scheduler think the occurrence no longer exists and create a duplicate.
+     *
+     * <p>Nullable: {@code null} for every visit with no template ({@code visitTemplateId ==
+     * null}, e.g. admin-created via {@code POST /api/admin/visits}) and for rows that
+     * predate this column. A {@code null} value never matches an equality-based lookup, so
+     * such a row is correctly treated as "no recorded occurrence" — it cannot suppress a
+     * fresh visit for the same template being scheduled.
+     */
+    @Column(name = "template_occurrence_year")
+    private Integer templateOccurrenceYear;
+
     /** When the visit is scheduled to happen (UTC). Admin adjusts; not the subscriber. */
     @Column(name = "scheduled_for", nullable = false)
     private Instant scheduledFor;
@@ -128,6 +148,18 @@ public class Visit {
     public Long getTechnicianId() { return technicianId; }
     public void setTechnicianId(Long technicianId) { this.technicianId = technicianId; }
     public Long getVisitTemplateId() { return visitTemplateId; }
+
+    public Integer getTemplateOccurrenceYear() { return templateOccurrenceYear; }
+
+    /**
+     * Sets which yearly occurrence of the template this visit is. Callers: ONLY a visit
+     * creation path (the scheduler, or a test fixture simulating one). Never call this from
+     * a reschedule — see this field's javadoc for why.
+     */
+    public void setTemplateOccurrenceYear(Integer templateOccurrenceYear) {
+        this.templateOccurrenceYear = templateOccurrenceYear;
+    }
+
     public Instant getScheduledFor() { return scheduledFor; }
     public void setScheduledFor(Instant scheduledFor) { this.scheduledFor = scheduledFor; }
     public int getDurationMinutes() { return durationMinutes; }

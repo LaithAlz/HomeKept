@@ -15,6 +15,7 @@ import com.homekept.visit.exception.InvalidVisitRequestException;
 import com.homekept.visit.exception.RescheduleRequestConflictException;
 import com.homekept.visit.exception.RescheduleRequestNotFoundException;
 import com.homekept.visit.exception.VisitNotFoundException;
+import com.homekept.visit.exception.VisitNotReschedulableException;
 import com.homekept.subscription.IllegalSubscriptionStateException;
 import com.homekept.subscription.InvalidActivationRequestException;
 import com.homekept.subscription.InvalidActivationTokenException;
@@ -299,6 +300,19 @@ public class GlobalExceptionHandler {
                 .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION",
                         "Visit status transition " + ex.getFrom() + " → " + ex.getTo() + " is not permitted",
                         requestId(request)));
+    }
+
+    /**
+     * Reschedule refused because the visit's current status doesn't permit it — 409 Conflict.
+     * Same error code as {@link IllegalVisitTransitionException} above, but the message names
+     * the visit's actual status rather than an attempted transition to RESCHEDULED, a status
+     * no code path can produce anymore (see {@link VisitNotReschedulableException}'s javadoc).
+     */
+    @ExceptionHandler(VisitNotReschedulableException.class)
+    public ResponseEntity<ErrorEnvelope> handleVisitNotReschedulable(VisitNotReschedulableException ex,
+                                                                      HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("ILLEGAL_STATE_TRANSITION", ex.getMessage(), requestId(request)));
     }
 
     /** A service action (start visit / reschedule request / to-do) on a non-serviceable subscriber. 409. */

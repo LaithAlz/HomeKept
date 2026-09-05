@@ -566,7 +566,30 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scheduledFor\":\"" + newTime + "\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
+                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"))
+                // Honest message: names the visit's actual status, never claims an attempted
+                // transition to RESCHEDULED — a status no code path can produce anymore.
+                .andExpect(jsonPath("$.error.message").value("Visit is CANCELLED and cannot be rescheduled"));
+    }
+
+    @Test
+    void patchVisit_reschedule_pastDate_returns400() throws Exception {
+        Visit visit = seedScheduledVisit();
+        String pastTime = Instant.now().minus(1, ChronoUnit.DAYS).toString();
+
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledFor\":\"" + pastTime + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        // Untouched — the request never reached the service, so no visit_event was recorded.
+        Visit persisted = visitRepository.findById(visit.getId()).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+        Integer eventCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit_event WHERE visit_id = ?", Integer.class, visit.getId());
+        assertThat(eventCount).isZero();
     }
 
     // ── PATCH — assign technician ─────────────────────────────────────────────
