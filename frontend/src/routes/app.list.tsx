@@ -35,7 +35,7 @@ function YourListPage() {
       <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Your list</h1>
       <p className="mt-2 max-w-2xl text-muted-foreground">
         Small tasks for around your home, like a loose towel bar or a squeaky door. Add something
-        here and your technician takes care of it on your next scheduled visit.
+        here and your technician sets time aside for your list on every visit.
       </p>
 
       <section aria-label="Add to your list" className="mt-8">
@@ -82,8 +82,8 @@ function YourListPage() {
             </p>
           ) : items.length === 0 ? (
             <p className="rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Nothing on your list yet. Add your first item above and your technician will take care
-              of it on your next visit.
+              Nothing on your list yet. Add your first item above and it is queued for your next
+              visit.
             </p>
           ) : (
             items.map((item) => <TodoRow key={item.id} item={item} />)

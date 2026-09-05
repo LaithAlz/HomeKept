@@ -83,7 +83,7 @@ export function AddTodoDialog({ open, onOpenChange }: AddTodoDialogProps) {
     mutation.mutate(trimmed, {
       onSuccess: () => {
         toast.success("Added to your list", {
-          description: "Your technician will take care of it on your next scheduled visit.",
+          description: "It's queued for your next scheduled visit.",
         });
         setValue("");
         onOpenChange(false);
@@ -112,7 +112,7 @@ export function AddTodoDialog({ open, onOpenChange }: AddTodoDialogProps) {
           <DialogDescription id={descId}>
             {blockedMessage
               ? blockedMessage.body
-              : "Small tasks for around your home, like a loose towel bar or a squeaky door. Your technician takes care of it on your next scheduled visit."}
+              : "Small tasks for around your home, like a loose towel bar or a squeaky door. Your technician sets time aside for your list on every visit."}
           </DialogDescription>
         </DialogHeader>
 
