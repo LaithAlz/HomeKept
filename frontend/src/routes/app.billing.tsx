@@ -171,7 +171,9 @@ function NextChargeSection({ subscription }: { subscription: AppSubscription }) 
   } else if (status === "PAUSED") {
     message = "Your membership is paused, so you won't be charged. Contact us to pick it back up.";
   } else if (hasPrice && currentPeriodEnd) {
-    message = `Your next charge is ${formatCentsExact(priceCents)} on ${formatFullDate(currentPeriodEnd)}.`;
+    // Prices are quoted before tax and Stripe adds HST at invoice time, so the plan
+    // price alone is not the total. Say so rather than implying it is.
+    message = `Your next charge is ${formatCentsExact(priceCents)} plus HST on ${formatFullDate(currentPeriodEnd)}.`;
   } else {
     message = "Your next charge will appear here once your first billing cycle begins.";
   }
