@@ -55,7 +55,7 @@ public abstract class AbstractIntegrationTest {
             "walkthrough_booking", "walkthrough_booking_day_preference",
             "property", "subscriber", "subscription_event", "activation_token",
             "technician_profile", "visit_photo", "visit_note", "flag", "todo_item",
-            "visit", "visit_service",
+            "visit", "visit_service", "visit_event",
             "reschedule_request", "reschedule_request_slot",
             "health_score_snapshot",
             "notification_log");

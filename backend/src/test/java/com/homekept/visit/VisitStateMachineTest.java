@@ -13,12 +13,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <pre>
  *   SCHEDULED    → IN_PROGRESS
  *   SCHEDULED    → CANCELLED
- *   SCHEDULED    → RESCHEDULED
  *   IN_PROGRESS  → COMPLETED
  *   IN_PROGRESS  → INCOMPLETE
  * </pre>
  *
  * <p>Terminals (no outbound transitions): COMPLETED, INCOMPLETE, CANCELLED, RESCHEDULED.
+ * {@code SCHEDULED → RESCHEDULED} is deliberately illegal now (not legal-but-unused): a
+ * visit is rescheduled in place and never transitions to {@code RESCHEDULED} — see the
+ * {@code canReschedule(...)} tests below for the predicate that actually governs
+ * reschedule eligibility.
  */
 class VisitStateMachineTest {
 
@@ -34,11 +37,6 @@ class VisitStateMachineTest {
     @Test
     void scheduled_to_cancelled_isLegal() {
         assertThat(machine.canTransition(VisitStatus.SCHEDULED, VisitStatus.CANCELLED)).isTrue();
-    }
-
-    @Test
-    void scheduled_to_rescheduled_isLegal() {
-        assertThat(machine.canTransition(VisitStatus.SCHEDULED, VisitStatus.RESCHEDULED)).isTrue();
     }
 
     // ── Legal transitions from IN_PROGRESS ───────────────────────────────────
@@ -68,6 +66,16 @@ class VisitStateMachineTest {
     @Test
     void scheduled_to_incomplete_isIllegal() {
         assertThat(machine.canTransition(VisitStatus.SCHEDULED, VisitStatus.INCOMPLETE)).isFalse();
+    }
+
+    /**
+     * A visit is now rescheduled in place (its {@code scheduledFor} changes; its status
+     * does not) — so this transition, once legal, is now deliberately illegal rather than
+     * legal-but-unused. See {@link VisitStateMachine}'s class javadoc.
+     */
+    @Test
+    void scheduled_to_rescheduled_isIllegal() {
+        assertThat(machine.canTransition(VisitStatus.SCHEDULED, VisitStatus.RESCHEDULED)).isFalse();
     }
 
     // ── Illegal transitions from IN_PROGRESS ─────────────────────────────────
@@ -145,5 +153,37 @@ class VisitStateMachineTest {
     @Test
     void bothNull_returnsFalse() {
         assertThat(machine.canTransition(null, null)).isFalse();
+    }
+
+    // ── canReschedule — the predicate that actually governs reschedule eligibility ────────
+
+    @Test
+    void canReschedule_scheduled_isTrue() {
+        assertThat(machine.canReschedule(VisitStatus.SCHEDULED)).isTrue();
+    }
+
+    @Test
+    void canReschedule_inProgress_isFalse() {
+        assertThat(machine.canReschedule(VisitStatus.IN_PROGRESS)).isFalse();
+    }
+
+    @Test
+    void canReschedule_completed_isFalse() {
+        assertThat(machine.canReschedule(VisitStatus.COMPLETED)).isFalse();
+    }
+
+    @Test
+    void canReschedule_incomplete_isFalse() {
+        assertThat(machine.canReschedule(VisitStatus.INCOMPLETE)).isFalse();
+    }
+
+    @Test
+    void canReschedule_cancelled_isFalse() {
+        assertThat(machine.canReschedule(VisitStatus.CANCELLED)).isFalse();
+    }
+
+    @Test
+    void canReschedule_rescheduled_isFalse() {
+        assertThat(machine.canReschedule(VisitStatus.RESCHEDULED)).isFalse();
     }
 }

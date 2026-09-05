@@ -10,7 +10,8 @@ import java.time.Instant;
  *
  * <p>{@code scheduledFor}: the concrete time the admin is rescheduling the visit to —
  * typically one of the customer's proposed slots, but the admin may choose another after
- * coordinating. Drives the visit reschedule (RESCHEDULED old + new SCHEDULED visit).
+ * coordinating. Drives the visit reschedule (updates the visit's {@code scheduledFor} in
+ * place; no replacement visit is created).
  */
 public record AdminConfirmRescheduleRequest(
         @NotNull(message = "scheduledFor is required")

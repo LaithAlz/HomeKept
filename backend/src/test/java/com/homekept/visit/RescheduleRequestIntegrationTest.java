@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -36,7 +37,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * ({@code GET /api/admin/reschedule-requests}, {@code .../{id}/confirm}, {@code .../{id}/decline}).
  *
  * <p>Runs against real Postgres via Testcontainers — exercises the partial unique index
- * (duplicate-pending guard) and the visit reschedule swap (RESCHEDULED old + new SCHEDULED).
+ * (duplicate-pending guard) and the in-place visit reschedule (same visit id updated,
+ * {@code visit_event} recorded with source CUSTOMER).
  */
 class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
 
@@ -107,7 +109,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void confirm_twoConcurrent_onlyOneSucceeds_singleReplacementVisit() throws Exception {
+    void confirm_twoConcurrent_onlyOneSucceeds_visitRescheduledOnce() throws Exception {
         // Seed a PENDING request via the customer endpoint.
         mockMvc.perform(post(rescheduleUrl(visit.getId()))
                         .cookie(new Cookie("hk_access", customerToken))
@@ -120,7 +122,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
 
         // Two admins (or one double-clicked confirm) resolve the SAME request at once. The
         // PESSIMISTIC_WRITE lock must let exactly one through; the other blocks, re-reads the
-        // now-CONFIRMED status, and is rejected BEFORE it can create a second replacement visit.
+        // now-CONFIRMED status, and is rejected BEFORE it can reschedule the visit a second time.
         Instant newSlot = Instant.now().plus(21, ChronoUnit.DAYS);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         java.util.concurrent.CountDownLatch fire = new java.util.concurrent.CountDownLatch(1);
@@ -141,11 +143,20 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
         pool.shutdown();
 
         assertThat(a ^ b).as("exactly one concurrent confirm should win").isTrue();
-        // The original visit is RESCHEDULED and exactly ONE replacement SCHEDULED visit exists.
-        Integer scheduled = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM visit WHERE subscriber_id = ? AND status = 'SCHEDULED'",
-                Integer.class, subscriber.getId());
-        assertThat(scheduled).isEqualTo(1);
+        // No replacement visit was created — still exactly ONE visit row for this subscriber,
+        // SCHEDULED, updated to the new time. Reschedule is in place now.
+        Integer totalVisits = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit WHERE subscriber_id = ?", Integer.class, subscriber.getId());
+        assertThat(totalVisits).isEqualTo(1);
+        Visit reloaded = visitRepository.findById(visit.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+        assertThat(reloaded.getScheduledFor()).isEqualTo(newSlot);
+        // Only one RESCHEDULED visit_event was recorded — the losing confirm never got far
+        // enough to record a second one.
+        Integer eventCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit_event WHERE visit_id = ? AND event_type = 'RESCHEDULED'",
+                Integer.class, visit.getId());
+        assertThat(eventCount).isEqualTo(1);
     }
 
     @Test
@@ -350,18 +361,25 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"scheduledFor\":\"2026-08-05T16:00:00Z\",\"adminNote\":\"Booked the 5th\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("CONFIRMED"))
-                .andExpect(jsonPath("$.confirmedVisitId").isNumber());
+                .andExpect(jsonPath("$.confirmedVisitId").value(visit.getId()));
 
-        // Old visit is now RESCHEDULED (terminal); the request points at a new visit.
-        Visit oldVisit = visitRepository.findById(visit.getId()).orElseThrow();
-        assertThat(oldVisit.getStatus()).isEqualTo(VisitStatus.RESCHEDULED);
+        // The SAME visit is rescheduled in place — it stays SCHEDULED, at the new time.
+        // No replacement visit is created; confirmedVisitId is just this visit's own id.
+        Visit reloaded = visitRepository.findById(visit.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+        assertThat(reloaded.getScheduledFor()).isEqualTo(Instant.parse("2026-08-05T16:00:00Z"));
 
         RescheduleRequest req = rescheduleRequestRepository.findById(requestId).orElseThrow();
         assertThat(req.getStatus()).isEqualTo(RescheduleRequestStatus.CONFIRMED);
-        assertThat(req.getConfirmedVisitId()).isNotNull();
-        Visit newVisit = visitRepository.findById(req.getConfirmedVisitId()).orElseThrow();
-        assertThat(newVisit.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
-        assertThat(newVisit.getScheduledFor()).isEqualTo(Instant.parse("2026-08-05T16:00:00Z"));
+        assertThat(req.getConfirmedVisitId()).isEqualTo(visit.getId());
+
+        // The visit_event is attributed to the CUSTOMER (whose request this fulfills), with
+        // by_user_id resolved to the requesting subscriber's own user id.
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT source, by_user_id FROM visit_event WHERE visit_id = ? AND event_type = 'RESCHEDULED'",
+                visit.getId());
+        assertThat(row.get("source")).isEqualTo("CUSTOMER");
+        assertThat(((Number) row.get("by_user_id")).longValue()).isEqualTo(subscriber.getUserId());
     }
 
     @Test

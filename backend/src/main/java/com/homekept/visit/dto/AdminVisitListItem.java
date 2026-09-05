@@ -1,18 +1,36 @@
 package com.homekept.visit.dto;
 
-import com.homekept.visit.Visit;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.time.Instant;
 
 /**
  * Summary DTO returned in the admin visit list.
  * {@code GET /api/admin/visits} — cursor-paginated, id-descending, optional status filter.
+ * Also backs the admin Routes day view, which fetches the same endpoint filtered to
+ * {@code status=SCHEDULED} and groups the rows by technician for a chosen day.
  *
- * <p>No PII — {@code subscriberId} and {@code technicianId} are bare cross-domain ids,
- * matching {@link AdminVisitResponse} and {@link AdminRescheduleRequestItem}. Leaves out
- * {@code completionNotes} (free-text) and the nested {@code services} list (heavy) that
- * {@link AdminVisitResponse} carries — those belong to a future single-visit detail view.
+ * <p>Carries customer PII ({@code customerFirstName}, {@code customerLastName},
+ * {@code customerPhone}) and the property's street address/city, in addition to ids,
+ * enums, and integer cents — safe only because {@code AdminVisitController} is
+ * {@code @PreAuthorize("hasRole('ADMIN')")}, same caveat as {@code AdminSubscriberListItem}.
+ * Never log these fields, and never reuse this DTO on a non-admin-gated endpoint.
+ *
+ * <p>{@code customerFirstName}/{@code customerLastName}/{@code customerPhone} are resolved
+ * from the identity domain via {@code UserQueryService.findAdminContactsByIds} (one batched
+ * query per page, never per-row — same pattern {@code AdminSubscriberListItem} uses);
+ * {@code customerEmail} is deliberately omitted here (not needed by the list/Routes card;
+ * {@code GET /api/admin/visits/{id}} carries it for the detail view instead).
+ * {@code propertyStreetAddress}/{@code propertyCity} are resolved from the property domain
+ * via a batched {@code PropertyService.findByIds} — also one query per page. All four are
+ * {@code null} only if the referenced subscriber/property row is unexpectedly missing
+ * (both FKs are {@code RESTRICT}, so this should not happen in practice).
+ *
+ * <p>Still leaves out {@code completionNotes} (free-text) and the nested {@code services}
+ * list (heavy) that {@link AdminVisitResponse} carries — those belong to the single-visit
+ * detail view ({@code AdminVisitDetail}).
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminVisitListItem(
         Long id,
         Long subscriberId,
@@ -25,22 +43,10 @@ public record AdminVisitListItem(
         String status,
         String type,
         Instant completedAt,
-        Instant createdAt
-) {
-    public static AdminVisitListItem from(Visit v) {
-        return new AdminVisitListItem(
-                v.getId(),
-                v.getSubscriberId(),
-                v.getPropertyId(),
-                v.getTechnicianId(),
-                v.getScheduledFor(),
-                v.getDurationMinutes(),
-                v.getActualDurationMinutes(),
-                v.getMaterialsCostCents(),
-                v.getStatus().name(),
-                v.getType().name(),
-                v.getCompletedAt(),
-                v.getCreatedAt()
-        );
-    }
-}
+        Instant createdAt,
+        String customerFirstName,
+        String customerLastName,
+        String customerPhone,
+        String propertyStreetAddress,
+        String propertyCity
+) {}

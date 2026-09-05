@@ -3,11 +3,14 @@ package com.homekept.visit;
 import com.homekept.visit.dto.AdminCreateVisitRequest;
 import com.homekept.visit.dto.AdminPatchVisitRequest;
 import com.homekept.visit.dto.AdminVisitDayLoadItem;
+import com.homekept.visit.dto.AdminVisitDetail;
 import com.homekept.visit.dto.AdminVisitListItem;
 import com.homekept.visit.dto.AdminVisitResponse;
+import com.homekept.visit.dto.VisitEventItem;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,7 +34,10 @@ import java.util.List;
  * <ul>
  *   <li>{@code GET /api/admin/visits?status=&cursor=&limit=} — cursor-paginated visit list</li>
  *   <li>{@code POST /api/admin/visits} — create a visit for a subscriber</li>
- *   <li>{@code PATCH /api/admin/visits/{id}} — reschedule / cancel / assign technician</li>
+ *   <li>{@code GET /api/admin/visits/{id}} — full single-visit detail</li>
+ *   <li>{@code PATCH /api/admin/visits/{id}} — reschedule (in place) / cancel / assign
+ *       technician</li>
+ *   <li>{@code GET /api/admin/visits/{id}/events} — the visit's activity log</li>
  *   <li>{@code GET /api/admin/visits/day-load?from=&to=} — per-local-day SCHEDULED visit
  *       load (Routes month-sidebar aggregate)</li>
  * </ul>
@@ -82,21 +88,58 @@ public class AdminVisitController {
     }
 
     /**
+     * GET /api/admin/visits/{id}
+     *
+     * <p>Full single-visit detail: the visit itself, the customer's identity, the
+     * property's address, the assigned technician's name, the checklist, and any
+     * notes/photos captured so far. This is the link the founder wanted a visit row to
+     * open into (rather than the list growing another row on reschedule) — see
+     * {@link #listEvents} for the history itself.
+     *
+     * @param id the visit id
+     * @return 200 with the full detail; 404 if no visit exists with this id
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<AdminVisitDetail> getVisit(@PathVariable Long id) {
+        return ResponseEntity.ok(visitAdminService.getVisitDetail(id));
+    }
+
+    /**
      * PATCH /api/admin/visits/{id}
      *
-     * <p>Supports: reschedule (provide {@code scheduledFor}), cancel (provide
-     * {@code status = "CANCELLED"}), assign technician (provide {@code technicianUserId}).
-     * Illegal state transitions → 409. Missing visit → 404.
+     * <p>Supports: reschedule in place (provide {@code scheduledFor} — updates the visit's
+     * {@code scheduledFor}/technician and records a {@code RESCHEDULED} {@code visit_event};
+     * no replacement visit is created), cancel (provide {@code status = "CANCELLED"}),
+     * assign technician (provide {@code technicianUserId}). Illegal state transitions →
+     * 409. Missing visit → 404.
      *
      * @param id      the visit id
      * @param request the patch request
+     * @param auth    the authenticated admin — its principal is recorded as the acting user
+     *                on any {@code visit_event} this patch produces
      * @return 200 with the updated visit
      */
     @PatchMapping("/{id}")
     public ResponseEntity<AdminVisitResponse> patchVisit(
             @PathVariable Long id,
-            @RequestBody AdminPatchVisitRequest request) {
-        return ResponseEntity.ok(visitAdminService.patchVisit(id, request));
+            @RequestBody AdminPatchVisitRequest request,
+            Authentication auth) {
+        Long adminUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(visitAdminService.patchVisit(id, request, adminUserId));
+    }
+
+    /**
+     * GET /api/admin/visits/{id}/events
+     *
+     * <p>The visit's activity log, newest first, capped at 100 rows — mirrors
+     * {@code GET /api/admin/subscribers/{id}/events}'s shape and cap. Missing visit → 404.
+     *
+     * @param id the visit id
+     * @return 200 with the events, newest first
+     */
+    @GetMapping("/{id}/events")
+    public ResponseEntity<List<VisitEventItem>> listEvents(@PathVariable Long id) {
+        return ResponseEntity.ok(visitAdminService.listEvents(id));
     }
 
     /**

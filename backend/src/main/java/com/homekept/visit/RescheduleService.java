@@ -33,9 +33,13 @@ import java.util.Set;
  * request (hard delete, freeing the partial unique index) before an admin acts on it.
  *
  * <h2>Admin</h2>
- * <p>{@link #confirm} reschedules the visit via {@link VisitAdminService#rescheduleVisit}
- * (the visit state machine creates the replacement visit) and records CONFIRMED +
- * {@code confirmedVisitId}. {@link #decline} records DECLINED with the admin's note.
+ * <p>{@link #confirm} reschedules the visit in place via
+ * {@link VisitAdminService#rescheduleVisit} and records CONFIRMED + {@code confirmedVisitId}
+ * — which, now that reschedule no longer creates a replacement visit, is simply the same
+ * visit id the request names. The reschedule is recorded as a {@code CUSTOMER}-sourced
+ * {@code visit_event} (the customer's request is what drove it, even though an admin
+ * executed the confirm), attributed to the requesting subscriber's own user id.
+ * {@link #decline} records DECLINED with the admin's note.
  *
  * <h2>Domain boundary</h2>
  * <p>Resolves the subscriber via {@link SubscriberQueryService} (subscription domain's
@@ -224,8 +228,16 @@ public class RescheduleService {
     }
 
     /**
-     * Confirms a reschedule request: reschedules the visit to {@code scheduledFor} (the
-     * visit state machine creates the replacement visit) and marks the request CONFIRMED.
+     * Confirms a reschedule request: reschedules the visit to {@code scheduledFor} IN PLACE
+     * and marks the request CONFIRMED.
+     *
+     * <p>The {@code visit_event} this produces is recorded with {@code source = CUSTOMER}
+     * and {@code byUserId} = the requesting subscriber's own user id — resolved here via
+     * {@link SubscriberQueryService#findById}, since {@link RescheduleRequest} only carries
+     * the subscriber id, not the user id. This attributes the event to whoever asked for the
+     * reschedule (the customer), not to the admin who happened to click confirm — distinct
+     * from a direct admin reschedule via {@code VisitAdminService#patchVisit}, which is
+     * {@code source = ADMIN} with the admin's own user id.
      *
      * @throws RescheduleRequestNotFoundException if the request does not exist (404)
      * @throws RescheduleRequestConflictException if the request is already resolved (409)
@@ -234,17 +246,22 @@ public class RescheduleService {
     public AdminRescheduleRequestItem confirm(Long requestId, Instant scheduledFor, String adminNote) {
         RescheduleRequest request = requirePending(requestId);
 
-        // Reschedules the underlying visit (RESCHEDULED old + new SCHEDULED). Throws
-        // IllegalVisitTransitionException (409) if the visit is no longer reschedulable.
-        Visit newVisit = visitAdminService.rescheduleVisit(request.getVisitId(), scheduledFor);
+        Long requestingUserId = subscriberQueryService.findById(request.getSubscriberId())
+                .map(Subscriber::getUserId)
+                .orElse(null);
+
+        // Reschedules the underlying visit in place. Throws IllegalVisitTransitionException
+        // (409) if the visit is no longer reschedulable.
+        Visit visit = visitAdminService.rescheduleVisit(
+                request.getVisitId(), scheduledFor, requestingUserId, VisitEventSource.CUSTOMER);
 
         request.setStatus(RescheduleRequestStatus.CONFIRMED);
-        request.setConfirmedVisitId(newVisit.getId());
+        request.setConfirmedVisitId(visit.getId());
         request.setAdminNote(adminNote);
         rescheduleRequestRepository.save(request);
 
-        log.info("reschedule_request_confirmed requestId={} oldVisitId={} newVisitId={}",
-                request.getId(), request.getVisitId(), newVisit.getId());
+        log.info("reschedule_request_confirmed requestId={} visitId={}",
+                request.getId(), visit.getId());
 
         return toAdminItem(request);
     }

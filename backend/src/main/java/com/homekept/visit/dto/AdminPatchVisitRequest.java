@@ -7,8 +7,9 @@ import java.time.Instant;
  *
  * <p>Supports three operations (all fields are optional — apply only what is present):
  * <ul>
- *   <li>Reschedule: provide {@code scheduledFor} — state machine marks old visit RESCHEDULED
- *       and creates a new SCHEDULED row.</li>
+ *   <li>Reschedule: provide {@code scheduledFor} — updates the visit's {@code scheduledFor}
+ *       (and {@code technicianUserId}, when also supplied) IN PLACE and records a
+ *       {@code RESCHEDULED} {@code visit_event}. No replacement visit is created.</li>
  *   <li>Cancel: provide {@code status = "CANCELLED"}.</li>
  *   <li>Assign technician: provide {@code technicianUserId}.</li>
  * </ul>

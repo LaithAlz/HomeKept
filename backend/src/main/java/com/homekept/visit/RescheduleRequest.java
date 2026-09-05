@@ -18,8 +18,9 @@ import java.time.Instant;
  * {@link RescheduleRequestSlot} child rows (one-to-many via a bare {@code reschedule_request_id}
  * column — no JPA relationship, per the codebase's domain-first, FK-as-column convention).
  *
- * <p>An admin confirms (rescheduling the visit via the visit state machine, which creates
- * the replacement visit recorded in {@code confirmedVisitId}) or declines with a note.
+ * <p>An admin confirms (rescheduling the visit in place; {@code confirmedVisitId} is then
+ * simply the same visit id this request names — reschedule no longer creates a
+ * replacement visit) or declines with a note.
  *
  * <p>A partial unique index ({@code idx_reschedule_request_pending_visit}) enforces at most
  * one PENDING request per visit at the DB level — the service inserts without a pre-check
@@ -49,7 +50,10 @@ public class RescheduleRequest {
     @Column(name = "admin_note")
     private String adminNote;
 
-    /** FK → visit.id of the replacement visit created on confirm. Null while PENDING/DECLINED. */
+    /**
+     * FK → visit.id, set on confirm. Now that reschedule updates the visit in place, this is
+     * simply the same id as {@link #visitId} once confirmed. Null while PENDING/DECLINED.
+     */
     @Column(name = "confirmed_visit_id")
     private Long confirmedVisitId;
 
