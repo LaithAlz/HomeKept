@@ -1,11 +1,19 @@
 /**
- * MonthLoadCalendar — the admin Routes page's month-sidebar calendar.
+ * MonthLoadCalendar — the admin Routes page's month calendar.
  *
  * Its only job, per the ops research this was built from (Jobber / Housecall Pro /
  * ServiceTitan): pick a day, and see how much work is on it. It shows **honest counts
  * only** — total SCHEDULED visits and how many are unassigned — and never a capacity
  * percentage or "slots free" figure, because the backend does not model technician
  * working hours and a fabricated availability signal is worse than none.
+ *
+ * A day's load renders as a compact, non-textual signal, never a sentence: a small
+ * numeral badge (the total) and, only when at least one visit is unassigned, a
+ * warning-triangle icon beside it. That pairing (a shape plus a number) is deliberate —
+ * it must never be colour alone that tells an admin a day has unassigned work — and,
+ * because it's a fixed-size badge rather than wrapped text, it can't overflow the cell
+ * at any grid width. The full sentence ("3 visits, 1 unassigned") still lives in the
+ * cell's `aria-label` for screen readers.
  *
  * All day values are plain "YYYY-MM-DD" calendar-date strings (a `dayKey`, see
  * `@/lib/format`), not real timestamps — grid arithmetic below is done on a UTC-noon
@@ -24,10 +32,10 @@
  *   - Enter/Space select the focused day.
  *   - Crossing a month boundary calls `onMonthChange`, then moves DOM focus onto the
  *     target day once it renders in the new grid.
- * No popup, no focus trap — this is a plain, always-visible sidebar grid.
+ * No popup, no focus trap — this is a plain, always-visible grid.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { dayKey as torontoDayKey } from "@/lib/format";
@@ -193,13 +201,6 @@ function fullDayLabel(day: string): string {
     month: "long",
     day: "numeric",
   }).format(utcNoon(year, month, d));
-}
-
-/** "3 visits · 1 unassigned" — the visible second line; omits the unassigned half at 0. */
-function formatLoadVisible(load: DayLoad): string {
-  const visitsPart = `${load.total} visit${load.total === 1 ? "" : "s"}`;
-  if (load.unassigned <= 0) return visitsPart;
-  return `${visitsPart} · ${load.unassigned} unassigned`;
 }
 
 /** "3 visits, 1 unassigned" — comma-joined for the accessible name, same omission rule. */
@@ -430,7 +431,7 @@ export function MonthLoadCalendar({
                   onKeyDown={(e) => handleKeyDown(e, day)}
                   onFocus={() => setFocusedDay(day)}
                   className={cn(
-                    "flex min-h-14 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-xs font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                    "flex min-h-16 flex-col items-center justify-start gap-1 rounded-lg px-1 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                     !isCurrentMonth && "text-muted-foreground/50",
                     isToday && !isSelected && "ring-1 ring-inset ring-primary/60",
                     isSelected && "bg-primary text-primary-foreground hover:bg-primary/90",
@@ -439,17 +440,32 @@ export function MonthLoadCalendar({
                   <span aria-hidden="true" className={cn(isToday && "font-bold")}>
                     {dayNum}
                   </span>
-                  {dayLoad && (
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "text-center text-[10px] leading-tight",
-                        !isSelected && "text-muted-foreground",
-                      )}
-                    >
-                      {formatLoadVisible(dayLoad)}
-                    </span>
-                  )}
+                  {/* Fixed-height slot, reserved whether or not this day has load, so every
+                      cell in a row lines up regardless of which days have a badge. */}
+                  <span className="flex h-4 items-center justify-center gap-0.5">
+                    {dayLoad && (
+                      <>
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums",
+                            isSelected
+                              ? "bg-primary-foreground/20 text-primary-foreground"
+                              : "bg-foreground/10 text-foreground/70",
+                          )}
+                        >
+                          {dayLoad.total}
+                        </span>
+                        {dayLoad.unassigned > 0 && (
+                          <AlertTriangle
+                            aria-hidden="true"
+                            className="h-3 w-3 shrink-0 text-warning"
+                            strokeWidth={2.5}
+                          />
+                        )}
+                      </>
+                    )}
+                  </span>
                   {tag && (
                     <span aria-hidden="true" className="text-[10px] leading-tight">
                       {tag}
