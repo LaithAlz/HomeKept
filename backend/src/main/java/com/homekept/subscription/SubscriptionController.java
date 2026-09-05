@@ -28,10 +28,11 @@ import java.util.Optional;
  * their own subscription. Plan change and payment-method updates stay on the Stripe billing
  * portal ({@link CheckoutController#createPortalSession}).
  *
- * <p>Each self-serve action triggers Stripe; the resulting status transition is applied by
- * the Stripe webhook ({@link StripeWebhookService}). Responses report the current
+ * <p>Cancel triggers Stripe; the resulting CANCELLED status transition is applied by the
+ * Stripe webhook ({@link StripeWebhookService}). The response reports the current
  * (pre-webhook) status. The read endpoints ({@link #getSubscription}, {@link #getAccount})
- * are plain queries composed by {@link SubscriptionAppService}.
+ * are plain queries composed by {@link SubscriptionAppService}. There is no customer-facing
+ * pause: access runs through the end of the period already paid for, then cancels.
  */
 @RestController
 @PreAuthorize("hasRole('CUSTOMER')")
@@ -126,30 +127,6 @@ public class SubscriptionController {
     public ResponseEntity<Optional<AppPaymentMethodResponse>> getDefaultPaymentMethod(Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(Optional.ofNullable(subscriptionAppService.getDefaultPaymentMethod(userId)));
-    }
-
-    /**
-     * POST /api/app/subscription/pause — pause billing (eligible from ACTIVE).
-     *
-     * @param auth injected by Spring Security — principal is the Long user id
-     * @return {@code 200 { status, currentPeriodEnd }}
-     */
-    @PostMapping("/api/app/subscription/pause")
-    public ResponseEntity<SubscriptionActionResponse> pause(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(selfServeService.pause(userId));
-    }
-
-    /**
-     * POST /api/app/subscription/resume — resume billing (eligible from PAUSED).
-     *
-     * @param auth injected by Spring Security — principal is the Long user id
-     * @return {@code 200 { status, currentPeriodEnd }}
-     */
-    @PostMapping("/api/app/subscription/resume")
-    public ResponseEntity<SubscriptionActionResponse> resume(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(selfServeService.resume(userId));
     }
 
     /**

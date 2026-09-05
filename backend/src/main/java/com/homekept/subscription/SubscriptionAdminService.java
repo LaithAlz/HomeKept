@@ -26,8 +26,11 @@ import java.util.stream.Collectors;
 
 /**
  * Admin-facing service for the subscriber console: read-only detail/list views, direct
- * control of a subscriber's subscription (cancel / pause / resume), and the subscriber's
- * activity history.
+ * control of a subscriber's subscription (cancel), and the subscriber's activity history.
+ *
+ * <p>There is no admin-facing pause/resume action — only cancellation. Access runs through
+ * the end of the period already paid for; pause/resume exist only as a state reflected from
+ * a Stripe webhook (see {@link SubscriptionSelfServeService}'s class javadoc).
  *
  * <p>Cross-domain calls go through service interfaces only:
  * <ul>
@@ -37,8 +40,8 @@ import java.util.stream.Collectors;
  *       detail views — batched for the list, never N+1)</li>
  * </ul>
  *
- * <p>The pause/resume/cancel mutations delegate their actual mechanics (state-machine
- * legality, Stripe calls, idempotency keys) to the package-private methods on
+ * <p>The cancel mutation delegates its actual mechanics (state-machine legality, Stripe
+ * calls, idempotency keys) to the package-private methods on
  * {@link SubscriptionSelfServeService} — see that class's javadoc for why. This service only
  * resolves the subscriber by id (admin's own 404, distinct from the self-serve by-user-id
  * lookup) and applies the same billing-presence guard before delegating.
@@ -190,46 +193,6 @@ public class SubscriptionAdminService {
 
         log.info("subscription_admin_cancel_requested subscriberId={} immediately={}",
                 subscriber.getId(), immediately);
-        return response;
-    }
-
-    /**
-     * Pauses a subscriber's billing (same semantics/Stripe call as the customer self-serve
-     * pause — eligible only from ACTIVE).
-     *
-     * @param id subscriber id
-     * @return the current status and period end
-     * @throws SubscriberNotFoundException      unknown subscriber id (404)
-     * @throws NoBillingAccountException        no Stripe subscription yet (409)
-     * @throws IllegalSubscriptionStateException not eligible to pause (409)
-     */
-    @Transactional(readOnly = true)
-    public SubscriptionActionResponse pauseSubscriber(Long id) {
-        Subscriber subscriber = requireSubscriber(id);
-        selfServeService.requireBilled(subscriber);
-
-        SubscriptionActionResponse response = selfServeService.pauseSubscriber(subscriber);
-        log.info("subscription_admin_pause_requested subscriberId={}", subscriber.getId());
-        return response;
-    }
-
-    /**
-     * Resumes a subscriber's billing (same semantics/Stripe call as the customer self-serve
-     * resume — eligible only from PAUSED).
-     *
-     * @param id subscriber id
-     * @return the current status and period end
-     * @throws SubscriberNotFoundException      unknown subscriber id (404)
-     * @throws NoBillingAccountException        no Stripe subscription yet (409)
-     * @throws IllegalSubscriptionStateException not eligible to resume (409)
-     */
-    @Transactional(readOnly = true)
-    public SubscriptionActionResponse resumeSubscriber(Long id) {
-        Subscriber subscriber = requireSubscriber(id);
-        selfServeService.requireBilled(subscriber);
-
-        SubscriptionActionResponse response = selfServeService.resumeSubscriber(subscriber);
-        log.info("subscription_admin_resume_requested subscriberId={}", subscriber.getId());
         return response;
     }
 

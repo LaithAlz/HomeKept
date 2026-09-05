@@ -962,7 +962,7 @@ Apps live at launch:
 - **Customer app** (`/app/*`): dashboard with Health Score v1 (weighted-checklist
   rubric), visit list/detail with photos and checklists, "your list" todo queue,
   pick selection against the tier allowance, and complete self-serve: reschedule
-  request, pause, plan change + payment method (Stripe portal), cancel, buy extra
+  request, plan change + payment method (Stripe portal), cancel, buy extra
   picks (one-off Stripe payment)
 - **Technician app** (`/tech/*`, mobile-first PWA): today's visits, per-visit checklist
   from the template (+ picks/todos/flagged items), photo capture to R2, notes,

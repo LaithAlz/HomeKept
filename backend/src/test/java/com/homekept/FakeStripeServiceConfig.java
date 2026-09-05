@@ -24,11 +24,11 @@ import java.util.Optional;
  * that {@code Webhook.constructEvent} actually verifies signatures.
  *
  * <p>The fake {@link RecordingStripeService} returns canned URLs and records the
- * subscription ids passed to pause/resume/cancel so lifecycle tests can assert that the
- * controller actually reached the Stripe seam (the real PAUSED/CANCELLED transition is
- * driven by webhooks and covered separately by the webhook integration tests). Inject the
- * concrete {@code RecordingStripeService} and call {@link RecordingStripeService#reset()}
- * in {@code @BeforeEach} to avoid cross-test bleed.
+ * subscription ids passed to cancel so lifecycle tests can assert that the controller
+ * actually reached the Stripe seam (the real CANCELLED transition is driven by webhooks and
+ * covered separately by the webhook integration tests). Inject the concrete
+ * {@code RecordingStripeService} and call {@link RecordingStripeService#reset()} in
+ * {@code @BeforeEach} to avoid cross-test bleed.
  *
  * <p>This is a top-level {@code @TestConfiguration} class (not nested) because nested
  * {@code @TestConfiguration} classes inside a {@code @SpringBootTest} class are unreliable
@@ -49,8 +49,6 @@ public class FakeStripeServiceConfig {
     /** Hand fake that records subscription-lifecycle calls for assertions. */
     public static class RecordingStripeService implements StripeService {
 
-        public final List<String> pausedSubscriptionIds        = new ArrayList<>();
-        public final List<String> resumedSubscriptionIds       = new ArrayList<>();
         public final List<String> cancelledSubscriptionIds     = new ArrayList<>();
         public final List<String> cancelledNowSubscriptionIds  = new ArrayList<>();
         public final List<String> listInvoicesCustomerIds      = new ArrayList<>();
@@ -64,8 +62,6 @@ public class FakeStripeServiceConfig {
 
         /** Clears all recorded calls and canned fixtures — call in @BeforeEach. */
         public void reset() {
-            pausedSubscriptionIds.clear();
-            resumedSubscriptionIds.clear();
             cancelledSubscriptionIds.clear();
             cancelledNowSubscriptionIds.clear();
             listInvoicesCustomerIds.clear();
@@ -83,16 +79,6 @@ public class FakeStripeServiceConfig {
         @Override
         public String createPortalSession(String stripeCustomerId) {
             return FAKE_PORTAL_URL;
-        }
-
-        @Override
-        public void pauseSubscription(String stripeSubscriptionId, String idempotencyKey) {
-            pausedSubscriptionIds.add(stripeSubscriptionId);
-        }
-
-        @Override
-        public void resumeSubscription(String stripeSubscriptionId, String idempotencyKey) {
-            resumedSubscriptionIds.add(stripeSubscriptionId);
         }
 
         @Override

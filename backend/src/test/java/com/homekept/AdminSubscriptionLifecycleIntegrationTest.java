@@ -28,13 +28,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests for admin control of a subscriber's subscription:
- * {@code POST /api/admin/subscribers/{id}/cancel|pause|resume} and
+ * {@code POST /api/admin/subscribers/{id}/cancel} and
  * {@code GET /api/admin/subscribers/{id}/events}.
  *
  * <p>Imports {@link FakeStripeServiceConfig} so no live Stripe API calls are made. The actual
- * PAUSED/CANCELLED status transition is driven by webhooks (covered by
+ * CANCELLED status transition is driven by webhooks (covered by
  * {@link StripeWebhookIntegrationTest}) — these tests assert the response still reports the
  * <em>current</em> status, and that the controller reached the correct Stripe seam.
+ *
+ * <p>There is no admin-facing pause/resume — see
+ * {@link com.homekept.subscription.SubscriptionSelfServeService}'s class javadoc.
  *
  * <p>Runs against a real Postgres via Testcontainers.
  */
@@ -86,8 +89,6 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
     }
 
     private String cancelUrl(Long id) { return "/api/admin/subscribers/" + id + "/cancel"; }
-    private String pauseUrl(Long id) { return "/api/admin/subscribers/" + id + "/pause"; }
-    private String resumeUrl(Long id) { return "/api/admin/subscribers/" + id + "/resume"; }
     private String eventsUrl(Long id) { return "/api/admin/subscribers/" + id + "/events"; }
 
     private Cookie adminCookie() { return new Cookie("hk_access", adminToken); }
@@ -222,70 +223,6 @@ class AdminSubscriptionLifecycleIntegrationTest extends AbstractIntegrationTest 
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isForbidden());
-    }
-
-    // ── pause ───────────────────────────────────────────────────────────────────
-
-    @Test
-    void pause_activeSubscriber_returns200_andCallsStripe() throws Exception {
-        mockMvc.perform(post(pauseUrl(subscriber.getId()))
-                        .cookie(adminCookie())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ACTIVE"));
-
-        assertThat(recordingStripe.pausedSubscriptionIds).containsExactly(STRIPE_SUB_ID);
-    }
-
-    @Test
-    void pause_whenAlreadyPaused_returns409() throws Exception {
-        setStatus(SubscriberStatus.PAUSED);
-
-        mockMvc.perform(post(pauseUrl(subscriber.getId()))
-                        .cookie(adminCookie())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
-
-        assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
-    }
-
-    @Test
-    void pause_withoutJsonContentType_returns415() throws Exception {
-        mockMvc.perform(post(pauseUrl(subscriber.getId())).cookie(adminCookie()))
-                .andExpect(status().isUnsupportedMediaType());
-
-        assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
-    }
-
-    // ── resume ──────────────────────────────────────────────────────────────────
-
-    @Test
-    void resume_pausedSubscriber_returns200_andCallsStripe() throws Exception {
-        setStatus(SubscriberStatus.PAUSED);
-
-        mockMvc.perform(post(resumeUrl(subscriber.getId()))
-                        .cookie(adminCookie())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PAUSED"));
-
-        assertThat(recordingStripe.resumedSubscriptionIds).containsExactly(STRIPE_SUB_ID);
-    }
-
-    @Test
-    void resume_whenActive_returns409() throws Exception {
-        mockMvc.perform(post(resumeUrl(subscriber.getId()))
-                        .cookie(adminCookie())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
-
-        assertThat(recordingStripe.resumedSubscriptionIds).isEmpty();
     }
 
     // ── events ──────────────────────────────────────────────────────────────────

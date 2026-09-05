@@ -27,22 +27,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests for {@link com.homekept.subscription.SubscriptionController}:
- * {@code POST /api/app/subscription/pause|resume|cancel}.
+ * {@code POST /api/app/subscription/cancel}.
  *
  * <p>Imports {@link FakeStripeServiceConfig} so no live Stripe API calls are made; its
  * {@link FakeStripeServiceConfig.RecordingStripeService} records which subscription ids
- * were paused/resumed/cancelled so we can assert the controller reached the Stripe seam.
- * The actual PAUSED/CANCELLED status transition is driven by webhooks and is covered by
+ * were cancelled so we can assert the controller reached the Stripe seam. The actual
+ * CANCELLED status transition is driven by webhooks and is covered by
  * {@link StripeWebhookIntegrationTest} — so these tests assert the response still reports
  * the <em>current</em> status (the request is accepted, not yet applied).
+ *
+ * <p>There is no self-serve pause/resume — see
+ * {@link com.homekept.subscription.SubscriptionSelfServeService}'s class javadoc.
  *
  * <p>Runs against a real Postgres via Testcontainers.
  */
 @Import(FakeStripeServiceConfig.class)
 class SubscriptionSelfServeIntegrationTest extends AbstractIntegrationTest {
 
-    private static final String PAUSE_URL  = "/api/app/subscription/pause";
-    private static final String RESUME_URL = "/api/app/subscription/resume";
     private static final String CANCEL_URL = "/api/app/subscription/cancel";
 
     private static final String STRIPE_SUB_ID = "sub_test_selfserve_1";
@@ -80,78 +81,6 @@ class SubscriptionSelfServeIntegrationTest extends AbstractIntegrationTest {
         customerSubscriber = subscriberRepository.save(customerSubscriber);
 
         customerAccessToken = loginAs(customerUser.getEmail(), "Test1234!");
-    }
-
-    // ── pause ─────────────────────────────────────────────────────────────────
-
-    @Test
-    void pause_activeSubscriber_returns200_andCallsStripe() throws Exception {
-        mockMvc.perform(post(PAUSE_URL).cookie(authCookie()))
-                .andExpect(status().isOk())
-                // status is still ACTIVE — the PAUSED transition lands via the webhook.
-                .andExpect(jsonPath("$.status").value("ACTIVE"));
-
-        assertThat(recordingStripe.pausedSubscriptionIds).containsExactly(STRIPE_SUB_ID);
-    }
-
-    @Test
-    void pause_whenAlreadyPaused_returns409() throws Exception {
-        setStatus(SubscriberStatus.PAUSED);
-
-        mockMvc.perform(post(PAUSE_URL).cookie(authCookie()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
-
-        assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
-    }
-
-    @Test
-    void pause_noStripeSubscription_returns409NoBillingAccount() throws Exception {
-        customerSubscriber.setStripeSubscriptionId(null);
-        subscriberRepository.save(customerSubscriber);
-
-        mockMvc.perform(post(PAUSE_URL).cookie(authCookie()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("NO_BILLING_ACCOUNT"));
-
-        assertThat(recordingStripe.pausedSubscriptionIds).isEmpty();
-    }
-
-    @Test
-    void pause_anonymous_returns401() throws Exception {
-        mockMvc.perform(post(PAUSE_URL))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void pause_asAdmin_returns403() throws Exception {
-        String adminToken = loginAsNewAdmin();
-
-        mockMvc.perform(post(PAUSE_URL).cookie(new Cookie("hk_access", adminToken)))
-                .andExpect(status().isForbidden());
-    }
-
-    // ── resume ──────────────────────────────────────────────────────────────────
-
-    @Test
-    void resume_pausedSubscriber_returns200_andCallsStripe() throws Exception {
-        setStatus(SubscriberStatus.PAUSED);
-
-        mockMvc.perform(post(RESUME_URL).cookie(authCookie()))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("PAUSED"));
-
-        assertThat(recordingStripe.resumedSubscriptionIds).containsExactly(STRIPE_SUB_ID);
-    }
-
-    @Test
-    void resume_whenActive_returns409() throws Exception {
-        // Subscriber is ACTIVE (not paused) — resume is not valid.
-        mockMvc.perform(post(RESUME_URL).cookie(authCookie()))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
-
-        assertThat(recordingStripe.resumedSubscriptionIds).isEmpty();
     }
 
     // ── cancel ──────────────────────────────────────────────────────────────────

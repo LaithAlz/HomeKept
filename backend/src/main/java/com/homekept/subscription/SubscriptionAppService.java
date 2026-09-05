@@ -20,9 +20,9 @@ import java.util.List;
  * Read-only customer app queries for the authenticated subscriber's plan/billing state and
  * account profile ({@code GET /api/app/subscription}, {@code GET /api/app/account}).
  *
- * <p>Split from {@link SubscriptionSelfServeService} (which handles the mutating
- * pause/resume/cancel actions and their Stripe/idempotency concerns) since these are plain
- * reads with a different shape of complexity: composing narrow lookups across domains.
+ * <p>Split from {@link SubscriptionSelfServeService} (which handles the mutating cancel
+ * action and its Stripe/idempotency concerns) since these are plain reads with a different
+ * shape of complexity: composing narrow lookups across domains.
  *
  * <h2>Domain boundaries</h2>
  * <p>Cross-domain reads go through service interfaces only, never repositories or entities:

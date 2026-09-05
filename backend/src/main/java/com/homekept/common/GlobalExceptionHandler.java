@@ -318,7 +318,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Illegal subscription lifecycle transition (pause/resume/cancel), or a curated
+     * Illegal subscription lifecycle transition (cancel), or a curated
      * non-transition conflict under the same code (e.g. a duplicate cancel request) — 409
      * Conflict. Uses {@code ex.getMessage()} directly: both constructors of
      * {@link IllegalSubscriptionStateException} already build the exact message to surface

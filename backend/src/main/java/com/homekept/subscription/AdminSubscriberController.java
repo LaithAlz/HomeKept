@@ -6,7 +6,6 @@ import com.homekept.subscription.dto.AdminSubscriberListItem;
 import com.homekept.subscription.dto.SubscriptionActionResponse;
 import com.homekept.subscription.dto.SubscriptionEventItem;
 import jakarta.validation.Valid;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -89,32 +88,6 @@ public class AdminSubscriberController {
         boolean immediately = Boolean.TRUE.equals(request.immediately());
         return ResponseEntity.ok(
                 subscriptionAdminService.cancelSubscriber(id, request.reason(), immediately, adminUserId));
-    }
-
-    /**
-     * POST /api/admin/subscribers/{id}/pause
-     * Pauses billing (eligible only from ACTIVE) — same Stripe call as the customer
-     * self-serve pause. Requires {@code Content-Type: application/json} (send {@code {}})
-     * even though there is no body to bind: a bare bodiless POST is forgeable by a simple
-     * cross-site HTML form, but a JSON-content-typed one is not — the same reasoning
-     * {@code SecurityConfig}'s CSRF-decision javadoc (point 4) applies to
-     * {@code /api/auth/login}. The customer self-serve pause/resume intentionally keep no
-     * body / no {@code consumes} restriction — left unchanged here.
-     */
-    @PostMapping(path = "/{id}/pause", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<SubscriptionActionResponse> pauseSubscriber(@PathVariable Long id) {
-        return ResponseEntity.ok(subscriptionAdminService.pauseSubscriber(id));
-    }
-
-    /**
-     * POST /api/admin/subscribers/{id}/resume
-     * Resumes billing (eligible only from PAUSED) — same Stripe call as the customer
-     * self-serve resume. Requires {@code Content-Type: application/json} — see
-     * {@link #pauseSubscriber}.
-     */
-    @PostMapping(path = "/{id}/resume", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<SubscriptionActionResponse> resumeSubscriber(@PathVariable Long id) {
-        return ResponseEntity.ok(subscriptionAdminService.resumeSubscriber(id));
     }
 
     /**
