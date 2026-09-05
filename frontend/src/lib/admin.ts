@@ -36,12 +36,7 @@ import type { RescheduleRequestStatus, VisitStatus, VisitType } from "@/lib/visi
 /* -------------------------------------------------------------------------- */
 
 export type BookingStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "PERFORMED"
-  | "CONVERTED"
-  | "LOST"
-  | "NO_SHOW";
+  "PENDING" | "CONFIRMED" | "PERFORMED" | "CONVERTED" | "LOST" | "NO_SHOW";
 
 export interface AdminBookingListItem {
   id: number;
@@ -265,7 +260,7 @@ export function useAdminSubscriberEvents(id: number | null) {
   });
 }
 
-/** Response body shared by the admin cancel/pause/resume subscription actions. */
+/** Response body for the admin cancel-subscription action. */
 export interface AdminSubscriptionActionResponse {
   status: string;
   currentPeriodEnd?: string;
