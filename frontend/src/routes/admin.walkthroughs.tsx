@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Calendar, MapPin, Check, X, Send, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
-import { NewBookingSheet } from "@/components/admin/NewBookingSheet";
+import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
@@ -43,7 +43,7 @@ function WalkthroughsPage() {
         </Button>
       </div>
 
-      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} />
+      <NewBookingDialog open={newBookingOpen} onOpenChange={setNewBookingOpen} />
 
       {isLoading && <PanelLoading label="Loading the pipeline." className="mt-8" />}
 

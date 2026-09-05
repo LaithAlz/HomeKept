@@ -74,8 +74,8 @@ const TYPE_LABEL: Record<string, string> = {
  * addresses, no reordering) and no batched "subscriber by id" lookup either (only
  * `GET /api/admin/subscribers/{id}`, one at a time), so a visit card can't show the
  * customer's name or property address without an N+1 fetch per card — instead each
- * card links straight to that subscriber's full record (`/admin/subscribers?id=`,
- * the same deep link the dashboard uses) so a dispatcher is one click from the name,
+ * card links straight to that subscriber's full record (`/admin/subscribers/$id`,
+ * the same page the dashboard links to) so a dispatcher is one click from the name,
  * address, and phone. See the component doc comments below for the rest of that gap.
  *
  * Layout: the day itself lives in the URL (`?date=YYYY-MM-DD`, see `routesSearchSchema`
@@ -425,8 +425,8 @@ function TechnicianDayCard({
             </div>
             <div className="mt-1.5 space-y-0.5 text-xs">
               <Link
-                to="/admin/subscribers"
-                search={{ id: v.subscriberId }}
+                to="/admin/subscribers/$id"
+                params={{ id: String(v.subscriberId) }}
                 className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
               >
                 Subscriber #{v.subscriberId}

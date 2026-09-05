@@ -1,10 +1,17 @@
 /**
- * New booking sheet — logs a walk-through someone booked by phone or in
+ * New booking dialog — logs a walk-through someone booked by phone or in
  * person, through the same public endpoint the customer wizard uses
  * (POST /api/bookings/walkthrough, see @/lib/booking). There is no plan or
  * billing step here: a walk-through booking has neither, a plan is only
  * chosen later at activation. Submitting creates a real PENDING walk-through
  * booking that lands in the same pipeline as a self-serve request.
+ *
+ * A centered modal, not a side sheet: this is a short, single-purpose "fill
+ * in a few fields and submit" form with no reason to have its own URL, so a
+ * focused dialog fits it better than a full page. It's wider than the default
+ * dialog (`sm:max-w-xl`) and scrolls internally on short viewports
+ * (`max-h-[85vh] overflow-y-auto`) since it has more fields than a typical
+ * confirm dialog.
  */
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -19,12 +26,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { CITIES, EMAIL_RE, getNextMonday, type WalkthroughBookingRequest } from "@/lib/booking";
 import { formatWeekOf, useCreateWalkthroughBooking } from "@/lib/admin";
@@ -129,7 +136,7 @@ function validateBookingForm(f: NewBookingFormData): BookingFieldErrors {
   return errs;
 }
 
-export function NewBookingSheet({
+export function NewBookingDialog({
   open,
   onOpenChange,
 }: {
@@ -226,17 +233,17 @@ export function NewBookingSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle className="font-display text-2xl font-extrabold tracking-tight">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl font-extrabold tracking-tight">
             New booking
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             Log a walk-through booked by phone or in person. It&rsquo;s created exactly like a
             self-serve request and enters the same pipeline.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
           <fieldset
@@ -414,8 +421,8 @@ export function NewBookingSheet({
             </Button>
           </div>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

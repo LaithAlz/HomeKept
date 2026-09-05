@@ -45,7 +45,9 @@ import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminMetricsRouteImport } from './routes/admin.metrics'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminCatalogRouteImport } from './routes/admin.catalog'
+import { Route as AdminSubscribersIndexRouteImport } from './routes/admin.subscribers.index'
 import { Route as AppVisitsIdRouteImport } from './routes/app.visits.$id'
+import { Route as AdminSubscribersIdRouteImport } from './routes/admin.subscribers.$id'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -227,10 +229,20 @@ const AdminCatalogRoute = AdminCatalogRouteImport.update({
   path: '/catalog',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminSubscribersIndexRoute = AdminSubscribersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminSubscribersRoute,
+} as any)
 const AppVisitsIdRoute = AppVisitsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => AppVisitsRoute,
+} as any)
+const AdminSubscribersIdRoute = AdminSubscribersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AdminSubscribersRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -256,7 +268,7 @@ export interface FileRoutesByFullPath {
   '/admin/plans': typeof AdminPlansRoute
   '/admin/routes': typeof AdminRoutesRoute
   '/admin/settings': typeof AdminSettingsRoute
-  '/admin/subscribers': typeof AdminSubscribersRoute
+  '/admin/subscribers': typeof AdminSubscribersRouteWithChildren
   '/admin/technicians': typeof AdminTechniciansRoute
   '/admin/visits': typeof AdminVisitsRoute
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
@@ -270,7 +282,9 @@ export interface FileRoutesByFullPath {
   '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/subscribers/': typeof AdminSubscribersIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -293,7 +307,6 @@ export interface FileRoutesByTo {
   '/admin/plans': typeof AdminPlansRoute
   '/admin/routes': typeof AdminRoutesRoute
   '/admin/settings': typeof AdminSettingsRoute
-  '/admin/subscribers': typeof AdminSubscribersRoute
   '/admin/technicians': typeof AdminTechniciansRoute
   '/admin/visits': typeof AdminVisitsRoute
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
@@ -307,7 +320,9 @@ export interface FileRoutesByTo {
   '/staff/activate': typeof StaffActivateRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/subscribers': typeof AdminSubscribersIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -333,7 +348,7 @@ export interface FileRoutesById {
   '/admin/plans': typeof AdminPlansRoute
   '/admin/routes': typeof AdminRoutesRoute
   '/admin/settings': typeof AdminSettingsRoute
-  '/admin/subscribers': typeof AdminSubscribersRoute
+  '/admin/subscribers': typeof AdminSubscribersRouteWithChildren
   '/admin/technicians': typeof AdminTechniciansRoute
   '/admin/visits': typeof AdminVisitsRoute
   '/admin/walkthroughs': typeof AdminWalkthroughsRoute
@@ -347,7 +362,9 @@ export interface FileRoutesById {
   '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/subscribers/': typeof AdminSubscribersIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -388,7 +405,9 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin/'
     | '/app/'
+    | '/admin/subscribers/$id'
     | '/app/visits/$id'
+    | '/admin/subscribers/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -411,7 +430,6 @@ export interface FileRouteTypes {
     | '/admin/plans'
     | '/admin/routes'
     | '/admin/settings'
-    | '/admin/subscribers'
     | '/admin/technicians'
     | '/admin/visits'
     | '/admin/walkthroughs'
@@ -425,7 +443,9 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin'
     | '/app'
+    | '/admin/subscribers/$id'
     | '/app/visits/$id'
+    | '/admin/subscribers'
   id:
     | '__root__'
     | '/'
@@ -464,7 +484,9 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin/'
     | '/app/'
+    | '/admin/subscribers/$id'
     | '/app/visits/$id'
+    | '/admin/subscribers/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -742,6 +764,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCatalogRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/subscribers/': {
+      id: '/admin/subscribers/'
+      path: '/'
+      fullPath: '/admin/subscribers/'
+      preLoaderRoute: typeof AdminSubscribersIndexRouteImport
+      parentRoute: typeof AdminSubscribersRoute
+    }
     '/app/visits/$id': {
       id: '/app/visits/$id'
       path: '/$id'
@@ -749,8 +778,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppVisitsIdRouteImport
       parentRoute: typeof AppVisitsRoute
     }
+    '/admin/subscribers/$id': {
+      id: '/admin/subscribers/$id'
+      path: '/$id'
+      fullPath: '/admin/subscribers/$id'
+      preLoaderRoute: typeof AdminSubscribersIdRouteImport
+      parentRoute: typeof AdminSubscribersRoute
+    }
   }
 }
+
+interface AdminSubscribersRouteChildren {
+  AdminSubscribersIdRoute: typeof AdminSubscribersIdRoute
+  AdminSubscribersIndexRoute: typeof AdminSubscribersIndexRoute
+}
+
+const AdminSubscribersRouteChildren: AdminSubscribersRouteChildren = {
+  AdminSubscribersIdRoute: AdminSubscribersIdRoute,
+  AdminSubscribersIndexRoute: AdminSubscribersIndexRoute,
+}
+
+const AdminSubscribersRouteWithChildren =
+  AdminSubscribersRoute._addFileChildren(AdminSubscribersRouteChildren)
 
 interface AdminRouteChildren {
   AdminCatalogRoute: typeof AdminCatalogRoute
@@ -759,7 +808,7 @@ interface AdminRouteChildren {
   AdminPlansRoute: typeof AdminPlansRoute
   AdminRoutesRoute: typeof AdminRoutesRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
-  AdminSubscribersRoute: typeof AdminSubscribersRoute
+  AdminSubscribersRoute: typeof AdminSubscribersRouteWithChildren
   AdminTechniciansRoute: typeof AdminTechniciansRoute
   AdminVisitsRoute: typeof AdminVisitsRoute
   AdminWalkthroughsRoute: typeof AdminWalkthroughsRoute
@@ -773,7 +822,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminPlansRoute: AdminPlansRoute,
   AdminRoutesRoute: AdminRoutesRoute,
   AdminSettingsRoute: AdminSettingsRoute,
-  AdminSubscribersRoute: AdminSubscribersRoute,
+  AdminSubscribersRoute: AdminSubscribersRouteWithChildren,
   AdminTechniciansRoute: AdminTechniciansRoute,
   AdminVisitsRoute: AdminVisitsRoute,
   AdminWalkthroughsRoute: AdminWalkthroughsRoute,
