@@ -28,9 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Covers:
  * <ul>
- *   <li>COMPLETE subscriber (base tier): only COMPLETE-tier templates scheduled in the
- *       window.</li>
- *   <li>PREMIER subscriber: both tiers' templates scheduled in the window.</li>
+ *   <li>ESSENTIAL subscriber (base tier): only ESSENTIAL-tier templates scheduled.</li>
+ *   <li>COMPLETE subscriber: ESSENTIAL + COMPLETE templates scheduled in the window.</li>
+ *   <li>PREMIER subscriber: all three tiers' templates scheduled in the window.</li>
  *   <li>All created visits are SCHEDULED + ROUTINE + in the future.</li>
  *   <li>Each visit has exactly 4 VisitService rows (source=TEMPLATE, the 4 standing items).</li>
  *   <li>Idempotency: second call creates no new visits.</li>
@@ -53,10 +53,43 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
     @Autowired PropertyRepository propertyRepository;
     @Autowired JdbcTemplate jdbc;
 
-    // ── COMPLETE tier (base tier) ─────────────────────────────────────────────
+    // ── ESSENTIAL tier (base tier, reinstated by V15) ─────────────────────────
 
     @Test
-    void scheduleInitialVisits_completeTier_schedulesOnlyCompleteTemplatesInWindow() {
+    void scheduleInitialVisits_essentialTier_schedulesOnlyEssentialTemplatesInWindow() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-essential@test.local", PlanCode.ESSENTIAL);
+
+        visitSchedulingService.scheduleInitialVisits(subscriber);
+
+        List<Visit> visits = visitRepository.findAll().stream()
+                .filter(v -> v.getSubscriberId().equals(subscriber.getId()))
+                .toList();
+
+        assertThat(visits).hasSize(expectedVisitCount(PlanCode.ESSENTIAL));
+        assertThat(visits).allMatch(v -> v.getStatus() == VisitStatus.SCHEDULED);
+        assertThat(visits).allMatch(v -> v.getType() == VisitType.ROUTINE);
+
+        java.time.Instant now = java.time.Instant.now();
+        assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
+
+        // Essential is the floor, so it qualifies for its own templates and nothing above.
+        List<Long> essentialTemplateIds = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.ESSENTIAL))
+                .stream().map(VisitTemplate::getId).toList();
+        assertThat(visits).allMatch(v ->
+                v.getVisitTemplateId() == null || essentialTemplateIds.contains(v.getVisitTemplateId()));
+    }
+
+    @Test
+    void scheduleInitialVisits_completeGetsAtLeastAsManyVisitsAsEssential() {
+        assertThat(expectedVisitCount(PlanCode.COMPLETE))
+                .isGreaterThanOrEqualTo(expectedVisitCount(PlanCode.ESSENTIAL));
+    }
+
+    // ── COMPLETE tier ─────────────────────────────────────────────────────────
+
+    @Test
+    void scheduleInitialVisits_completeTier_schedulesEssentialAndCompleteTemplatesInWindow() {
         Subscriber subscriber = seedActiveSubscriber("scheduling-complete@test.local", PlanCode.COMPLETE);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
@@ -76,12 +109,15 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         java.time.Instant now = java.time.Instant.now();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
-        // The visit template ids must all belong to COMPLETE-min templates only.
-        List<Long> completeTemplateIds = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.COMPLETE))
+        // Every visit's template must be one Complete actually qualifies for. min_tier is a
+        // floor, so that is ESSENTIAL's 4 seasonal anchors plus COMPLETE's own 4, not
+        // COMPLETE-min templates alone. Asking eligibleTiersFor rather than hardcoding the
+        // list keeps this test honest if the tier ladder changes again.
+        List<Long> eligibleTemplateIds = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.COMPLETE))
                 .stream().map(VisitTemplate::getId).toList();
         assertThat(visits).allMatch(v ->
-                v.getVisitTemplateId() == null || completeTemplateIds.contains(v.getVisitTemplateId()));
+                v.getVisitTemplateId() == null || eligibleTemplateIds.contains(v.getVisitTemplateId()));
     }
 
     @Test
@@ -125,9 +161,9 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         java.time.Instant now = java.time.Instant.now();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
-        // Premier gets COMPLETE + PREMIER templates.
+        // Premier gets every tier's templates: ESSENTIAL + COMPLETE + PREMIER.
         List<Long> allTemplateIds = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER))
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER))
                 .stream().map(VisitTemplate::getId).toList();
         assertThat(visits).allMatch(v ->
                 v.getVisitTemplateId() == null || allTemplateIds.contains(v.getVisitTemplateId()));
@@ -213,7 +249,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         Subscriber subscriber = seedActiveSubscriber("scheduling-topup@test.local", PlanCode.PREMIER);
 
         List<VisitTemplate> allTemplates = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER));
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
         LocalDate today = LocalDate.now(TORONTO);
         LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
         List<VisitTemplate> inWindow = allTemplates.stream()
@@ -260,7 +296,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         Subscriber subscriber = seedActiveSubscriber("scheduling-annual@test.local", PlanCode.PREMIER);
 
         List<VisitTemplate> allTemplates = visitTemplateRepository
-                .findByMinTierIn(List.of(PlanCode.COMPLETE, PlanCode.PREMIER));
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
         LocalDate today = LocalDate.now(TORONTO);
         LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
         List<VisitTemplate> inWindow = allTemplates.stream()

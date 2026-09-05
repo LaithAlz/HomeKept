@@ -14,15 +14,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Integration tests for the catalog vertical slice.
  *
- * <p>Runs against a real Postgres via Testcontainers. Flyway runs V1, V2, and V12
- * migrations on startup; JPA validates against the resulting schema (ddl-auto: validate).
+ * <p>Runs against a real Postgres via Testcontainers. Flyway runs every migration on
+ * startup; JPA validates against the resulting schema (ddl-auto: validate).
+ *
+ * <p><b>Positional indices.</b> The plan assertions below address tiers by array position
+ * ({@code $[0]} ESSENTIAL, {@code $[1]} COMPLETE, {@code $[2]} PREMIER) because the
+ * endpoint's contract is that tiers come back cheapest-first. {@link
+ * #plans_orderedByPrice_essentialFirst()} asserts that ordering explicitly, so if it ever
+ * changes that test fails first and names the real problem, rather than every other
+ * assertion failing with a confusing wrong-tier mismatch.
  *
  * <p>Covers:
  * <ul>
  *   <li>GET /api/catalog/plans reachable without auth (public)</li>
- *   <li>Returns 2 tiers in correct order (COMPLETE, PREMIER)</li>
- *   <li>Exact prices and inclusions per the repositioned docs/pricing-and-visits.md
- *       (V12__remove_essential_and_founding.sql)</li>
+ *   <li>Returns 3 tiers in correct order (ESSENTIAL, COMPLETE, PREMIER)</li>
+ *   <li>Exact prices and inclusions per docs/pricing-and-visits.md: COMPLETE as
+ *       repriced by V12__remove_essential_and_founding.sql, ESSENTIAL as reinstated at
+ *       its original numbers by V15__restore_essential_tier.sql</li>
  *   <li>Services array populated from plan_tier_service seed</li>
  *   <li>GET /api/catalog/picks reachable without auth</li>
  *   <li>Picks grouped by BASIC/MEDIUM/PREMIUM with correct à la carte prices</li>
@@ -49,18 +57,41 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void plans_returns2Tiers() throws Exception {
+    void plans_returns3Tiers() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2));
+                .andExpect(jsonPath("$.length()").value(3));
     }
 
     @Test
-    void plans_orderedByPrice_completeFirst() throws Exception {
+    void plans_orderedByPrice_essentialFirst() throws Exception {
+        // Guards the positional indices every other plan assertion in this class relies on.
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].code").value("COMPLETE"))
-                .andExpect(jsonPath("$[1].code").value("PREMIER"));
+                .andExpect(jsonPath("$[0].code").value("ESSENTIAL"))
+                .andExpect(jsonPath("$[1].code").value("COMPLETE"))
+                .andExpect(jsonPath("$[2].code").value("PREMIER"));
+    }
+
+    // ── ESSENTIAL — exact values per V15__restore_essential_tier.sql ─────────
+
+    @Test
+    void plans_essential_exactPrices() throws Exception {
+        mockMvc.perform(get(PLANS_URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].displayName").value("Essential"))
+                .andExpect(jsonPath("$[0].monthlyPriceCents").value(8900))
+                .andExpect(jsonPath("$[0].annualPriceCents").value(89000))
+                .andExpect(jsonPath("$[0].visitsPerYear").value(4));
+    }
+
+    @Test
+    void plans_essential_picks() throws Exception {
+        // 1 included pick, and zero Premium: Essential's pick may be Basic or Medium only.
+        mockMvc.perform(get(PLANS_URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].includedPicksPerYear").value(1))
+                .andExpect(jsonPath("$[0].maxPremiumPicksPerYear").value(0));
     }
 
     // ── COMPLETE — exact values per V12__remove_essential_and_founding.sql ───
@@ -69,18 +100,18 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
     void plans_complete_exactPrices() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].displayName").value("Complete"))
-                .andExpect(jsonPath("$[0].monthlyPriceCents").value(16900))
-                .andExpect(jsonPath("$[0].annualPriceCents").value(169000))
-                .andExpect(jsonPath("$[0].visitsPerYear").value(8));
+                .andExpect(jsonPath("$[1].displayName").value("Complete"))
+                .andExpect(jsonPath("$[1].monthlyPriceCents").value(16900))
+                .andExpect(jsonPath("$[1].annualPriceCents").value(169000))
+                .andExpect(jsonPath("$[1].visitsPerYear").value(8));
     }
 
     @Test
     void plans_complete_picks() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].includedPicksPerYear").value(3))
-                .andExpect(jsonPath("$[0].maxPremiumPicksPerYear").value(1));
+                .andExpect(jsonPath("$[1].includedPicksPerYear").value(3))
+                .andExpect(jsonPath("$[1].maxPremiumPicksPerYear").value(1));
     }
 
     // ── PREMIER — exact values from docs/pricing-and-visits.md ───────────────
@@ -89,24 +120,24 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
     void plans_premier_exactPrices() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[1].displayName").value("Premier"))
-                .andExpect(jsonPath("$[1].monthlyPriceCents").value(24900))
-                .andExpect(jsonPath("$[1].annualPriceCents").value(249000))
-                .andExpect(jsonPath("$[1].visitsPerYear").value(12));
+                .andExpect(jsonPath("$[2].displayName").value("Premier"))
+                .andExpect(jsonPath("$[2].monthlyPriceCents").value(24900))
+                .andExpect(jsonPath("$[2].annualPriceCents").value(249000))
+                .andExpect(jsonPath("$[2].visitsPerYear").value(12));
     }
 
     @Test
     void plans_premier_picks() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[1].includedPicksPerYear").value(6))
-                .andExpect(jsonPath("$[1].maxPremiumPicksPerYear").value(3));
+                .andExpect(jsonPath("$[2].includedPicksPerYear").value(6))
+                .andExpect(jsonPath("$[2].maxPremiumPicksPerYear").value(3));
     }
 
-    // ── Stripe price ids — V12 nulled COMPLETE's, PREMIER untouched ──────────
+    // ── Stripe price ids — COMPLETE and ESSENTIAL null, PREMIER untouched ────
 
     @Test
-    void planTier_stripePriceIds_completeNulledByV12_premierUnchanged() {
+    void planTier_stripePriceIds_completeAndEssentialNull_premierUnchanged() {
         // V12__remove_essential_and_founding.sql cleared COMPLETE's old $149 Stripe price
         // ids to NULL (they pointed at the retired price) — this is what makes checkout
         // fail closed with PLAN_NOT_PURCHASABLE until the founder fills in new ones via
@@ -115,6 +146,14 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
                 "SELECT stripe_price_id_monthly, stripe_price_id_annual FROM plan_tier WHERE code = 'COMPLETE'");
         assertThat(complete.get("stripe_price_id_monthly")).isNull();
         assertThat(complete.get("stripe_price_id_annual")).isNull();
+
+        // V15__restore_essential_tier.sql reinstated ESSENTIAL with both ids NULL for the
+        // same fail-closed reason: the tier is back at $89, but the migration does not
+        // assume its archived Stripe prices still exist.
+        Map<String, Object> essential = jdbc.queryForMap(
+                "SELECT stripe_price_id_monthly, stripe_price_id_annual FROM plan_tier WHERE code = 'ESSENTIAL'");
+        assertThat(essential.get("stripe_price_id_monthly")).isNull();
+        assertThat(essential.get("stripe_price_id_annual")).isNull();
 
         // PREMIER was never touched by V12. This fresh test database has not run
         // docs/stripe-price-ids.sql (that only ever runs against production), so PREMIER's
@@ -140,6 +179,14 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
         // COMPLETE has 4 standing-item rows in plan_tier_service
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[1].services.length()").value(4));
+    }
+
+    @Test
+    void plans_essential_servicesArrayHas4StandingItems() throws Exception {
+        // V15 re-linked the same 4 standing items for ESSENTIAL.
+        mockMvc.perform(get(PLANS_URL))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].services.length()").value(4));
     }
 
@@ -148,25 +195,37 @@ class CatalogIntegrationTest extends AbstractIntegrationTest {
         // Every standing-item service for COMPLETE runs 8 times/year (once per visit)
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].services[0].frequencyPerYear").value(8))
-                .andExpect(jsonPath("$[0].services[1].frequencyPerYear").value(8))
-                .andExpect(jsonPath("$[0].services[2].frequencyPerYear").value(8))
-                .andExpect(jsonPath("$[0].services[3].frequencyPerYear").value(8));
+                .andExpect(jsonPath("$[1].services[0].frequencyPerYear").value(8))
+                .andExpect(jsonPath("$[1].services[1].frequencyPerYear").value(8))
+                .andExpect(jsonPath("$[1].services[2].frequencyPerYear").value(8))
+                .andExpect(jsonPath("$[1].services[3].frequencyPerYear").value(8));
+    }
+
+    @Test
+    void plans_essential_standingServicesHaveFrequency4() throws Exception {
+        // Once per visit, and Essential has 4 visits a year.
+        mockMvc.perform(get(PLANS_URL))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].services[0].frequencyPerYear").value(4))
+                .andExpect(jsonPath("$[0].services[1].frequencyPerYear").value(4))
+                .andExpect(jsonPath("$[0].services[2].frequencyPerYear").value(4))
+                .andExpect(jsonPath("$[0].services[3].frequencyPerYear").value(4));
     }
 
     @Test
     void plans_premier_servicesHaveFrequency12() throws Exception {
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[1].services[0].frequencyPerYear").value(12));
+                .andExpect(jsonPath("$[2].services[0].frequencyPerYear").value(12));
     }
 
     @Test
     void plans_services_hasTierClassField() throws Exception {
-        // All standing items are BASIC tier_class
+        // All standing items are BASIC tier_class, on every tier.
         mockMvc.perform(get(PLANS_URL))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].services[0].tierClass").value("BASIC"));
+                .andExpect(jsonPath("$[0].services[0].tierClass").value("BASIC"))
+                .andExpect(jsonPath("$[1].services[0].tierClass").value("BASIC"));
     }
 
     // ── /api/catalog/picks — public access ───────────────────────────────────
