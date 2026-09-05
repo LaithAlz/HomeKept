@@ -18,7 +18,6 @@ import com.stripe.param.InvoiceListParams;
 import com.stripe.param.SubscriptionCancelParams;
 import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
-import com.stripe.param.common.EmptyParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -127,27 +126,6 @@ public class StripeServiceImpl implements StripeService {
             log.error("Stripe portal session creation failed stripeCode={}", e.getCode());
             throw new RuntimeException("Stripe portal session creation failed", e);
         }
-    }
-
-    @Override
-    public void pauseSubscription(String stripeSubscriptionId, String idempotencyKey) {
-        // pause_collection.behavior=void: no invoices are collected while paused.
-        SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
-                .setPauseCollection(
-                        SubscriptionUpdateParams.PauseCollection.builder()
-                                .setBehavior(SubscriptionUpdateParams.PauseCollection.Behavior.VOID)
-                                .build())
-                .build();
-        updateSubscription(stripeSubscriptionId, params, idempotencyKey, "pause");
-    }
-
-    @Override
-    public void resumeSubscription(String stripeSubscriptionId, String idempotencyKey) {
-        // Clearing pause_collection (empty) resumes normal collection.
-        SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
-                .setPauseCollection(EmptyParam.EMPTY)
-                .build();
-        updateSubscription(stripeSubscriptionId, params, idempotencyKey, "resume");
     }
 
     @Override

@@ -13,14 +13,19 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Customer self-serve subscription lifecycle: pause, resume, and cancel.
+ * Customer self-serve subscription lifecycle: cancel.
+ *
+ * <p>There is no customer- or admin-facing pause/resume action. Pause/resume only exist as
+ * a Stripe-webhook-reflected state (see {@link StripeWebhookService}'s {@code
+ * customer.subscription.paused}/{@code .resumed} handlers) for the case where the founder
+ * pauses a subscription directly in the Stripe dashboard.
  *
  * <h2>Webhooks are the source of truth for status</h2>
- * <p>These methods do <strong>not</strong> write {@code subscriber.status}. Each one
- * validates eligibility, then calls Stripe; the resulting status transition
- * (ACTIVE → PAUSED, PAUSED → ACTIVE, → CANCELLED) is applied later by the Stripe webhook
- * handler ({@link StripeWebhookService}) so there is exactly one writer of subscription
- * state. The response therefore reports the <em>current</em> status, not the pending one.
+ * <p>This method does <strong>not</strong> write {@code subscriber.status}. It validates
+ * eligibility, then calls Stripe; the resulting status transition (→ CANCELLED) is applied
+ * later by the Stripe webhook handler ({@link StripeWebhookService}) so there is exactly one
+ * writer of subscription state. The response therefore reports the <em>current</em> status,
+ * not the pending one.
  *
  * <h2>Eligibility</h2>
  * <p>Eligibility is checked against {@link SubscriberStateMachine} (the same legality used
@@ -42,16 +47,15 @@ import java.util.Optional;
  * or resubmitting to Stripe.
  *
  * <h2>Shared with the admin console</h2>
- * <p>The package-private {@code *Subscriber(Subscriber ...)} methods below hold the actual
- * guard + Stripe-call bodies and are also called by {@link SubscriptionAdminService}, which
- * resolves the {@link Subscriber} by subscriber id (not user id) and applies its own 404 /
- * {@link NoBillingAccountException} guards before delegating here — so the pause/resume/
- * cancel mechanics (state-machine legality, idempotency keys, Stripe calls) have exactly one
- * implementation regardless of whether the customer or an admin triggers them. These methods
- * are NOT themselves {@code @Transactional}: the public entry points on this class
- * ({@link #pause}, {@link #resume}, {@link #cancel}) are, and so are
- * {@code SubscriptionAdminService}'s public mutation methods — the public caller always
- * supplies the transaction the shared method runs in.
+ * <p>The package-private {@link #cancelSubscriber} method below holds the actual guard +
+ * Stripe-call body and is also called by {@link SubscriptionAdminService}, which resolves
+ * the {@link Subscriber} by subscriber id (not user id) and applies its own 404 /
+ * {@link NoBillingAccountException} guards before delegating here — so the cancel mechanics
+ * (state-machine legality, idempotency keys, Stripe calls) have exactly one implementation
+ * regardless of whether the customer or an admin triggers them. This method is NOT itself
+ * {@code @Transactional}: the public entry point on this class ({@link #cancel}) is, and so
+ * is {@code SubscriptionAdminService#cancelSubscriber} — the public caller always supplies
+ * the transaction the shared method runs in.
  */
 @Service
 public class SubscriptionSelfServeService {
@@ -80,36 +84,6 @@ public class SubscriptionSelfServeService {
     }
 
     /**
-     * Requests a pause on the authenticated subscriber's billing.
-     * Eligible only from ACTIVE. The PAUSED transition is applied by the webhook.
-     *
-     * @param userId the authenticated user's id (JWT principal)
-     * @return the current status and period end
-     */
-    @Transactional(readOnly = true)
-    public SubscriptionActionResponse pause(Long userId) {
-        Subscriber subscriber = requireBilledSubscriber(userId);
-        SubscriptionActionResponse response = pauseSubscriber(subscriber);
-        log.info("subscription_pause_requested subscriberId={}", subscriber.getId());
-        return response;
-    }
-
-    /**
-     * Requests a resume on the authenticated subscriber's billing.
-     * Eligible only from PAUSED. The ACTIVE transition is applied by the webhook.
-     *
-     * @param userId the authenticated user's id (JWT principal)
-     * @return the current status and period end
-     */
-    @Transactional(readOnly = true)
-    public SubscriptionActionResponse resume(Long userId) {
-        Subscriber subscriber = requireBilledSubscriber(userId);
-        SubscriptionActionResponse response = resumeSubscriber(subscriber);
-        log.info("subscription_resume_requested subscriberId={}", subscriber.getId());
-        return response;
-    }
-
-    /**
      * Requests cancellation at period end and records the churn reason.
      * Eligible from any non-terminal billed status. CANCELLED is applied by the
      * {@code customer.subscription.deleted} webhook when the period ends.
@@ -135,8 +109,7 @@ public class SubscriptionSelfServeService {
      * Guard-only: verifies the subscriber has a Stripe subscription id, else throws
      * {@link NoBillingAccountException} (409). Exposed for {@link SubscriptionAdminService},
      * which resolves the subscriber by id itself and needs the same billing-presence check
-     * before delegating to {@link #pauseSubscriber}/{@link #resumeSubscriber}/
-     * {@link #cancelSubscriber}.
+     * before delegating to {@link #cancelSubscriber}.
      *
      * @throws NoBillingAccountException if no Stripe subscription id is set yet (409)
      */
@@ -146,43 +119,6 @@ public class SubscriptionSelfServeService {
             throw new NoBillingAccountException(
                     "No active subscription to manage. Complete checkout first.");
         }
-    }
-
-    /**
-     * Pause mechanics shared by the customer self-serve and admin flows. Eligible only from
-     * ACTIVE. Caller is responsible for resolving the subscriber and the not-found/billing
-     * guards, and for running this in a transaction (see class javadoc).
-     */
-    SubscriptionActionResponse pauseSubscriber(Subscriber subscriber) {
-        if (!stateMachine.canTransition(subscriber.getStatus(), SubscriberStatus.PAUSED)) {
-            throw new IllegalSubscriptionStateException(subscriber.getStatus(), SubscriberStatus.PAUSED);
-        }
-
-        stripeService.pauseSubscription(
-                subscriber.getStripeSubscriptionId(),
-                idempotencyKey("pause", subscriber));
-
-        return toResponse(subscriber);
-    }
-
-    /**
-     * Resume mechanics shared by the customer self-serve and admin flows. Resume is
-     * specifically un-pausing: only a PAUSED subscriber qualifies. (The state machine also
-     * allows PAYMENT_ISSUE → ACTIVE, but that recovery path is webhook-only, not a "resume"
-     * action — so guard on PAUSED explicitly.) Caller is responsible for resolving the
-     * subscriber and the not-found/billing guards, and for running this in a transaction
-     * (see class javadoc).
-     */
-    SubscriptionActionResponse resumeSubscriber(Subscriber subscriber) {
-        if (subscriber.getStatus() != SubscriberStatus.PAUSED) {
-            throw new IllegalSubscriptionStateException(subscriber.getStatus(), SubscriberStatus.ACTIVE);
-        }
-
-        stripeService.resumeSubscription(
-                subscriber.getStripeSubscriptionId(),
-                idempotencyKey("resume", subscriber));
-
-        return toResponse(subscriber);
     }
 
     /**
@@ -262,9 +198,8 @@ public class SubscriptionSelfServeService {
 
     /**
      * Deterministic-per-second idempotency key. The epoch-second bucket dedupes a
-     * double-clicked request while still letting a genuine later toggle (e.g. pause again
-     * after a resume) use a fresh key — a static key would make Stripe replay the first
-     * response and silently skip the second toggle.
+     * double-clicked request while still letting a genuine later retry use a fresh key — a
+     * static key would make Stripe replay the first response and silently skip the retry.
      */
     private String idempotencyKey(String action, Subscriber subscriber) {
         return Hashing.sha256Hex(action + ":" + subscriber.getId() + ":"

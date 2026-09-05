@@ -146,7 +146,7 @@ export const Route = createFileRoute("/plans")({
       { property: "og:title", content: "HomeKept Plans: Complete and Premier" },
       {
         property: "og:description",
-        content: "Pick the level of proactive home maintenance that fits your home. Pause anytime.",
+        content: "Pick the level of proactive home maintenance that fits your home.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${BASE_URL}/plans` },
@@ -229,16 +229,12 @@ const groups: Group[] = [
       },
     ],
   },
-  {
-    name: "Flexibility",
-    rows: [{ label: "Pause anytime, up to 3 months a year", values: [true, true] }],
-  },
 ];
 
 const faqs = [
   {
-    q: "Can I pause my plan?",
-    a: "Yes, pause anytime for up to three months per year. Useful for travel or seasonal homes. We'll keep your schedule and pick right back up when you're ready.",
+    q: "Can I cancel my plan?",
+    a: "Yes. You can cancel from your account at any time. Your visits and your plan stay active through the end of the period you've already paid for, and you won't be billed again after that.",
   },
   {
     q: "What if I need work outside the plan?",

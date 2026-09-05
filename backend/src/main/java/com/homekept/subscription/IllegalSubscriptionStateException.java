@@ -1,10 +1,9 @@
 package com.homekept.subscription;
 
 /**
- * Thrown when a subscription lifecycle action (pause / resume / cancel — customer self-serve
- * or admin) is requested from a status that does not permit it — e.g. pausing an
- * already-cancelled subscription, resuming one that is not paused, or a duplicate cancel
- * request for a subscriber that already has one pending.
+ * Thrown when a subscription lifecycle action (cancel — customer self-serve or admin) is
+ * requested from a status that does not permit it — e.g. cancelling an already-cancelled
+ * subscription, or a duplicate cancel request for a subscriber that already has one pending.
  *
  * <p>Legality is decided by {@link SubscriberStateMachine}; the {@code (from, to)}
  * constructor carries the rejected transition for the error message. The message-only
