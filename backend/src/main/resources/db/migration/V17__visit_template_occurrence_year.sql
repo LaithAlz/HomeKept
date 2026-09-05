@@ -59,9 +59,18 @@
 ALTER TABLE visit
     ADD COLUMN template_occurrence_year INTEGER;
 
--- Serves the guard's exact lookup: does this subscriber already have a visit for this
--- template's occurrence in this year. Partial, because the NULL rows are answered by the
--- fallback window predicate and never by an equality match on this column.
+-- NOT partial. An earlier draft added WHERE template_occurrence_year IS NOT NULL, reasoning
+-- that NULL rows are answered by the fallback predicate anyway. That would have made the
+-- index unusable by the very query it exists for: Postgres uses a partial index only when
+-- the query predicate implies the index predicate, and the guard's predicate explicitly
+-- contains `template_occurrence_year IS NULL` in its OR branch, so it implies nothing of
+-- the sort. The result would have been pure write amplification on every visit insert and
+-- update, serving nothing.
+--
+-- Kept as a plain three-column index, which at least remains eligible for a bitmap plan on
+-- the equality branch. Note that the existing idx_visit_subscriber (V6) already makes this
+-- lookup cheap regardless: a subscriber has on the order of 4 to 24 visits a year, so the
+-- planner can filter a handful of heap rows. This index is an optimisation, not the thing
+-- standing between us and a sequential scan.
 CREATE INDEX idx_visit_subscriber_template_occurrence
-    ON visit (subscriber_id, visit_template_id, template_occurrence_year)
-    WHERE template_occurrence_year IS NOT NULL;
+    ON visit (subscriber_id, visit_template_id, template_occurrence_year);
