@@ -45,9 +45,16 @@
 -- answer is knowable:
 --   * new template-driven visits record their occurrence year at creation;
 --   * a legacy row gets its year assigned lazily, on its first in-place reschedule,
---     computed from where it sits at that moment. That is the last instant the current
---     scheduled_for is still guaranteed to BE the occurrence, so it is the correct and
---     only safe moment to infer it.
+--     computed from where it sits at that moment, and ONLY when the template's month
+--     matches that date's month in the render zone.
+--
+--     An earlier draft of this comment claimed the current scheduled_for was "guaranteed"
+--     to be the occurrence at that instant. It is not, for the same reason the backfill was
+--     dropped: a row the OLD model already moved is sitting on a date that is not its
+--     occurrence and never was. The current date is the best available evidence, not a
+--     guarantee, and the month gate is what makes acting on it safe. A row whose month
+--     disagrees with its template was demonstrably moved off its occurrence, so its year is
+--     not inferable at all; it stays NULL and the window fallback keeps handling it.
 -- Until then the guard falls back to the pre-V16 window rule for NULL rows, which was
 -- correct for rows that have never been moved in place, and is the behaviour those rows
 -- have today. See VisitSchedulingService's "Idempotency" javadoc.
