@@ -22,6 +22,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -32,20 +33,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /**
  * Integration tests for {@link AdminVisitController} —
- * {@code GET /api/admin/visits}, {@code POST /api/admin/visits}, and
- * {@code PATCH /api/admin/visits/{id}}.
+ * {@code GET /api/admin/visits}, {@code POST /api/admin/visits},
+ * {@code GET /api/admin/visits/{id}}, {@code PATCH /api/admin/visits/{id}}, and
+ * {@code GET /api/admin/visits/{id}/events}.
  *
  * <p>Covers:
  * <ul>
- *   <li>GET list → 200 array, newest first; includes a freshly created visit.</li>
+ *   <li>GET list → 200 array, newest first; includes a freshly created visit; each row
+ *       carries the customer's name and the property's street address/city, batch-resolved
+ *       (never per-row) via the identity and property domains' services.</li>
  *   <li>GET list with status filter → only matching visits; invalid status → 400.</li>
  *   <li>GET list cursor pagination → page 2 ids all less than the cursor.</li>
  *   <li>POST → 201; creates visit + visit_service rows; technicianUserId optional.</li>
  *   <li>POST with unknown serviceIds → 400.</li>
- *   <li>PATCH reschedule → old visit RESCHEDULED + new SCHEDULED row.</li>
- *   <li>PATCH cancel → CANCELLED.</li>
- *   <li>PATCH illegal transition (cancel a COMPLETED visit) → 409.</li>
- *   <li>PATCH assign technician → technician_id updated; no status change.</li>
+ *   <li>GET detail → full detail incl. customer/technician identity and property address;
+ *       unassigned technician → fields absent; unknown id → 404.</li>
+ *   <li>PATCH reschedule → updates {@code scheduledFor} IN PLACE (same visit id, no
+ *       replacement row, no duplicated {@code visit_service} rows) and records a
+ *       {@code RESCHEDULED} {@code visit_event} (source ADMIN).</li>
+ *   <li>PATCH cancel → CANCELLED; records a {@code CANCELLED} {@code visit_event}.</li>
+ *   <li>PATCH illegal transition (cancel a COMPLETED visit, reschedule a CANCELLED visit)
+ *       → 409.</li>
+ *   <li>PATCH assign technician → technician_id updated; no status change; records a
+ *       {@code TECHNICIAN_ASSIGNED} {@code visit_event} exactly once (a repeat assignment
+ *       of the SAME technician does not record a second event).</li>
+ *   <li>GET events → newest first; unknown visit → 404; no history → empty array.</li>
  *   <li>CUSTOMER on admin endpoint → 403.</li>
  *   <li>Anonymous → 401.</li>
  * </ul>
@@ -156,6 +168,32 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void listVisits_includesCustomerIdentity_andPropertyAddress() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        MvcResult result = mockMvc.perform(get(LIST_URL + "?limit=50")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<String> firstNames = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].customerFirstName");
+        List<String> lastNames = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].customerLastName");
+        List<String> streets = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].propertyStreetAddress");
+        List<String> cities = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + visit.getId() + ")].propertyCity");
+
+        assertThat(firstNames).containsExactly("Target");
+        assertThat(lastNames).containsExactly("Customer");
+        assertThat(cities).containsExactly("Mississauga");
+        assertThat(streets).hasSize(1);
+        assertThat(streets.get(0)).endsWith("Target Ave");
+    }
+
+    @Test
     void listVisits_statusFilter_returnsOnlyMatchingStatus() throws Exception {
         Visit scheduled = seedScheduledVisit();
         Visit cancelled = seedScheduledVisit();
@@ -221,7 +259,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_asAdmin_returns201WithVisitId() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -252,7 +290,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createVisit_withServiceIds_createsVisitServiceRows() throws Exception {
         Long svcId = firstServiceId();
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -282,7 +320,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createVisit_withTechnicianUserId_setsTechnicianId() throws Exception {
         Long techId = adminUser.getId(); // reuse admin's user id as a placeholder technician id
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -307,7 +345,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_withUnknownServiceIds_returns400() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -326,7 +364,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_unknownSubscriberId_returns404() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": 999999999,
@@ -346,7 +384,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_asCustomer_returns403() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -364,7 +402,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_anonymous_returns401() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -379,12 +417,12 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    // ── PATCH /api/admin/visits/{id} — reschedule ─────────────────────────────
+    // ── PATCH /api/admin/visits/{id} — reschedule (in place) ─────────────────
 
     @Test
-    void patchVisit_reschedule_oldVisitBecomesRescheduled_newVisitIsScheduled() throws Exception {
+    void patchVisit_reschedule_updatesScheduledForInPlace_sameVisitId() throws Exception {
         Visit original = seedScheduledVisit();
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
 
         MvcResult result = mockMvc.perform(patch(PATCH_URL, original.getId())
                         .cookie(new Cookie("hk_access", adminToken))
@@ -392,41 +430,76 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"scheduledFor\":\"" + newTime + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.id").value(original.getId()))
                 .andReturn();
 
-        Long newVisitId = idFrom(result);
+        // The response is the SAME visit, not a new one — no replacement row is created.
+        Long returnedId = idFrom(result);
+        assertThat(returnedId).isEqualTo(original.getId());
 
-        // Old visit must now be RESCHEDULED.
-        Visit old = visitRepository.findById(original.getId()).orElseThrow();
-        assertThat(old.getStatus()).isEqualTo(VisitStatus.RESCHEDULED);
+        Visit persisted = visitRepository.findById(original.getId()).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+        assertThat(persisted.getScheduledFor()).isEqualTo(Instant.parse(newTime));
 
-        // New visit must be SCHEDULED and have the new time.
-        assertThat(newVisitId).isNotEqualTo(original.getId());
-        Visit newVisit = visitRepository.findById(newVisitId).orElseThrow();
-        assertThat(newVisit.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
-        assertThat(newVisit.getSubscriberId()).isEqualTo(targetSubscriber.getId());
+        // Exactly one visit row exists for this subscriber — the list never grew.
+        Integer total = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit WHERE subscriber_id = ?", Integer.class, targetSubscriber.getId());
+        assertThat(total).isEqualTo(1);
     }
 
     @Test
-    void patchVisit_reschedule_copiesServiceRowsToNewVisit() throws Exception {
+    void patchVisit_reschedule_doesNotDuplicateServiceRows() throws Exception {
         Visit original = seedScheduledVisit();
         // Add a service row to the original visit.
         Long svcId = firstServiceId();
         visitServiceRepository.save(new VisitService(original.getId(), svcId, VisitServiceSource.TEMPLATE));
 
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
-        MvcResult result = mockMvc.perform(patch(PATCH_URL, original.getId())
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
+        mockMvc.perform(patch(PATCH_URL, original.getId())
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scheduledFor\":\"" + newTime + "\"}"))
+                .andExpect(status().isOk());
+
+        // The same, single service row is still there on the same visit — never duplicated
+        // or moved to a new visit id.
+        List<VisitService> services = visitServiceRepository.findByVisitIdOrderByIdAsc(original.getId());
+        assertThat(services).hasSize(1);
+        assertThat(services.get(0).getServiceId()).isEqualTo(svcId);
+    }
+
+    @Test
+    void patchVisit_reschedule_recordsVisitEvent_sourceAdmin() throws Exception {
+        Visit original = seedScheduledVisit();
+        Instant oldTime = original.getScheduledFor();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
+
+        mockMvc.perform(patch(PATCH_URL, original.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledFor\":\"" + newTime + "\"}"))
+                .andExpect(status().isOk());
+
+        MvcResult events = mockMvc.perform(get(PATCH_URL + "/events", original.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
                 .andReturn();
+        String body = events.getResponse().getContentAsString();
 
-        Long newVisitId = idFrom(result);
-
-        List<VisitService> newServices = visitServiceRepository.findByVisitIdOrderByIdAsc(newVisitId);
-        assertThat(newServices).hasSize(1);
-        assertThat(newServices.get(0).getServiceId()).isEqualTo(svcId);
+        List<String> types = com.jayway.jsonpath.JsonPath.read(body, "$[*].type");
+        assertThat(types).contains("RESCHEDULED");
+        List<String> sources = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.type == 'RESCHEDULED')].source");
+        assertThat(sources).containsExactly("ADMIN");
+        List<Integer> byUserIds = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.type == 'RESCHEDULED')].byUserId");
+        assertThat(byUserIds).containsExactly(adminUser.getId().intValue());
+        List<String> froms = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.type == 'RESCHEDULED')].payload.from");
+        assertThat(froms).containsExactly(oldTime.toString());
+        List<String> tos = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.type == 'RESCHEDULED')].payload.to");
+        assertThat(tos).containsExactly(Instant.parse(newTime).toString());
     }
 
     // ── PATCH — cancel ────────────────────────────────────────────────────────
@@ -444,6 +517,23 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
         Visit persisted = visitRepository.findById(visit.getId()).orElseThrow();
         assertThat(persisted.getStatus()).isEqualTo(VisitStatus.CANCELLED);
+    }
+
+    @Test
+    void patchVisit_cancel_recordsVisitEvent_sourceAdmin() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\"}"))
+                .andExpect(status().isOk());
+
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT event_type, source, by_user_id FROM visit_event WHERE visit_id = ?", visit.getId());
+        assertThat(row.get("event_type")).isEqualTo("CANCELLED");
+        assertThat(row.get("source")).isEqualTo("ADMIN");
+        assertThat(((Number) row.get("by_user_id")).longValue()).isEqualTo(adminUser.getId());
     }
 
     // ── PATCH — illegal transition → 409 ─────────────────────────────────────
@@ -470,13 +560,36 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
         visit.setStatus(VisitStatus.CANCELLED);
         visitRepository.save(visit);
 
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
         mockMvc.perform(patch(PATCH_URL, visit.getId())
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scheduledFor\":\"" + newTime + "\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"));
+                .andExpect(jsonPath("$.error.code").value("ILLEGAL_STATE_TRANSITION"))
+                // Honest message: names the visit's actual status, never claims an attempted
+                // transition to RESCHEDULED — a status no code path can produce anymore.
+                .andExpect(jsonPath("$.error.message").value("Visit is CANCELLED and cannot be rescheduled"));
+    }
+
+    @Test
+    void patchVisit_reschedule_pastDate_returns400() throws Exception {
+        Visit visit = seedScheduledVisit();
+        String pastTime = dbNow().minus(1, ChronoUnit.DAYS).toString();
+
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scheduledFor\":\"" + pastTime + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+
+        // Untouched — the request never reached the service, so no visit_event was recorded.
+        Visit persisted = visitRepository.findById(visit.getId()).orElseThrow();
+        assertThat(persisted.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+        Integer eventCount = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit_event WHERE visit_id = ?", Integer.class, visit.getId());
+        assertThat(eventCount).isZero();
     }
 
     // ── PATCH — assign technician ─────────────────────────────────────────────
@@ -497,6 +610,50 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
         Visit persisted = visitRepository.findById(visit.getId()).orElseThrow();
         assertThat(persisted.getTechnicianId()).isEqualTo(techId);
         assertThat(persisted.getStatus()).isEqualTo(VisitStatus.SCHEDULED);
+    }
+
+    @Test
+    void patchVisit_assignTechnician_recordsVisitEvent() throws Exception {
+        Visit visit = seedScheduledVisit();
+        Long techId = adminUser.getId();
+
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"technicianUserId\":" + techId + "}"))
+                .andExpect(status().isOk());
+
+        // Extract via jsonb operators rather than string-matching the raw payload text —
+        // Postgres's jsonb storage does not preserve object key order or whitespace.
+        Map<String, Object> row = jdbc.queryForMap(
+                "SELECT event_type, source, payload ->> 'to' AS to_val, payload ->> 'from' AS from_val "
+                        + "FROM visit_event WHERE visit_id = ?", visit.getId());
+        assertThat(row.get("event_type")).isEqualTo("TECHNICIAN_ASSIGNED");
+        assertThat(row.get("source")).isEqualTo("ADMIN");
+        assertThat(row.get("to_val")).isEqualTo(String.valueOf(techId));
+        assertThat(row.get("from_val")).isNull();
+    }
+
+    @Test
+    void patchVisit_assignSameTechnicianTwice_recordsEventOnlyOnce() throws Exception {
+        Visit visit = seedScheduledVisit();
+        Long techId = adminUser.getId();
+        String body = "{\"technicianUserId\":" + techId + "}";
+
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+        // Re-assigning the SAME technician is a no-op from the log's point of view.
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        Integer count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM visit_event WHERE visit_id = ? AND event_type = 'TECHNICIAN_ASSIGNED'",
+                Integer.class, visit.getId());
+        assertThat(count).isEqualTo(1);
     }
 
     // ── PATCH — role gating ───────────────────────────────────────────────────
@@ -533,6 +690,125 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    // ── GET /api/admin/visits/{id} — detail ───────────────────────────────────
+
+    @Test
+    void getVisit_asAdmin_returnsFullDetail() throws Exception {
+        Visit visit = seedScheduledVisit();
+        Long techId = adminUser.getId();
+        visit.setTechnicianId(techId);
+        visitRepository.save(visit);
+
+        mockMvc.perform(get(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(visit.getId()))
+                .andExpect(jsonPath("$.subscriberId").value(targetSubscriber.getId()))
+                .andExpect(jsonPath("$.status").value("SCHEDULED"))
+                .andExpect(jsonPath("$.type").value("ROUTINE"))
+                .andExpect(jsonPath("$.durationMinutes").value(120))
+                .andExpect(jsonPath("$.technicianId").value(techId))
+                .andExpect(jsonPath("$.technicianFirstName").value("Admin"))
+                .andExpect(jsonPath("$.technicianLastName").value("Visit"))
+                .andExpect(jsonPath("$.customerFirstName").value("Target"))
+                .andExpect(jsonPath("$.customerLastName").value("Customer"))
+                .andExpect(jsonPath("$.customerEmail").value(org.hamcrest.Matchers.notNullValue()))
+                .andExpect(jsonPath("$.property.city").value("Mississauga"))
+                .andExpect(jsonPath("$.property.postalCode").value("L5L 1A1"))
+                .andExpect(jsonPath("$.services").isArray());
+    }
+
+    @Test
+    void getVisit_unassignedTechnician_technicianFieldsNull() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.technicianId").doesNotExist())
+                .andExpect(jsonPath("$.technicianFirstName").doesNotExist());
+    }
+
+    @Test
+    void getVisit_nonExistentId_returns404() throws Exception {
+        mockMvc.perform(get(PATCH_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getVisit_asCustomer_returns403() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void getVisit_anonymous_returns401() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL, visit.getId()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    // ── GET /api/admin/visits/{id}/events — the log ───────────────────────────
+
+    @Test
+    void getEvents_newestFirst() throws Exception {
+        Visit visit = seedScheduledVisit();
+        // Two lifecycle actions in sequence: assign a technician, then cancel.
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"technicianUserId\":" + adminUser.getId() + "}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch(PATCH_URL, visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"CANCELLED\"}"))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(get(PATCH_URL + "/events", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> types = com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$[*].type");
+        // Newest first: CANCELLED was recorded after TECHNICIAN_ASSIGNED.
+        assertThat(types).containsExactly("CANCELLED", "TECHNICIAN_ASSIGNED");
+    }
+
+    @Test
+    void getEvents_nonExistentVisit_returns404() throws Exception {
+        mockMvc.perform(get(PATCH_URL + "/events", 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getEvents_noHistory_returnsEmptyArray() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL + "/events", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void getEvents_asCustomer_returns403() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL + "/events", visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Seeds a SCHEDULED ROUTINE visit for the target subscriber. */
@@ -541,7 +817,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 targetSubscriber.getId(),
                 targetSubscriber.getPropertyId(),
                 null,
-                Instant.now().plus(30, ChronoUnit.DAYS),
+                dbNow().plus(30, ChronoUnit.DAYS),
                 120,
                 VisitType.ROUTINE
         ));

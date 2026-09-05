@@ -3,8 +3,11 @@ package com.homekept.subscription;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Read-only service that exposes {@link Subscriber} lookups to other domains.
@@ -65,6 +68,28 @@ public class SubscriberQueryService {
         return subscriberRepository.findByUserId(userId)
                 .orElseThrow(() -> new SubscriberNotFoundException(
                         "No subscriber row found for userId=" + userId));
+    }
+
+    /**
+     * Finds subscribers by id in a single batched query, for cross-domain list views that
+     * need several subscribers' data without an N+1 (e.g. the admin visit list, which
+     * resolves each row's customer identity via the subscriber's {@code userId}).
+     *
+     * <p>Same entity-crossing acceptance as {@link #findById} (see this class's javadoc) —
+     * callers must treat the returned entities as read-only.
+     *
+     * @param ids the subscriber ids to resolve; may be empty
+     * @return map of subscriber id → {@link Subscriber}, for ids that exist (missing ids are
+     *         simply absent from the map, never mapped to null). Empty input returns an
+     *         empty map without querying the database.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Subscriber> findByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        return subscriberRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Subscriber::getId, s -> s));
     }
 
     /**

@@ -33,22 +33,53 @@ import java.util.List;
  * {@link VisitTemplateRepository#findByMinTierIn} query handles this.
  *
  * <h2>Idempotency</h2>
- * <p>Idempotency is per-template <em>and window-scoped</em>, not per-subscriber and not
+ * <p>Idempotency is per-template <em>and per-occurrence</em>, not per-subscriber and not
  * unbounded: for each of the subscriber's tier-eligible templates that falls in the lookahead
- * window, a visit is created only if the subscriber doesn't already have one tied to that
- * template <em>with {@code scheduledFor} inside the current window</em> ({@link
- * VisitRepository#existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween}, any status).
- * Templates that already produced a visit inside this window are skipped; templates newly
- * inside the window (because time has passed since the last call) still get one. This keeps
- * the Stripe webhook safe to retry (a replay finds every in-window template already has an
- * in-window visit and creates nothing new) while also letting {@link VisitTopUpScheduler} call
- * this method repeatedly, over months, to keep the rolling window populated as it advances.
- * The window bound matters because {@link VisitTemplate templates} recur <em>annually</em> —
- * one row per (month, min tier) — so an unbounded "has this subscriber ever had a visit for
- * this template" check would permanently cap every subscriber at one lifetime pass through
- * their tier's calendar instead of a fresh occurrence every year. Once a template's window
- * has rolled past this year's visit, its next candidate date falls in a future window whose
- * range no longer contains that old visit, so next year's occurrence schedules correctly.
+ * window, a visit is created only if the subscriber doesn't already have one that counts as
+ * this same yearly occurrence ({@link
+ * VisitRepository#existsAlreadyScheduledForOccurrence}, any status). Templates whose
+ * occurrence already has a visit are skipped; templates newly inside the window (because time
+ * has passed since the last call) still get one. This keeps the Stripe webhook safe to retry
+ * (a replay finds every in-window template's occurrence already has a visit and creates
+ * nothing new) while also letting {@link VisitTopUpScheduler} call this method repeatedly,
+ * over months, to keep the rolling window populated as it advances.
+ *
+ * <p><strong>This guard used to be window-scoped only</strong> — a visit counted as "already
+ * scheduled" if its {@code scheduledFor} fell inside {@code [today, windowEnd)} — which only
+ * worked because a reschedule used to leave the original row in place and add a replacement,
+ * so one row was always still sitting inside the window. That broke once reschedule started
+ * updating the single visit row in place (V16): a visit rescheduled outside the window, in
+ * either direction (pushed forward past the lookahead, or moved to a past date), would make
+ * the old guard go false and this method would create a duplicate for the same occurrence —
+ * the customer double-booked, and the admin list carrying exactly the extra row in-place
+ * reschedule existed to remove.
+ *
+ * <p>The guard is now keyed on {@code templateOccurrenceYear} (V17) for any visit that has
+ * one — a value a reschedule MUST NEVER move once it's set (see
+ * {@link Visit#getTemplateOccurrenceYear()}'s javadoc), so moving a visit cannot make its
+ * occurrence invisible to this check. But V17 deliberately does NOT backfill this column: a
+ * migration cannot verify that no pre-V16 reschedule ever landed a replacement visit's {@code
+ * scheduledFor} in a different calendar year than the occurrence it actually was, so guessing
+ * a year from {@code scheduledFor} at backfill time risked stamping the WRONG year and
+ * silently suppressing a real future occurrence forever — worse than the bug it would have
+ * fixed. So every pre-V17 row starts {@code NULL}, and the guard falls back to the old
+ * window rule for exactly those rows (see {@link VisitRepository#existsAlreadyScheduledForOccurrence}
+ * for the two-branch query). That fallback is correct for a {@code NULL}-year row because such
+ * a row, by construction, has never had {@code scheduledFor} moved in place since V16/V17
+ * shipped — a legacy row gets its occurrence year inferred lazily, from wherever it currently
+ * sits, the first time it IS rescheduled in place, but only when the template's month still
+ * matches that current date (the one available signal the row hasn't already been moved off
+ * its occurrence by the pre-V16 model) — see {@code VisitAdminService#rescheduleInternal}. On
+ * a month match it graduates to the year-keyed branch above for good; on a mismatch it stays
+ * {@code NULL} and keeps falling back to the window rule here.
+ *
+ * <p>The per-occurrence (rather than unbounded "ever") scope still matters because
+ * {@link VisitTemplate templates} recur <em>annually</em> — one row per (month, min tier) — so
+ * an unbounded "has this subscriber ever had a visit for this template" check would permanently
+ * cap every subscriber at one lifetime pass through their tier's calendar instead of a fresh
+ * occurrence every year. Each occurrence has a distinct {@code templateOccurrenceYear}, so last
+ * year's (possibly since-moved) visit for a template never shadows this year's occurrence, and
+ * this year's never shadows next year's.
  *
  * <h2>Standing items only</h2>
  * <p>Each created visit gets only the template's standing-item services (those linked via
@@ -140,10 +171,9 @@ public class VisitSchedulingService {
         LocalDate today = LocalDate.now(renderZoneId);
         LocalDate windowEnd = today.plusMonths(LOOKAHEAD_MONTHS);
 
-        // Instant bounds of the current window (start-of-day in the render zone). Scopes the
-        // per-template idempotency guard below to "already scheduled within THIS window"
-        // rather than "ever" — see class Javadoc "Idempotency" for why an unbounded check
-        // would be wrong given templates recur annually.
+        // Instant bounds of the current window (start-of-day in the render zone). Used ONLY
+        // by the guard's legacy (NULL-occurrence-year) fallback branch below — see class
+        // Javadoc "Idempotency" and VisitRepository#existsAlreadyScheduledForOccurrence.
         Instant windowStartInstant = today.atStartOfDay(renderZoneId).toInstant();
         Instant windowEndInstant = windowEnd.atStartOfDay(renderZoneId).toInstant();
 
@@ -157,13 +187,20 @@ public class VisitSchedulingService {
                 continue; // month does not fall in the lookahead window
             }
 
-            // Per-template, window-scoped idempotency guard (see class Javadoc
+            // The occurrence year is the Toronto-local calendar year of the candidate date
+            // itself (which becomes scheduledFor's date component below).
+            int occurrenceYear = candidateDate.getYear();
+
+            // Per-template, per-occurrence idempotency guard (see class Javadoc
             // "Idempotency"): skip only this template if the subscriber already has a visit
-            // tied to it scheduled within the current window — other eligible templates newly
-            // in the window still get scheduled, and next year's occurrence of this same
-            // template schedules again once the window has rolled past this year's visit.
-            if (visitRepository.existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween(
-                    subscriber.getId(), template.getId(), windowStartInstant, windowEndInstant)) {
+            // that counts as this exact yearly occurrence of it (either a year-tagged visit
+            // for this occurrence, or an untagged legacy visit sitting in the window) — other
+            // eligible templates newly in the window still get scheduled, and next year's
+            // occurrence of this same template schedules again regardless of where this
+            // year's visit currently sits.
+            if (visitRepository.existsAlreadyScheduledForOccurrence(
+                    subscriber.getId(), template.getId(), occurrenceYear,
+                    windowStartInstant, windowEndInstant)) {
                 alreadyScheduled++;
                 continue;
             }
@@ -178,6 +215,10 @@ public class VisitSchedulingService {
                     DEFAULT_DURATION_MINUTES,
                     VisitType.ROUTINE
             );
+            // Set once, at creation, and never touched again — see the field's javadoc. This
+            // is what lets the guard above survive the visit later being rescheduled anywhere
+            // on the calendar.
+            visit.setTemplateOccurrenceYear(occurrenceYear);
             Visit savedVisit = visitRepository.save(visit);
 
             // Attach the template's standing-item services as checklist rows.

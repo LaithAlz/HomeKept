@@ -1,0 +1,83 @@
+-- V17__visit_template_occurrence_year.sql
+-- Records which yearly occurrence of a visit template a visit was created for, so the
+-- top-up scheduler's idempotency guard stops depending on where the visit is currently
+-- scheduled.
+--
+-- WHY THIS IS NEEDED NOW. VisitSchedulingService skips a template only if the subscriber
+-- already has a visit for it whose scheduled_for sits inside the rolling 4-month lookahead
+-- window. That held while a reschedule *added* a replacement row and left the original in
+-- place at its original in-window time: one of the two always matched.
+--
+-- V16 changed reschedule to move the single row. Now a customer asking to push an October
+-- visit to April moves it out of the window, the guard goes false on the next nightly run,
+-- and the scheduler creates a SECOND visit for the same October occurrence. The customer
+-- gets double-booked, a technician is dispatched to a visit the customer believes was
+-- moved, and the admin list grows exactly the extra row the in-place change existed to
+-- remove.
+--
+-- Widening the guard's upper bound instead would trade this for a worse bug: a visit moved
+-- far forward would then suppress NEXT year's occurrence of the same template, silently
+-- costing the customer a visit they paid for.
+--
+-- The occurrence is (template, year). Templates are one-per-calendar-month, so a template
+-- occurs at most once a year and the pair is unique. This column is set once at creation
+-- and never touched by a reschedule, which is the whole point: it identifies which visit
+-- the row is, not when it currently sits.
+--
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DELIBERATELY NO BACKFILL. This migration adds the column and leaves every existing row
+-- NULL.
+--
+-- An earlier draft backfilled from EXTRACT(YEAR FROM scheduled_for), justified by "no visit
+-- has been rescheduled under the in-place model yet, so scheduled_for is still the
+-- occurrence it was created for". That reasoning is about the NEW model and misses the OLD
+-- one. Pre-V16 reschedule created the replacement as a new row carrying the SAME
+-- visit_template_id with a DIFFERENT date, and nothing stopped that date landing in another
+-- calendar year. An October 2026 visit moved to February 2027 leaves a row that such a
+-- backfill would stamp as occurrence-year 2027. Twelve months later the guard would ask
+-- "does this subscriber already have T_OCT for 2027?", match that row, and skip: the
+-- customer silently never gets their October 2027 visit. That is the exact failure this
+-- design set out to avoid, reintroduced through the back door, surfacing a year after
+-- deploy with no error and no log line.
+--
+-- Rather than assert a precondition about production data that a migration cannot verify
+-- and can never be edited to correct, the column starts NULL and is filled in where the
+-- answer is knowable:
+--   * new template-driven visits record their occurrence year at creation;
+--   * a legacy row gets its year assigned lazily, on its first in-place reschedule,
+--     computed from where it sits at that moment, and ONLY when the template's month
+--     matches that date's month in the render zone.
+--
+--     An earlier draft of this comment claimed the current scheduled_for was "guaranteed"
+--     to be the occurrence at that instant. It is not, for the same reason the backfill was
+--     dropped: a row the OLD model already moved is sitting on a date that is not its
+--     occurrence and never was. The current date is the best available evidence, not a
+--     guarantee, and the month gate is what makes acting on it safe. A row whose month
+--     disagrees with its template was demonstrably moved off its occurrence, so its year is
+--     not inferable at all; it stays NULL and the window fallback keeps handling it.
+-- Until then the guard falls back to the pre-V16 window rule for NULL rows, which was
+-- correct for rows that have never been moved in place, and is the behaviour those rows
+-- have today. See VisitSchedulingService's "Idempotency" javadoc.
+--
+-- This also removes any rolling-deploy hazard: an old instance still serving during the
+-- deploy creates NULL-year rows, and NULL-year rows are handled correctly by construction
+-- rather than by timing.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE visit
+    ADD COLUMN template_occurrence_year INTEGER;
+
+-- NOT partial. An earlier draft added WHERE template_occurrence_year IS NOT NULL, reasoning
+-- that NULL rows are answered by the fallback predicate anyway. That would have made the
+-- index unusable by the very query it exists for: Postgres uses a partial index only when
+-- the query predicate implies the index predicate, and the guard's predicate explicitly
+-- contains `template_occurrence_year IS NULL` in its OR branch, so it implies nothing of
+-- the sort. The result would have been pure write amplification on every visit insert and
+-- update, serving nothing.
+--
+-- Kept as a plain three-column index, which at least remains eligible for a bitmap plan on
+-- the equality branch. Note that the existing idx_visit_subscriber (V6) already makes this
+-- lookup cheap regardless: a subscriber has on the order of 4 to 24 visits a year, so the
+-- planner can filter a handful of heap rows. This index is an optimisation, not the thing
+-- standing between us and a sequential scan.
+CREATE INDEX idx_visit_subscriber_template_occurrence
+    ON visit (subscriber_id, visit_template_id, template_occurrence_year);

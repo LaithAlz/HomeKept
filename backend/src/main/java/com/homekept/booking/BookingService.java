@@ -206,6 +206,25 @@ public class BookingService {
     }
 
     /**
+     * Returns the full detail for a single booking — the same {@link AdminBookingDetail}
+     * shape {@link #patchBooking} already returns after a successful update, now also
+     * readable without making one (needed for a standalone walk-through detail page).
+     *
+     * @param id booking id
+     * @return the booking detail
+     * @throws BookingNotFoundException if the booking does not exist (404)
+     */
+    @Transactional(readOnly = true)
+    public AdminBookingDetail getBooking(Long id) {
+        WalkthroughBooking booking = bookingRepository.findById(id)
+                .orElseThrow(() -> new BookingNotFoundException(id));
+        Instant invitedAt = activationTokenService
+                .latestInviteAtByBookingIds(Collections.singletonList(booking.getId()))
+                .get(booking.getId());
+        return AdminBookingDetail.from(booking, invitedAt);
+    }
+
+    /**
      * Applies a partial update to a booking (status transition and/or scheduledFor).
      * Status transitions are validated through the state machine.
      * Returns the updated booking as a full detail DTO.

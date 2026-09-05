@@ -254,12 +254,13 @@ Never duplicate what Stripe owns. When you need to know "did this customer pay l
 
 **Responsibilities:** scheduled and completed maintenance visits. This is what the business *is*. Every paying subscriber generates 4-24 visits per year; this is the most-touched table in the database.
 
-**Owns:** `visit`, `visit_service`, `visit_photo`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
+**Owns:** `visit`, `visit_service`, `visit_photo`, `visit_event`, `todo_item`, `flag`, `reschedule_request`, `health_score_snapshot` tables.
 
 **Key entities:**
 - `Visit` — id, subscriber_id, property_id, technician_id, visit_template_id (nullable — null for EXTRA/WALKTHROUGH), scheduled_for, duration_minutes, actual_duration_minutes, materials_cost_cents, status, type, completion_notes, completed_at, created_at, updated_at
 - `VisitService` — id, visit_id, service_id (FK to catalog), source (TEMPLATE / PICK / EXTRA / FLAGGED / TODO — PICK burns the allowance, EXTRA is paid à la carte and never does), completed, completed_at, technician_notes
 - `VisitPhoto` — id, visit_id, storage_key (R2), caption, taken_at, created_at
+- `VisitEvent` — id, visit_id, event_type, payload (JSONB), by_user_id, source (ADMIN / CUSTOMER / TECHNICIAN / SYSTEM), created_at — the visit's own activity log (V16 migration), mirroring `subscription_event`. Records reschedule (before/after times), technician assignment/change, and cancellation. Newest-first, capped read via `GET /api/admin/visits/{id}/events`. This is what replaced the old "reschedule creates a new visit" history model — see the state-machine note below and Part 4 §4.2
 - `TodoItem` ("your list") — id, subscriber_id, body, status (OPEN / SCHEDULED / DONE / DECLINED — DECLINED set by the technician with a note), visit_id (nullable), created_at
 - `Flag` — id, subscriber_id, origin_visit_id, body, severity (INFO / ATTENTION / URGENT), status (OPEN / SCHEDULED / RESOLVED / REFERRED), photo_storage_key (nullable), created_at, resolved_at — the persistent half of observe → photograph → flag → refer; OPEN flags fold into the next visit and feed the health score
 - `RescheduleRequest` — id, visit_id, preferred_dates, status (PENDING / CONFIRMED / DECLINED), created_at
@@ -273,11 +274,14 @@ unit economics from visit #1 (see §2.7).
 
 ```
 SCHEDULED → IN_PROGRESS → COMPLETED
-SCHEDULED → RESCHEDULED   (creates new SCHEDULED row, marks old one cancelled)
 SCHEDULED → CANCELLED
 IN_PROGRESS → INCOMPLETE   (technician couldn't finish)
 IN_PROGRESS → COMPLETED
 ```
+
+Reschedule is **not** a status transition: it updates `scheduled_for` (and technician, if
+changed) on the SAME row in place and records a `visit_event`, rather than transitioning to
+a `RESCHEDULED` status. See §4.2 for why this replaced the earlier model.
 
 **Visit types:** `ROUTINE` (part of plan), `EXTRA` (subscriber-requested add-on), `WARRANTY` (re-do of a recent visit), `WALKTHROUGH` (the pre-subscription assessment — yes, it lives here too).
 
@@ -411,6 +415,7 @@ visit
   ├── N:1 → technician (optional)
   ├── 1:N → visit_service
   ├── 1:N → visit_photo
+  ├── 1:N → visit_event (activity log — reschedule/technician-assign/cancel history)
   ├── 1:N → reschedule_request
   └── 0:1 → visit_template (its origin)
 
@@ -449,7 +454,7 @@ This 90-day window is the figure the cancel UI quotes; keep them in sync.
 
 **Enums:** stored as strings, not integers. `status VARCHAR(20) NOT NULL`. Spring maps them to Java enums via `@Enumerated(EnumType.STRING)`. This costs ~20 bytes per row and saves you from "what was status code 3 again?" forever.
 
-**JSONB:** allowed in two places only — `subscription_event.payload` and `payment_event.raw_payload`. These are append-only logs of external system events. Everywhere else, structure your data into columns.
+**JSONB:** allowed in three places — `subscription_event.payload`, `payment_event.raw_payload`, and `visit_event.payload`. These are append-only activity/event logs (the first two of external system events, the third of a visit's own lifecycle actions — reschedule, technician assignment, cancel). Everywhere else, structure your data into columns.
 
 **Foreign keys:** always declared in the database (`REFERENCES`), always with explicit `ON DELETE` behavior (usually `RESTRICT`, occasionally `CASCADE` for child records like `visit_service`).
 
@@ -498,14 +503,49 @@ SCHEDULED ──→ IN_PROGRESS ──→ COMPLETED  (terminal)
     │              │
     │              └────→ INCOMPLETE  (terminal — flag for follow-up)
     │
-    ├──→ CANCELLED  (terminal)
-    │
-    └──→ RESCHEDULED  (terminal — but creates a new SCHEDULED visit)
+    └──→ CANCELLED  (terminal)
 ```
 
 **Notes:**
-- `RESCHEDULED` is a marker, not a continuation. The old row stays as RESCHEDULED, a new row is created in SCHEDULED. This preserves history.
 - `INCOMPLETE` is the "technician couldn't finish, customer needs a follow-up visit" state. A new visit gets auto-created in SCHEDULED.
+- `RESCHEDULED` is a legacy status value only — kept in the `VisitStatus` enum and the DB
+  CHECK constraint so any historical row already persisted with it still deserializes, but
+  no current code path ever writes it. See "Reschedule is in place" below for what replaced it.
+
+### Reschedule is in place (supersedes the old create-a-replacement-visit model)
+
+**This section supersedes the model this document used to describe** — reschedule marking
+the old visit `RESCHEDULED` (terminal) and creating a brand-new `SCHEDULED` visit that
+copied the subscriber, property, template, type, and `visit_service` rows. That model put
+every reschedule into the admin visit list as an extra row and broke the "Visit #N"
+identity an operator uses to refer to a visit — the founder's explicit ask to fix.
+
+A visit is now rescheduled **in place**:
+
+- `VisitAdminService` (an admin-initiated reschedule) and `RescheduleService` (confirming a
+  customer's reschedule request) both update the SAME visit row's `scheduled_for` (and
+  `technician_id`, when supplied) directly. The visit's `id` and `status` do not change —
+  status stays `SCHEDULED`. No replacement visit is created, and `visit_service` rows are
+  never copied (there is nothing to copy to — it's the same row).
+- Whether a visit may be rescheduled at all is governed by a dedicated
+  `VisitStateMachine.canReschedule(status)` predicate (true only for `SCHEDULED`), not by
+  `canTransition(from, RESCHEDULED)` — since reschedule no longer transitions status, there
+  is no `(from, to)` pair to check.
+- The before/after — what the old model preserved by keeping the RESCHEDULED row around —
+  is now recorded as a `visit_event` row (`event_type = RESCHEDULED`, payload
+  `{ "from": ..., "to": ... }`). The visit's own history moved from "an extra row in the
+  list" to "the visit's own detail view" (`GET /api/admin/visits/{id}/events`).
+- `visit_event` also records the other lifecycle actions that used to leave no trail:
+  technician assigned/changed (`TECHNICIAN_ASSIGNED`, payload `{ "from": ..., "to": ... }`,
+  recorded only when the technician actually changes) and cancelled (`CANCELLED`, no
+  payload). See §2.6 and the `VisitEvent` entity for the full shape.
+- `reschedule_request.confirmed_visit_id` (set when an admin confirms a customer's request)
+  is simply the same visit id the request named — there is no longer a distinct
+  "replacement visit" id to report.
+- `visit_event.source` distinguishes a direct admin reschedule (`ADMIN`, `by_user_id` = the
+  admin) from one that fulfills a customer's reschedule request (`CUSTOMER`, `by_user_id` =
+  the requesting subscriber's own user id, even though an admin executed the confirm) —
+  the log attributes the change to whoever asked for it, not just whoever clicked the button.
 
 ## 4.3 Walk-through booking lifecycle
 

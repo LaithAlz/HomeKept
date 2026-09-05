@@ -4,6 +4,10 @@ import com.homekept.property.exception.PropertyNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 /**
  * Service for the property domain.
  *
@@ -70,6 +74,28 @@ public class PropertyService {
     @Transactional(readOnly = true)
     public Property findById(Long id) {
         return propertyRepository.findById(id).orElse(null);
+    }
+
+    /**
+     * Finds properties by id in a single batched query, for cross-domain list views that
+     * need several properties' address data without an N+1 (e.g. the admin visit list,
+     * which resolves each row's property address). Same entity-crossing acceptance as
+     * {@link #findById} — callers must treat the returned entities as read-only, and — as
+     * with any cross-domain use of {@link Property} — must never surface
+     * {@link Property#getAccessNotes()} or decrypt it outside {@link #decryptAccessNotes}.
+     *
+     * @param ids the property ids to resolve; may be empty
+     * @return map of property id → {@link Property}, for ids that exist (missing ids are
+     *         simply absent from the map, never mapped to null). Empty input returns an
+     *         empty map without querying the database.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Property> findByIds(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Map.of();
+        }
+        return propertyRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Property::getId, p -> p));
     }
 
     /**

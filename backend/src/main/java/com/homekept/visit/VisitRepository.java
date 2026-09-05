@@ -107,22 +107,75 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
 
     /**
      * Returns true if the subscriber already has a visit (any status) tied to this specific
-     * template with {@code scheduledFor} inside {@code [windowStart, windowEnd]}. Used by
-     * {@link VisitSchedulingService} as a per-template, per-window scheduling guard: a
-     * template that already produced a visit for this subscriber <em>within the current
-     * lookahead window</em> is skipped, while other eligible templates newly in the window are
-     * still scheduled.
+     * template that counts as "already scheduled" for {@code occurrenceYear}. Used by
+     * {@link VisitSchedulingService} as a per-template, per-occurrence scheduling guard: a
+     * template whose occurrence for the target year already has a visit is skipped, while
+     * other eligible templates newly in the window are still scheduled.
      *
-     * <p>The window bound (rather than an unbounded "ever" check) is what allows a template's
-     * <em>next year's</em> occurrence to be scheduled once the current window has rolled past
-     * this year's visit — templates recur annually, so an unbounded check would permanently
-     * cap a subscriber at one lifetime visit per template. This is what makes both webhook
-     * replay (the activation listener) and the recurring {@link VisitTopUpScheduler} top-up
-     * job safe to call repeatedly without duplicating visits, while still scheduling each
-     * template's fresh occurrence every year.
+     * <p>An explicit {@code @Query} rather than a derived one because the match is two
+     * branches, not one, combined with OR:
+     * <ul>
+     *   <li>{@code templateOccurrenceYear = :occurrenceYear} — the V17 rule. A visit's
+     *       occurrence year is set once, at creation, and never moved by a reschedule (see
+     *       {@code Visit#templateOccurrenceYear} and {@code VisitAdminService#rescheduleInternal}),
+     *       so this branch is correct regardless of where the visit currently sits on the
+     *       calendar.</li>
+     *   <li>{@code templateOccurrenceYear IS NULL AND scheduledFor BETWEEN :windowStart AND
+     *       :windowEnd} — the LEGACY fallback, not an accident. V17 does not backfill: a
+     *       migration cannot verify that no pre-V16 reschedule ever landed a replacement
+     *       visit's {@code scheduledFor} in a different calendar year than the one it
+     *       actually occupied (pre-V16, reschedule created a new row carrying the same
+     *       template id at a new date — nothing constrained that date to the same year), so
+     *       guessing a year from {@code scheduledFor} at backfill time could stamp the WRONG
+     *       year and silently suppress a real future occurrence forever. A {@code NULL}-year
+     *       row is either a row from before this column existed, or a legacy row that has not
+     *       yet been rescheduled in place since V16/V17 shipped (a legacy row gets its year
+     *       assigned lazily, from where it sits at that moment, on its first in-place
+     *       reschedule — see {@code VisitAdminService#rescheduleInternal}). Either way it has
+     *       never had {@code scheduledFor} moved in place, so the pre-V16 rule — "already
+     *       scheduled" means {@code scheduledFor} falls in the current lookahead window — is
+     *       still exactly its actual behaviour today. This branch is strictly MORE
+     *       conservative than the year match (window membership is a narrower condition than
+     *       "ever," and it only applies at all when there is no year to match against), so it
+     *       can never reintroduce the bug V17 fixes for a row that already has a year
+     *       recorded, while it prevents that same bug landing on legacy rows that don't yet.
+     *       "More conservative" cuts only one way, though, and it's worth naming: this branch
+     *       makes the guard MORE likely to say "already scheduled" than the year rule alone
+     *       would, i.e. it creates FEWER visits, never more. So if this branch is ever wrong,
+     *       the failure it produces is a MISSING visit the customer already paid for — never
+     *       a duplicate. That is the acceptable direction to fail in for a legacy row we can't
+     *       fully verify, but it is a real failure mode, not a free lunch, and it is the
+     *       opposite failure mode from the one V17 exists to fix.
+     * </ul>
+     *
+     * <p>This is what makes both webhook replay (the activation listener) and the recurring
+     * {@link VisitTopUpScheduler} top-up job safe to call repeatedly without duplicating
+     * visits, while still scheduling each template's fresh occurrence every year: next
+     * year's occurrence has a different {@code occurrenceYear} and falls outside this year's
+     * window, so it is never shadowed by this year's (possibly since-moved) visit.
+     *
+     * @param subscriberId    the subscriber
+     * @param visitTemplateId the template
+     * @param occurrenceYear  the occurrence year being scheduled this run (never null — the
+     *                        caller always has a concrete candidate year by this point)
+     * @param windowStart     inclusive lower bound of the current lookahead window, used only
+     *                        by the legacy (NULL-year) fallback branch
+     * @param windowEnd       inclusive-in-SQL upper bound of the current lookahead window
+     *                        (see {@link VisitSchedulingService#scheduleInitialVisits} for how
+     *                        it's derived — visits are always placed after local midnight, so
+     *                        {@code BETWEEN}'s inclusive end is not reachable in practice),
+     *                        used only by the legacy fallback branch
      */
-    boolean existsBySubscriberIdAndVisitTemplateIdAndScheduledForBetween(
-            Long subscriberId, Long visitTemplateId, java.time.Instant windowStart, java.time.Instant windowEnd);
+    @Query("SELECT CASE WHEN COUNT(v) > 0 THEN true ELSE false END FROM Visit v "
+            + "WHERE v.subscriberId = :subscriberId AND v.visitTemplateId = :visitTemplateId "
+            + "AND (v.templateOccurrenceYear = :occurrenceYear "
+            + "     OR (v.templateOccurrenceYear IS NULL AND v.scheduledFor BETWEEN :windowStart AND :windowEnd))")
+    boolean existsAlreadyScheduledForOccurrence(
+            @Param("subscriberId") Long subscriberId,
+            @Param("visitTemplateId") Long visitTemplateId,
+            @Param("occurrenceYear") int occurrenceYear,
+            @Param("windowStart") java.time.Instant windowStart,
+            @Param("windowEnd") java.time.Instant windowEnd);
 
     /**
      * Ownership check: returns the visit by id and subscriber id.

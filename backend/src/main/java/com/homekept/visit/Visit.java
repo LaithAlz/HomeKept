@@ -61,6 +61,50 @@ public class Visit {
     @Column(name = "visit_template_id")
     private Long visitTemplateId;
 
+    /**
+     * Which yearly occurrence of {@link #visitTemplateId} this visit is (V17 migration).
+     *
+     * <p>Set by whichever path created the visit — see
+     * {@link VisitSchedulingService#scheduleInitialVisits} for the template-driven case, and
+     * {@link TechVisitService#incompleteVisit} for the INCOMPLETE follow-up, which inherits
+     * the SAME value as the visit it replaces (a follow-up IS the same occurrence, not a new
+     * one). Once a row HAS a value, a reschedule (see {@code VisitAdminService}) MUST NEVER
+     * move it: it identifies which occurrence the row is, not where it currently sits on the
+     * calendar.
+     *
+     * <p><strong>V17 does not backfill.</strong> A migration cannot verify that no pre-V16
+     * reschedule ever landed a replacement visit's {@code scheduledFor} in a different
+     * calendar year than the occurrence it actually was (pre-V16 reschedule created a new row
+     * carrying the same template at a new date, with nothing constraining that date to the
+     * same year) — guessing a year from {@code scheduledFor} at backfill time risked stamping
+     * the WRONG year and silently suppressing a real future occurrence forever, which is
+     * worse than the bug this column fixes. So instead:
+     * <ul>
+     *   <li>Every row that predates this column starts {@code null}.</li>
+     *   <li>A {@code null}, templated row gets its year inferred LAZILY, on its first
+     *       in-place reschedule, from wherever {@code scheduledFor} currently sits — the
+     *       BEST AVAILABLE EVIDENCE of the true occurrence, not a guarantee of it: this row
+     *       could itself already be a pre-V16 reschedule's replacement, whose date was never
+     *       tied to any recorded occurrence. What makes acting on that evidence safe is a
+     *       gate: the inference only happens if the template's month still matches {@code
+     *       scheduledFor}'s current month; a mismatch means the row is demonstrably already
+     *       off its occurrence, so the year is left {@code null} for the window fallback to
+     *       keep handling — see {@code VisitAdminService#rescheduleInternal}. Once a value
+     *       is assigned, the row behaves exactly like a new one: never moved again.</li>
+     *   <li>Until then, {@code VisitRepository}'s idempotency guard falls back to the pre-V16
+     *       window rule for {@code null}-year rows, which is correct for a row that (by
+     *       construction) has never been moved in place — see
+     *       {@code VisitRepository#existsAlreadyScheduledForOccurrence}.</li>
+     * </ul>
+     *
+     * <p>{@code null} also for every visit with no template ({@code visitTemplateId == null},
+     * e.g. admin-created via {@code POST /api/admin/visits}) — there is no occurrence to
+     * record, and the guard is keyed on {@code visitTemplateId} too, so such a row is never a
+     * candidate match regardless.
+     */
+    @Column(name = "template_occurrence_year")
+    private Integer templateOccurrenceYear;
+
     /** When the visit is scheduled to happen (UTC). Admin adjusts; not the subscriber. */
     @Column(name = "scheduled_for", nullable = false)
     private Instant scheduledFor;
@@ -128,6 +172,20 @@ public class Visit {
     public Long getTechnicianId() { return technicianId; }
     public void setTechnicianId(Long technicianId) { this.technicianId = technicianId; }
     public Long getVisitTemplateId() { return visitTemplateId; }
+
+    public Integer getTemplateOccurrenceYear() { return templateOccurrenceYear; }
+
+    /**
+     * Sets which yearly occurrence of the template this visit is. Callers: a visit creation
+     * path (the scheduler, the INCOMPLETE follow-up path, or a test fixture simulating one),
+     * OR a reschedule assigning a legacy ({@code null}-year) row's occurrence for the first
+     * time, from where it currently sits, immediately before moving it. Once a row has a
+     * non-null value, NEVER call this to change it — see this field's javadoc for why.
+     */
+    public void setTemplateOccurrenceYear(Integer templateOccurrenceYear) {
+        this.templateOccurrenceYear = templateOccurrenceYear;
+    }
+
     public Instant getScheduledFor() { return scheduledFor; }
     public void setScheduledFor(Instant scheduledFor) { this.scheduledFor = scheduledFor; }
     public int getDurationMinutes() { return durationMinutes; }
