@@ -81,12 +81,16 @@ public class Visit {
      * worse than the bug this column fixes. So instead:
      * <ul>
      *   <li>Every row that predates this column starts {@code null}.</li>
-     *   <li>A {@code null}, templated row gets its year assigned LAZILY, exactly once, the
-     *       first time it is rescheduled in place — computed from wherever {@code
-     *       scheduledFor} currently sits (the last instant that's still guaranteed to be the
-     *       true occurrence, since the row has never been moved before) — see
-     *       {@code VisitAdminService#rescheduleInternal}. After that assignment the row
-     *       behaves exactly like a new one: never moved again.</li>
+     *   <li>A {@code null}, templated row gets its year inferred LAZILY, on its first
+     *       in-place reschedule, from wherever {@code scheduledFor} currently sits — the
+     *       BEST AVAILABLE EVIDENCE of the true occurrence, not a guarantee of it: this row
+     *       could itself already be a pre-V16 reschedule's replacement, whose date was never
+     *       tied to any recorded occurrence. What makes acting on that evidence safe is a
+     *       gate: the inference only happens if the template's month still matches {@code
+     *       scheduledFor}'s current month; a mismatch means the row is demonstrably already
+     *       off its occurrence, so the year is left {@code null} for the window fallback to
+     *       keep handling — see {@code VisitAdminService#rescheduleInternal}. Once a value
+     *       is assigned, the row behaves exactly like a new one: never moved again.</li>
      *   <li>Until then, {@code VisitRepository}'s idempotency guard falls back to the pre-V16
      *       window rule for {@code null}-year rows, which is correct for a row that (by
      *       construction) has never been moved in place — see

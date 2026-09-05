@@ -66,9 +66,12 @@ import java.util.List;
  * window rule for exactly those rows (see {@link VisitRepository#existsAlreadyScheduledForOccurrence}
  * for the two-branch query). That fallback is correct for a {@code NULL}-year row because such
  * a row, by construction, has never had {@code scheduledFor} moved in place since V16/V17
- * shipped — a legacy row gets its occurrence year assigned lazily, from wherever it currently
- * sits, the first time it IS rescheduled in place (see {@code VisitAdminService#rescheduleInternal}),
- * at which point it graduates to the year-keyed branch above for good.
+ * shipped — a legacy row gets its occurrence year inferred lazily, from wherever it currently
+ * sits, the first time it IS rescheduled in place, but only when the template's month still
+ * matches that current date (the one available signal the row hasn't already been moved off
+ * its occurrence by the pre-V16 model) — see {@code VisitAdminService#rescheduleInternal}. On
+ * a month match it graduates to the year-keyed branch above for good; on a mismatch it stays
+ * {@code NULL} and keeps falling back to the window rule here.
  *
  * <p>The per-occurrence (rather than unbounded "ever") scope still matters because
  * {@link VisitTemplate templates} recur <em>annually</em> — one row per (month, min tier) — so

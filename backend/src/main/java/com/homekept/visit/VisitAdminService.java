@@ -508,12 +508,23 @@ public class VisitAdminService {
      * deliberately NOT the same rule as "never touch the field": V17 does not backfill, so a
      * legacy visit (one that predates the column, or one created before its first in-place
      * reschedule) can arrive here with a {@code null} occurrence year and a template. For
-     * exactly that case — {@code null} AND templated — this method assigns the year ONCE,
-     * inferred from the visit's CURRENT {@code scheduledFor} (rendered in the render zone)
-     * BEFORE overwriting it. That instant is the last moment {@code scheduledFor} is still
-     * guaranteed to BE the occurrence (the row has never been moved in place before now), so
-     * it's the correct and only safe moment to infer it — see the V17 migration's comment
-     * block. A visit with no template, or one that already has a recorded year, is untouched.
+     * exactly that case — {@code null} AND templated — this method infers a year ONCE, from
+     * the visit's CURRENT {@code scheduledFor} (rendered in the render zone) BEFORE
+     * overwriting it, and only if that current month still matches the template's month.
+     *
+     * <p>Why the month gate: the current {@code scheduledFor} is only the BEST AVAILABLE
+     * EVIDENCE of the occurrence, not a guarantee of it — this row could itself be a pre-V16
+     * reschedule's replacement, which moved a visit's date without any record of what
+     * occurrence it was for. A T_OCT visit for occurrence 2026 moved, pre-V16, to
+     * 2027-02-10 is exactly such a row: NULL year, date already off its true occurrence.
+     * Inferring blindly from that date would read {@code 2027} and permanently cost the
+     * customer their real October 2027 visit. Comparing the template's month against the
+     * current date's month is what makes acting on the current date safe: if they agree, the
+     * row is consistent with never having been moved off-month, so the date's YEAR is
+     * trustworthy; if they disagree, the row is demonstrably already off its occurrence and
+     * inferring anything from it would be a guess, so the year is left {@code null} for the
+     * guard's window fallback to keep handling (see {@code VisitRepository}
+     * {@code existsAlreadyScheduledForOccurrence}).
      */
     private Visit rescheduleInternal(Visit visit, Instant newScheduledFor, Long technicianUserId,
                                      Long actingUserId, VisitEventSource source) {
@@ -523,16 +534,27 @@ public class VisitAdminService {
 
         Instant oldScheduledFor = visit.getScheduledFor();
 
-        // Lazy occurrence-year assignment for a legacy row (see this method's javadoc): a
-        // templated visit that has never had its occurrence recorded gets it ONCE, now, from
-        // where it currently sits — the last instant that's still guaranteed to be true.
-        // Every subsequent reschedule of this row takes the branch below instead (year
-        // already set, never overwritten).
+        // Lazy occurrence-year inference for a legacy row (see this method's javadoc): a
+        // templated visit that has never had its occurrence recorded gets it inferred ONCE,
+        // now, from where it currently sits — but only if that still agrees with the
+        // template's month, the one available signal that the row hasn't already been moved
+        // off its occurrence by the pre-V16 model. Every subsequent reschedule of this row
+        // either takes the branch below (year already set, never overwritten) or, if the
+        // month never matched, keeps arriving here and re-declining every time — harmless,
+        // since the guard's window fallback covers it regardless.
         if (visit.getVisitTemplateId() != null && visit.getTemplateOccurrenceYear() == null) {
-            int inferredOccurrenceYear = oldScheduledFor.atZone(renderZoneId).getYear();
-            visit.setTemplateOccurrenceYear(inferredOccurrenceYear);
-            log.info("visit_occurrence_year_inferred_on_reschedule visitId={} occurrenceYear={}",
-                    visit.getId(), inferredOccurrenceYear);
+            VisitTemplate template = visitTemplateRepository.findById(visit.getVisitTemplateId()).orElse(null);
+            int oldMonth = oldScheduledFor.atZone(renderZoneId).getMonthValue();
+            if (template != null && template.getMonth() == oldMonth) {
+                int inferredOccurrenceYear = oldScheduledFor.atZone(renderZoneId).getYear();
+                visit.setTemplateOccurrenceYear(inferredOccurrenceYear);
+                log.info("visit_occurrence_year_inferred_on_reschedule visitId={} occurrenceYear={}",
+                        visit.getId(), inferredOccurrenceYear);
+            } else {
+                log.info("visit_occurrence_year_inference_skipped_month_mismatch visitId={} templateMonth={} "
+                                + "scheduledForMonth={}",
+                        visit.getId(), template != null ? template.getMonth() : null, oldMonth);
+            }
         }
 
         // Only scheduledFor (and, below, technicianId) move. An already-recorded

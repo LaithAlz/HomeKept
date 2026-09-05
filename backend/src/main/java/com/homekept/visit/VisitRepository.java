@@ -139,6 +139,13 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
      *       "ever," and it only applies at all when there is no year to match against), so it
      *       can never reintroduce the bug V17 fixes for a row that already has a year
      *       recorded, while it prevents that same bug landing on legacy rows that don't yet.
+     *       "More conservative" cuts only one way, though, and it's worth naming: this branch
+     *       makes the guard MORE likely to say "already scheduled" than the year rule alone
+     *       would, i.e. it creates FEWER visits, never more. So if this branch is ever wrong,
+     *       the failure it produces is a MISSING visit the customer already paid for — never
+     *       a duplicate. That is the acceptable direction to fail in for a legacy row we can't
+     *       fully verify, but it is a real failure mode, not a free lunch, and it is the
+     *       opposite failure mode from the one V17 exists to fix.
      * </ul>
      *
      * <p>This is what makes both webhook replay (the activation listener) and the recurring

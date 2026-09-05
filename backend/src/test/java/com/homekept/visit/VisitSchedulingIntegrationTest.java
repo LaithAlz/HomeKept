@@ -44,6 +44,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  *       window fallback, must get its occurrence assigned from where it WAS on its first
  *       in-place reschedule, and from that point on must survive being pushed outside the
  *       window exactly like a row that was always tagged.</li>
+ *   <li>The month gate on that inference: a legacy row whose current month disagrees with
+ *       its template's (evidence it was already moved off its occurrence, e.g. by a pre-V16
+ *       reschedule) must NOT get a year inferred — it stays {@code null}.</li>
+ *   <li>Write-once: a second in-place reschedule of a row that already had its occurrence
+ *       year inferred must never recompute it from wherever the row sits in between.</li>
  * </ul>
  *
  * <p>Expected counts are derived at runtime by calling the same package-local helper
@@ -552,8 +557,16 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(inWindow).isNotEmpty();
         VisitTemplate template = inWindow.get(0);
 
-        Instant originalScheduledFor = Instant.now().plus(Duration.ofDays(30));
-        int expectedOccurrenceYear = originalScheduledFor.atZone(TORONTO).getYear();
+        // Derived from the CHOSEN template's own candidate date, not an arbitrary "now + 30
+        // days" — inWindow is ordered by month ascending (findByMinTierIn), so once the
+        // window wraps into January, get(0) can be a January-2027 candidate while an
+        // unrelated "+30 days" anchor is still 2026. A mismatch here would fail this test on
+        // exactly the calendar days it wraps a year boundary — this must always agree with
+        // the template actually under test.
+        LocalDate originalCandidateDate =
+                VisitSchedulingService.nextOccurrenceInWindow(template.getMonth(), today, windowEnd, TORONTO);
+        Instant originalScheduledFor = originalCandidateDate.atTime(12, 0).atZone(TORONTO).toInstant();
+        int expectedOccurrenceYear = originalCandidateDate.getYear();
 
         Visit legacyVisit = visitRepository.save(new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), template.getId(),
@@ -585,6 +598,102 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
                 .as("a legacy visit, once rescheduled and assigned an occurrence year, must not be "
                         + "duplicated after moving outside the window")
                 .isEqualTo(1);
+    }
+
+    /**
+     * Pins the write-once invariant the whole legacy design rests on: a SECOND in-place
+     * reschedule of a row that already had its occurrence year inferred on the FIRST must not
+     * recompute it from wherever the row happens to sit in between. Without this, a legacy
+     * row could get a correct year on reschedule #1 and a wrong one silently overwriting it on
+     * reschedule #2 — the exact class of bug the month gate exists to prevent, but from a
+     * different angle (an already-assigned value, not an unverifiable NULL one).
+     */
+    @Test
+    void rescheduleVisit_legacyRowRescheduledTwice_occurrenceYearNotRecomputedOnSecondReschedule() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-legacy-twice@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        assertThat(inWindow).isNotEmpty();
+        VisitTemplate template = inWindow.get(0);
+
+        LocalDate originalCandidateDate =
+                VisitSchedulingService.nextOccurrenceInWindow(template.getMonth(), today, windowEnd, TORONTO);
+        Instant originalScheduledFor = originalCandidateDate.atTime(12, 0).atZone(TORONTO).toInstant();
+        int expectedOccurrenceYear = originalCandidateDate.getYear();
+
+        Visit legacyVisit = visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), template.getId(),
+                originalScheduledFor, 120, VisitType.ROUTINE));
+        assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
+
+        // First reschedule: the current month still matches the template's, so the year is
+        // inferred from the ORIGINAL date and recorded.
+        Instant firstMove = Instant.now().plus(Duration.ofDays(400));
+        visitAdminService.rescheduleVisit(legacyVisit.getId(), firstMove, null, VisitEventSource.ADMIN);
+        Visit afterFirst = visitRepository.findById(legacyVisit.getId()).orElseThrow();
+        assertThat(afterFirst.getTemplateOccurrenceYear()).isEqualTo(expectedOccurrenceYear);
+
+        // Second reschedule: the visit now sits at firstMove — a different month (and likely a
+        // different year) than its true occurrence. If the write-once rule were violated, this
+        // would recompute the year from firstMove's date instead of leaving the
+        // already-recorded value alone.
+        Instant secondMove = Instant.now().plus(Duration.ofDays(20));
+        visitAdminService.rescheduleVisit(legacyVisit.getId(), secondMove, null, VisitEventSource.ADMIN);
+        Visit afterSecond = visitRepository.findById(legacyVisit.getId()).orElseThrow();
+
+        assertThat(afterSecond.getScheduledFor()).isEqualTo(secondMove);
+        assertThat(afterSecond.getTemplateOccurrenceYear())
+                .as("a second reschedule must never recompute an already-inferred occurrence year")
+                .isEqualTo(expectedOccurrenceYear);
+    }
+
+    /**
+     * The month gate itself: a legacy row whose current {@code scheduledFor} month does NOT
+     * match its template's month is exactly what a pre-V16-moved visit looks like — evidence
+     * the row is already off its true occurrence, so its date is not trustworthy evidence of
+     * which year it belongs to. Rescheduling such a row must NOT infer a year from it; the
+     * occurrence stays {@code null} and the window fallback keeps deciding for it instead.
+     */
+    @Test
+    void rescheduleVisit_legacyRowMonthMismatch_occurrenceYearStaysNull() {
+        Subscriber subscriber = seedActiveSubscriber("scheduling-legacy-mismatch@test.local", PlanCode.PREMIER);
+
+        List<VisitTemplate> allTemplates = visitTemplateRepository
+                .findByMinTierIn(VisitSchedulingService.eligibleTiersFor(PlanCode.PREMIER));
+        LocalDate today = LocalDate.now(TORONTO);
+        LocalDate windowEnd = today.plusMonths(VisitSchedulingService.LOOKAHEAD_MONTHS);
+        List<VisitTemplate> inWindow = allTemplates.stream()
+                .filter(t -> VisitSchedulingService.nextOccurrenceInWindow(t.getMonth(), today, windowEnd, TORONTO) != null)
+                .toList();
+        assertThat(inWindow).isNotEmpty();
+        VisitTemplate template = inWindow.get(0);
+
+        // A date two years out, in a month guaranteed to differ from the template's own —
+        // simulates a pre-V16 reschedule that moved this visit off its occurrence long before
+        // this column (or the month gate) existed. Constructed from a fixed month offset
+        // rather than any "now + N days" arithmetic, so this is not calendar-dependent.
+        int differentMonth = (template.getMonth() % 12) + 1;
+        Instant offMonthDate = LocalDate.of(today.getYear() + 2, differentMonth, 10)
+                .atTime(12, 0).atZone(TORONTO).toInstant();
+
+        Visit legacyVisit = visitRepository.save(new Visit(
+                subscriber.getId(), subscriber.getPropertyId(), template.getId(),
+                offMonthDate, 120, VisitType.ROUTINE));
+        assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
+
+        visitAdminService.rescheduleVisit(
+                legacyVisit.getId(), Instant.now().plus(Duration.ofDays(500)), null, VisitEventSource.ADMIN);
+
+        Visit reloaded = visitRepository.findById(legacyVisit.getId()).orElseThrow();
+        assertThat(reloaded.getTemplateOccurrenceYear())
+                .as("a month mismatch means the row is already off its occurrence; the year must not be inferred")
+                .isNull();
     }
 
     // ── No-plan-tier guard ────────────────────────────────────────────────────
