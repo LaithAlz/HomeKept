@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
-import { AddTechnicianSheet } from "@/components/admin/AddTechnicianSheet";
+import { AddTechnicianDialog } from "@/components/admin/AddTechnicianDialog";
 import {
   useAdminTechnicians,
   useResendTechnicianInvite,
@@ -75,7 +75,7 @@ function TechniciansPage() {
         </Button>
       </div>
 
-      <AddTechnicianSheet open={addOpen} onOpenChange={setAddOpen} />
+      <AddTechnicianDialog open={addOpen} onOpenChange={setAddOpen} />
 
       {isLoading && <PanelLoading label="Loading technicians." className="mt-6" />}
 

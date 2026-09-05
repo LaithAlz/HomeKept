@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, AlertTriangle, CreditCard, CalendarClock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { NewBookingSheet } from "@/components/admin/NewBookingSheet";
+import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
 import { cn } from "@/lib/utils";
 import {
@@ -119,7 +119,7 @@ function AdminDashboard() {
         </section>
       </div>
 
-      <NewBookingSheet open={newBookingOpen} onOpenChange={setNewBookingOpen} />
+      <NewBookingDialog open={newBookingOpen} onOpenChange={setNewBookingOpen} />
     </>
   );
 }
@@ -196,8 +196,8 @@ function RecentSubscribersPanel() {
             <li key={s.id} className="flex items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <Link
-                  to="/admin/subscribers"
-                  search={{ id: s.id }}
+                  to="/admin/subscribers/$id"
+                  params={{ id: String(s.id) }}
                   className="font-semibold text-foreground hover:underline"
                 >
                   Subscriber #{s.id}
@@ -376,7 +376,7 @@ function NeedsAttentionPanel() {
                 </p>
               </div>
               <Button size="sm" variant="outline" className="shrink-0" asChild>
-                <Link to="/admin/subscribers" search={{ id: s.id }}>
+                <Link to="/admin/subscribers/$id" params={{ id: String(s.id) }}>
                   View
                 </Link>
               </Button>

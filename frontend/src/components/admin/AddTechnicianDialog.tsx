@@ -1,11 +1,14 @@
 /**
- * Add technician sheet — invites a new technician by identity only (first name, last
- * name, email, optional phone). `POST /api/admin/technicians` creates the account
- * PENDING_ACTIVATION with an unusable password and emails a staff-invite link; the
- * invited person sets their own password there (see `routes/staff.activate.tsx`) —
- * there is no admin-set temporary password. The role is always server-set to
- * TECHNICIAN; hourly cost, employee status, and hire date are set later on a
- * technician-edit screen, not here.
+ * Add technician dialog — invites a new technician by identity only (first name,
+ * last name, email, optional phone). `POST /api/admin/technicians` creates the
+ * account PENDING_ACTIVATION with an unusable password and emails a staff-invite
+ * link; the invited person sets their own password there (see
+ * `routes/staff.activate.tsx`) — there is no admin-set temporary password. The
+ * role is always server-set to TECHNICIAN; hourly cost, employee status, and hire
+ * date are set later on a technician-edit screen, not here.
+ *
+ * A centered modal, not a side sheet: four fields, one submit action, no reason
+ * for its own URL.
  */
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -13,12 +16,12 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { EMAIL_RE } from "@/lib/booking";
 import { useCreateTechnician, type CreateTechnicianRequest } from "@/lib/admin";
@@ -69,7 +72,7 @@ function describeError(err: unknown, setFieldErrors: (e: FieldErrors) => void): 
   return "That didn't go through. Please try again.";
 }
 
-export function AddTechnicianSheet({
+export function AddTechnicianDialog({
   open,
   onOpenChange,
 }: {
@@ -127,17 +130,17 @@ export function AddTechnicianSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle className="font-display text-2xl font-extrabold tracking-tight">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-display text-2xl font-extrabold tracking-tight">
             Invite technician
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             Send an invite by email. They&rsquo;ll set their own password and appear on the roster
             as pending until they accept.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
           <fieldset
@@ -206,8 +209,8 @@ export function AddTechnicianSheet({
             </Button>
           </div>
         </form>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
