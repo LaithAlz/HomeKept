@@ -46,6 +46,7 @@ class AdminVisitDayLoadIntegrationTest extends AbstractIntegrationTest {
     private String adminToken;
     private String customerToken;
     private Subscriber targetSubscriber;
+    private Long technicianUserId;
 
     @BeforeEach
     void seedData() throws Exception {
@@ -78,6 +79,13 @@ class AdminVisitDayLoadIntegrationTest extends AbstractIntegrationTest {
         targetSubscriber = subscriberRepository.save(new Subscriber(
                 targetUser.getId(), targetProp.getId(),
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
+
+        // visit.technician_id is a real FK to users: an assigned visit needs an actual row.
+        technicianUserId = userRepository.save(new User(
+                "day-load-tech-" + nano + "@test.local",
+                passwordEncoder.encode("Test1234!"),
+                "Tech", "DayLoad",
+                Role.TECHNICIAN, UserStatus.ACTIVE)).getId();
     }
 
     /** Local-midnight Instant for the given Toronto-local date, offset by hour-of-day. */
@@ -107,10 +115,10 @@ class AdminVisitDayLoadIntegrationTest extends AbstractIntegrationTest {
         LocalDate emptyDay = day1.plusDays(2); // between day1/day2 range end and nothing else — just unused
 
         // day1: two SCHEDULED visits, one unassigned.
-        seedVisit(atLocalTime(day1, 9), VisitStatus.SCHEDULED, 42L);
+        seedVisit(atLocalTime(day1, 9), VisitStatus.SCHEDULED, technicianUserId);
         seedVisit(atLocalTime(day1, 13), VisitStatus.SCHEDULED, null);
         // day2: one SCHEDULED visit, assigned.
-        seedVisit(atLocalTime(day2, 10), VisitStatus.SCHEDULED, 42L);
+        seedVisit(atLocalTime(day2, 10), VisitStatus.SCHEDULED, technicianUserId);
         // A CANCELLED visit on day1 must not be counted.
         seedVisit(atLocalTime(day1, 15), VisitStatus.CANCELLED, null);
 
