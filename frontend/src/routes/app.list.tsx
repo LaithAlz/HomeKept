@@ -4,9 +4,12 @@ import { AlertCircle, CalendarCheck, Check, Circle, Loader2, Plus, Trash2 } from
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ListAccessNotice } from "@/components/app/list-access-notice";
 import { ApiError } from "@/lib/api";
+import { useSubscription } from "@/lib/account";
 import { useSessionExpiredRedirect } from "@/lib/auth";
 import { formatRelativeTime } from "@/lib/format";
+import { isListServiceable } from "@/lib/list-access";
 import { useCreateTodo, useDeleteTodo, useTodos, type TodoResponse } from "@/lib/todos";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +24,9 @@ export const Route = createFileRoute("/app/list")({
 
 function YourListPage() {
   const todosQuery = useTodos();
+  const subscriptionQuery = useSubscription();
   useSessionExpiredRedirect(todosQuery.error);
+  useSessionExpiredRedirect(subscriptionQuery.error);
 
   const items = todosQuery.data ?? [];
 
@@ -30,17 +35,31 @@ function YourListPage() {
       <h1 className="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Your list</h1>
       <p className="mt-2 max-w-2xl text-muted-foreground">
         Small tasks for around your home, like a loose towel bar or a squeaky door. Add something
-        here and your technician takes care of it on your next scheduled visit.
+        here and your technician sets time aside for your list on every visit.
       </p>
 
-      <section
-        aria-labelledby="add-heading"
-        className="mt-8 rounded-3xl border border-border bg-card p-6"
-      >
-        <h2 id="add-heading" className="font-display text-lg font-bold">
-          Add something
-        </h2>
-        <AddTodoForm />
+      <section aria-label="Add to your list" className="mt-8">
+        {subscriptionQuery.isLoading ? (
+          <div
+            className="flex items-center gap-3 rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            Checking your plan.
+          </div>
+        ) : subscriptionQuery.isError ? (
+          <p className="rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
+            We couldn't check your plan. Try refreshing the page.
+          </p>
+        ) : subscriptionQuery.data && !isListServiceable(subscriptionQuery.data) ? (
+          <ListAccessNotice subscription={subscriptionQuery.data} />
+        ) : (
+          <div className="rounded-3xl border border-border bg-card p-6">
+            <h2 className="font-display text-lg font-bold">Add something</h2>
+            <AddTodoForm />
+          </div>
+        )}
       </section>
 
       <section className="mt-8" aria-labelledby="list-heading">
@@ -63,8 +82,8 @@ function YourListPage() {
             </p>
           ) : items.length === 0 ? (
             <p className="rounded-3xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Nothing on your list yet. Add your first item above and your technician will take care
-              of it on your next visit.
+              Nothing on your list yet. Add your first item above and it is queued for your next
+              visit.
             </p>
           ) : (
             items.map((item) => <TodoRow key={item.id} item={item} />)

@@ -13,6 +13,7 @@ import {
   Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AddTodoDialog } from "@/components/app/add-todo-dialog";
 import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { useAccount, type AppAccount } from "@/lib/account";
 import { useHealthScore, type HealthScoreFlaggedItem } from "@/lib/health";
@@ -275,7 +276,8 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
   const { month, day, weekday } = getCalendarParts(visit.scheduledFor);
   const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
 
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [addRequestOpen, setAddRequestOpen] = useState(false);
   // Server truth: true whenever a PENDING reschedule_request exists for this visit.
   // Persists across reloads (unlike a client-only flag) because it comes back on
   // every GET /api/app/visits. The dialog's success handler invalidates the visits
@@ -283,20 +285,22 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
   const hasPendingReschedule = visit.hasPendingRescheduleRequest;
 
   return (
-    <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:gap-8">
-      {/* Calendar block */}
+    <div className="grid gap-6 p-6 md:grid-cols-[auto_1fr] md:items-start md:gap-8">
+      {/* Date badge: compact, self-sized so it never stretches to the row
+          height and never needs a fixed pixel height (the weekday label can
+          wrap onto a second line for a long name without breaking layout). */}
       <div
-        className="flex w-full max-w-[140px] flex-col self-start overflow-hidden rounded-2xl border border-border text-center"
+        className="flex w-24 shrink-0 flex-col self-start overflow-hidden rounded-2xl border border-border text-center"
         aria-label={`${weekday}, ${month} ${day}`}
       >
-        <div className="bg-accent py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-accent-foreground">
+        <div className="bg-accent py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-accent-foreground">
           {month}
         </div>
-        <div className="bg-card py-3">
-          <div className="font-display text-5xl font-extrabold leading-none tracking-tight text-foreground">
+        <div className="bg-card px-1 py-2">
+          <div className="font-display text-3xl font-extrabold leading-none tracking-tight text-foreground">
             {day}
           </div>
-          <div className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="mt-1 text-[11px] font-medium leading-tight text-muted-foreground">
             {weekday}
           </div>
         </div>
@@ -328,11 +332,11 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
             <PendingReschedulePill visitId={visit.id} />
           ) : (
             <>
-              <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setRescheduleOpen(true)}>
                 <RefreshCcw className="size-4" aria-hidden="true" />
                 Reschedule
               </Button>
-              <Button size="sm" onClick={() => setDialogOpen(true)}>
+              <Button size="sm" onClick={() => setAddRequestOpen(true)}>
                 <CalendarPlus className="size-4" aria-hidden="true" />
                 Add a request
               </Button>
@@ -341,7 +345,8 @@ function NextVisitContent({ visit }: { visit: AppVisitListItem }) {
         </div>
       </div>
 
-      <RescheduleDialog visitId={visit.id} open={dialogOpen} onOpenChange={setDialogOpen} />
+      <RescheduleDialog visitId={visit.id} open={rescheduleOpen} onOpenChange={setRescheduleOpen} />
+      <AddTodoDialog open={addRequestOpen} onOpenChange={setAddRequestOpen} />
     </div>
   );
 }
