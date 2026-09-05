@@ -180,7 +180,6 @@ function VisitsPage() {
                 <th className="px-2 py-3">Status</th>
                 <th className="px-2 py-3">Scheduled for</th>
                 <th className="px-2 py-3">Technician</th>
-                <th className="px-2 py-3 text-right">Materials</th>
                 <th className="px-2 py-3">Actions</th>
               </tr>
             </thead>
@@ -195,7 +194,7 @@ function VisitsPage() {
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
                     No visits match these filters.
                   </td>
                 </tr>
@@ -229,12 +228,16 @@ function VisitRow({
   onCancel: () => void;
 }) {
   const isScheduled = v.status === "SCHEDULED";
+  const isCompleted = v.status === "COMPLETED";
   return (
     <tr className="border-t border-border hover:bg-muted/30">
       <td className="px-4 py-3">
         <div className="font-medium text-foreground">Visit #{v.id}</div>
         <div className="text-xs text-muted-foreground">
           Subscriber #{v.subscriberId} · Property #{v.propertyId}
+          {isCompleted && v.materialsCostCents != null && (
+            <> · Materials {formatCentsCad(v.materialsCostCents)}</>
+          )}
         </div>
       </td>
       <td className="px-2 py-3">{TYPE_LABEL[v.type] ?? v.type}</td>
@@ -258,7 +261,6 @@ function VisitRow({
           <span className="text-amber-700">Unassigned</span>
         )}
       </td>
-      <td className="px-2 py-3 text-right tabular-nums">{formatCentsCad(v.materialsCostCents)}</td>
       <td className="px-2 py-3">
         {isScheduled ? (
           <div className="flex flex-wrap gap-2">

@@ -2,6 +2,8 @@ package com.homekept.subscription;
 
 import com.homekept.catalog.CatalogService;
 import com.homekept.common.Pagination;
+import com.homekept.identity.UserQueryService;
+import com.homekept.identity.UserQueryService.AdminContactDetail;
 import com.homekept.property.PropertyService;
 import com.homekept.subscription.dto.AdminSubscriberDetail;
 import com.homekept.subscription.dto.AdminSubscriberListItem;
@@ -31,6 +33,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>catalog → {@link CatalogService} (plan code + MRR cents lookup)</li>
  *   <li>property → {@link PropertyService} (property summary for the detail view)</li>
+ *   <li>identity → {@link UserQueryService} (customer name/email/phone for the list and
+ *       detail views — batched for the list, never N+1)</li>
  * </ul>
  *
  * <p>The pause/resume/cancel mutations delegate their actual mechanics (state-machine
@@ -39,7 +43,9 @@ import java.util.stream.Collectors;
  * resolves the subscriber by id (admin's own 404, distinct from the self-serve by-user-id
  * lookup) and applies the same billing-presence guard before delegating.
  *
- * <p>MRR is in integer cents — never floats. No PII in logs.
+ * <p>MRR is in integer cents — never floats. The list/detail DTOs carry customer PII
+ * (name, email, phone) since the whole controller is ADMIN-gated — but that PII is never
+ * logged, here or anywhere else in this class.
  */
 @Service
 public class SubscriptionAdminService {
@@ -55,6 +61,7 @@ public class SubscriptionAdminService {
     private final SubscriberRepository subscriberRepository;
     private final CatalogService catalogService;
     private final PropertyService propertyService;
+    private final UserQueryService userQueryService;
     private final SubscriptionSelfServeService selfServeService;
     private final SubscriptionEventRepository subscriptionEventRepository;
     private final ObjectMapper objectMapper;
@@ -62,12 +69,14 @@ public class SubscriptionAdminService {
     public SubscriptionAdminService(SubscriberRepository subscriberRepository,
                                     CatalogService catalogService,
                                     PropertyService propertyService,
+                                    UserQueryService userQueryService,
                                     SubscriptionSelfServeService selfServeService,
                                     SubscriptionEventRepository subscriptionEventRepository,
                                     ObjectMapper objectMapper) {
         this.subscriberRepository = subscriberRepository;
         this.catalogService = catalogService;
         this.propertyService = propertyService;
+        this.userQueryService = userQueryService;
         this.selfServeService = selfServeService;
         this.subscriptionEventRepository = subscriptionEventRepository;
         this.objectMapper = objectMapper;
@@ -89,8 +98,13 @@ public class SubscriptionAdminService {
                 ? subscriberRepository.findByIdLessThanOrderByIdDesc(cursor, pageable)
                 : subscriberRepository.findAllByOrderByIdDesc(pageable);
 
+        // Batched in one grouped query (never per-row) — customer identity must not turn the
+        // subscriber list into an N+1 across the identity domain's users table.
+        List<Long> userIds = subscribers.stream().map(Subscriber::getUserId).toList();
+        Map<Long, AdminContactDetail> contactsByUserId = userQueryService.findAdminContactsByIds(userIds);
+
         return subscribers.stream()
-                .map(this::toListItem)
+                .map(s -> toListItem(s, contactsByUserId.get(s.getUserId())))
                 .collect(Collectors.toList());
     }
 
@@ -107,7 +121,8 @@ public class SubscriptionAdminService {
         if (subscriber == null) {
             return null;
         }
-        return toDetail(subscriber);
+        AdminContactDetail contact = userQueryService.findAdminContactById(subscriber.getUserId()).orElse(null);
+        return toDetail(subscriber, contact);
     }
 
     /**
@@ -298,18 +313,22 @@ public class SubscriptionAdminService {
                 immediate);
     }
 
-    private AdminSubscriberListItem toListItem(Subscriber s) {
+    private AdminSubscriberListItem toListItem(Subscriber s, AdminContactDetail contact) {
         String planCode = catalogService.getPlanCode(s.getPlanTierId());
         Integer mrrCents = computeMrrCents(s);
         return new AdminSubscriberListItem(
                 s.getId(),
                 s.getStatus().name(),
                 planCode,
-                mrrCents
+                mrrCents,
+                contact != null ? contact.firstName() : null,
+                contact != null ? contact.lastName() : null,
+                contact != null ? contact.email() : null,
+                contact != null ? contact.phone() : null
         );
     }
 
-    private AdminSubscriberDetail toDetail(Subscriber s) {
+    private AdminSubscriberDetail toDetail(Subscriber s, AdminContactDetail contact) {
         String planCode = catalogService.getPlanCode(s.getPlanTierId());
         Integer mrrCents = computeMrrCents(s);
 
@@ -345,7 +364,11 @@ public class SubscriptionAdminService {
                 s.getStartedAt(),
                 s.getPausedAt(),
                 s.getCancelledAt(),
-                propertySummary
+                propertySummary,
+                contact != null ? contact.firstName() : null,
+                contact != null ? contact.lastName() : null,
+                contact != null ? contact.email() : null,
+                contact != null ? contact.phone() : null
         );
     }
 

@@ -3,6 +3,7 @@ package com.homekept.identity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,9 +13,9 @@ import java.util.stream.Collectors;
  * Read-only identity lookups exposed to other domains.
  *
  * <p>Cross-domain rule: other domains (subscription, visit) need a user's email and first
- * name to address transactional emails. They call this service rather than the
- * {@link UserRepository} or the {@link User} entity directly — only a narrow
- * {@link UserContact} crosses the boundary.
+ * name to address transactional emails, or (for ADMIN-gated consoles) a fuller contact
+ * record. They call this service rather than the {@link UserRepository} or the
+ * {@link User} entity directly — only the narrow records below cross the boundary.
  */
 @Service
 public class UserQueryService {
@@ -82,4 +83,55 @@ public class UserQueryService {
     /** Display summary for admin rosters: name, email, role, and account status. */
     public record UserSummary(Long id, String email, String firstName, String lastName,
                                String role, String status) {}
+
+    /**
+     * Resolves the full name, email, and phone for a user id, for the admin subscriber
+     * detail view ({@code AdminSubscriberDetail}).
+     *
+     * <p>This is customer PII. It is safe to expose here only because the caller
+     * (the subscription domain's admin console) is behind an ADMIN-only endpoint — never
+     * log this record, and never thread it into a non-admin-gated endpoint.
+     *
+     * @param userId the identity-domain user id
+     * @return the contact detail, or empty if no such user
+     */
+    @Transactional(readOnly = true)
+    public Optional<AdminContactDetail> findAdminContactById(Long userId) {
+        return userRepository.findById(userId)
+                .map(u -> new AdminContactDetail(u.getFirstName(), u.getLastName(), u.getEmail(), u.getPhone()));
+    }
+
+    /**
+     * Resolves the full name, email, and phone for a set of user ids in a single query, for
+     * the admin subscriber list view ({@code AdminSubscriberListItem}).
+     *
+     * <p>The subscription domain must call this (never {@link UserRepository} or
+     * {@link User} directly) to resolve a whole page of subscribers' identities without
+     * N+1 — mirrors {@code ActivationTokenService.latestInviteAtByBookingIds}.
+     *
+     * <p>Same PII caveat as {@link #findAdminContactById}: ADMIN-gated callers only, never
+     * logged.
+     *
+     * @param userIds the identity-domain user ids to resolve; may be empty
+     * @return map of user id → contact detail, for ids that exist (missing ids are simply
+     *         absent from the map, never mapped to null). Empty input returns an empty map
+     *         without querying the database.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, AdminContactDetail> findAdminContactsByIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Map.of();
+        }
+        return userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, u -> new AdminContactDetail(
+                        u.getFirstName(), u.getLastName(), u.getEmail(), u.getPhone())));
+    }
+
+    /**
+     * Full name, email, and phone for the admin subscriber console. Customer PII —
+     * ADMIN-gated endpoints only, never logged. {@code phone} is frequently {@code null}:
+     * it is not currently captured on {@link User} at account creation (see
+     * {@code ActivationService#complete}), even though the column exists.
+     */
+    public record AdminContactDetail(String firstName, String lastName, String email, String phone) {}
 }

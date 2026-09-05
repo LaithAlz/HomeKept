@@ -42,6 +42,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>GET /api/admin/subscribers/{id} — missing id → 404</li>
  *   <li>GET /api/admin/subscribers/{id} — SKU sheet fields (issue #56, read side) are null
  *       until set, and reflect a subsequent {@code PATCH /api/admin/properties/{propertyId}/sku}</li>
+ *   <li>GET /api/admin/subscribers — each row includes the customer's firstName, lastName,
+ *       and email (resolved from the identity domain, batched)</li>
+ *   <li>GET /api/admin/subscribers/{id} — detail includes the customer's firstName,
+ *       lastName, and email (resolved from the identity domain)</li>
  * </ul>
  */
 class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
@@ -214,7 +218,39 @@ class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[?(@.id >= " + cursor + ")]").isEmpty());
     }
 
+    @Test
+    void listSubscribers_includesCustomerIdentity() throws Exception {
+        Long subscriberId = createSubscriberViaActivation("identity-list@test.local", "Identity Lister");
+
+        String adminToken = loginAs(Role.ADMIN);
+        MvcResult result = mockMvc.perform(get(ADMIN_SUBSCRIBERS + "?limit=50")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<java.util.Map<String, Object>> rows = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + subscriberId + ")]");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("firstName")).isEqualTo("Identity");
+        assertThat(rows.get(0).get("lastName")).isEqualTo("Lister");
+        assertThat(rows.get(0).get("email")).isEqualTo("identity-list@test.local");
+    }
+
     // ── GET /api/admin/subscribers/{id} ──────────────────────────────────────
+
+    @Test
+    void getSubscriberDetail_asAdmin_includesCustomerIdentity() throws Exception {
+        Long subscriberId = createSubscriberViaActivation("identity-detail@test.local", "Identity Detailer");
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + subscriberId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.firstName").value("Identity"))
+                .andExpect(jsonPath("$.lastName").value("Detailer"))
+                .andExpect(jsonPath("$.email").value("identity-detail@test.local"));
+    }
 
     @Test
     void getSubscriberDetail_asAdmin_returns200WithPropertySummary() throws Exception {

@@ -159,6 +159,13 @@ export interface AdminSubscriberListItem {
   status: string;
   planCode?: string;
   mrrCents?: number;
+  /**
+   * Contact fields, resolved from the identity domain. Optional here, matching the
+   * backend's `@JsonInclude(NON_NULL)` convention on `planCode`/`mrrCents` above.
+   */
+  firstName?: string;
+  lastName?: string;
+  email?: string;
 }
 
 export interface AdminSubscriberPropertySummary {
@@ -196,6 +203,22 @@ export interface AdminSubscriberDetail {
   pausedAt?: string;
   cancelledAt?: string;
   property?: AdminSubscriberPropertySummary;
+  /**
+   * Name/contact fields the backend is landing separately on
+   * `AdminSubscriberDetail` (issue audit). Optional here — same
+   * `@JsonInclude(NON_NULL)` convention as `planCode`/`mrrCents` above — so
+   * the detail panel ships and degrades gracefully whether or not that lands
+   * first: absent name falls back to "Subscriber #N", contact line hides.
+   */
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+}
+
+/** `firstName`/`lastName` joined, trimmed; empty string when both are absent. */
+export function subscriberFullName(s: { firstName?: string; lastName?: string }): string {
+  return [s.firstName, s.lastName].filter(Boolean).join(" ").trim();
 }
 
 /** `GET /api/admin/subscribers?cursor=&limit=` — cursor-paginated, newest first. */
