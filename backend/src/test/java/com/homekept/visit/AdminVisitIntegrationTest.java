@@ -259,7 +259,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_asAdmin_returns201WithVisitId() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -290,7 +290,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createVisit_withServiceIds_createsVisitServiceRows() throws Exception {
         Long svcId = firstServiceId();
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -320,7 +320,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createVisit_withTechnicianUserId_setsTechnicianId() throws Exception {
         Long techId = adminUser.getId(); // reuse admin's user id as a placeholder technician id
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -345,7 +345,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_withUnknownServiceIds_returns400() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -364,7 +364,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_unknownSubscriberId_returns404() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": 999999999,
@@ -384,7 +384,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_asCustomer_returns403() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -402,7 +402,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createVisit_anonymous_returns401() throws Exception {
-        String scheduledFor = Instant.now().plus(30, ChronoUnit.DAYS).toString();
+        String scheduledFor = dbNow().plus(30, ChronoUnit.DAYS).toString();
         String body = """
                 {
                   "subscriberId": %d,
@@ -422,7 +422,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void patchVisit_reschedule_updatesScheduledForInPlace_sameVisitId() throws Exception {
         Visit original = seedScheduledVisit();
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
 
         MvcResult result = mockMvc.perform(patch(PATCH_URL, original.getId())
                         .cookie(new Cookie("hk_access", adminToken))
@@ -454,7 +454,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
         Long svcId = firstServiceId();
         visitServiceRepository.save(new VisitService(original.getId(), svcId, VisitServiceSource.TEMPLATE));
 
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
         mockMvc.perform(patch(PATCH_URL, original.getId())
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -472,7 +472,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     void patchVisit_reschedule_recordsVisitEvent_sourceAdmin() throws Exception {
         Visit original = seedScheduledVisit();
         Instant oldTime = original.getScheduledFor();
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
 
         mockMvc.perform(patch(PATCH_URL, original.getId())
                         .cookie(new Cookie("hk_access", adminToken))
@@ -560,7 +560,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
         visit.setStatus(VisitStatus.CANCELLED);
         visitRepository.save(visit);
 
-        String newTime = Instant.now().plus(90, ChronoUnit.DAYS).toString();
+        String newTime = dbNow().plus(90, ChronoUnit.DAYS).toString();
         mockMvc.perform(patch(PATCH_URL, visit.getId())
                         .cookie(new Cookie("hk_access", adminToken))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -575,7 +575,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
     @Test
     void patchVisit_reschedule_pastDate_returns400() throws Exception {
         Visit visit = seedScheduledVisit();
-        String pastTime = Instant.now().minus(1, ChronoUnit.DAYS).toString();
+        String pastTime = dbNow().minus(1, ChronoUnit.DAYS).toString();
 
         mockMvc.perform(patch(PATCH_URL, visit.getId())
                         .cookie(new Cookie("hk_access", adminToken))
@@ -817,7 +817,7 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 targetSubscriber.getId(),
                 targetSubscriber.getPropertyId(),
                 null,
-                Instant.now().plus(30, ChronoUnit.DAYS),
+                dbNow().plus(30, ChronoUnit.DAYS),
                 120,
                 VisitType.ROUTINE
         ));

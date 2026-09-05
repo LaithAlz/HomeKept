@@ -45,6 +45,25 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 public abstract class AbstractIntegrationTest {
 
     /**
+     * {@code Instant.now()} at the precision Postgres will actually give back.
+     *
+     * <p>{@code TIMESTAMPTZ} stores microseconds. {@code Instant.now()} resolves to
+     * nanoseconds on Linux but only microseconds on macOS, so a test that persists
+     * {@code Instant.now()} and then asserts the round-trip equals it passes on a developer's
+     * Mac and fails in CI with a diff of trailing digits
+     * ({@code ...57.009405092Z} vs {@code ...57.009405Z}). That is a platform artifact, not a
+     * behaviour difference, and it wastes a CI cycle every time someone rediscovers it.
+     *
+     * <p>Use this instead of {@code Instant.now()} anywhere the value is written to the
+     * database and later compared. Truncating is also closer to what the test means: the
+     * question is whether the right instant was stored, not whether the JVM clock's spare
+     * nanoseconds survived a column that has nowhere to put them.
+     */
+    protected static java.time.Instant dbNow() {
+        return java.time.Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
+    }
+
+    /**
      * Every table Flyway V1..V10 creates, EXCLUDING the seeded catalog tables (plan_tier,
      * service, plan_tier_service, visit_template, visit_template_service — never mutated by
      * app code, only read) and Flyway's own schema-history table. Keep this in sync with

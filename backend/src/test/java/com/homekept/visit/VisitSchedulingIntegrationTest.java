@@ -85,7 +85,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(visits).allMatch(v -> v.getStatus() == VisitStatus.SCHEDULED);
         assertThat(visits).allMatch(v -> v.getType() == VisitType.ROUTINE);
 
-        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant now = dbNow();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
         // Essential is the floor, so it qualifies for its own templates and nothing above.
@@ -122,7 +122,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(visits).allMatch(v -> v.getType() == VisitType.ROUTINE);
 
         // Every scheduled_for must be in the future.
-        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant now = dbNow();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
         // Every visit's template must be one Complete actually qualifies for. min_tier is a
@@ -174,7 +174,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(visits).allMatch(v -> v.getStatus() == VisitStatus.SCHEDULED);
         assertThat(visits).allMatch(v -> v.getType() == VisitType.ROUTINE);
 
-        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant now = dbNow();
         assertThat(visits).allMatch(v -> v.getScheduledFor().isAfter(now));
 
         // Premier gets every tier's templates: ESSENTIAL + COMPLETE + PREMIER.
@@ -287,7 +287,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
                 VisitSchedulingService.nextOccurrenceInWindow(preScheduled.getMonth(), today, windowEnd, TORONTO);
         Visit preScheduledVisit = new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), preScheduled.getId(),
-                Instant.now().plus(Duration.ofDays(30)),
+                dbNow().plus(Duration.ofDays(30)),
                 120, VisitType.ROUTINE);
         preScheduledVisit.setTemplateOccurrenceYear(preScheduledCandidate.getYear());
         visitRepository.save(preScheduledVisit);
@@ -340,7 +340,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         // year-scoping rather than an accident of NULL never matching an equality lookup.
         Visit priorYearVisit = new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), template.getId(),
-                Instant.now().minus(Duration.ofDays(365)),
+                dbNow().minus(Duration.ofDays(365)),
                 120, VisitType.ROUTINE);
         priorYearVisit.setTemplateOccurrenceYear(currentOccurrenceYear - 1);
         visitRepository.save(priorYearVisit);
@@ -355,7 +355,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         // The prior-year visit is untouched, and a fresh, future-dated visit for the same
         // template was scheduled inside the current window.
         assertThat(templateVisits).hasSize(2);
-        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant now = dbNow();
         assertThat(templateVisits.stream().filter(v -> v.getScheduledFor().isAfter(now)).count())
                 .as("a fresh visit for this template must exist in the current window")
                 .isEqualTo(1);
@@ -388,7 +388,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
 
         // Customer says "push it out" — reschedule it well past the 4-month lookahead window.
         visitAdminService.rescheduleVisit(
-                target.getId(), Instant.now().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
+                target.getId(), dbNow().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
 
         // The nightly top-up run: under the old scheduledFor-window guard, this visit is now
         // outside the window and the guard would go false, creating a duplicate.
@@ -425,7 +425,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         // which only guards the PATCH endpoint) to isolate exactly the guard behaviour this
         // regression is about — a past scheduledFor is also outside [today, windowEnd).
         visitAdminService.rescheduleVisit(
-                target.getId(), Instant.now().minus(Duration.ofDays(30)), null, VisitEventSource.ADMIN);
+                target.getId(), dbNow().minus(Duration.ofDays(30)), null, VisitEventSource.ADMIN);
 
         visitSchedulingService.scheduleInitialVisits(subscriber);
 
@@ -462,7 +462,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(occurrenceYear).isNotNull();
 
         visitAdminService.rescheduleVisit(
-                target.getId(), Instant.now().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
+                target.getId(), dbNow().plus(Duration.ofDays(400)), null, VisitEventSource.ADMIN);
 
         Visit reloaded = visitRepository.findById(target.getId()).orElseThrow();
         assertThat(reloaded.getTemplateOccurrenceYear())
@@ -520,7 +520,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         // every visit looked like before V17, and what an untouched one looks like today.
         Visit legacyVisit = visitRepository.save(new Visit(
                 subscriber.getId(), subscriber.getPropertyId(), template.getId(),
-                Instant.now().plus(Duration.ofDays(30)),
+                dbNow().plus(Duration.ofDays(30)),
                 120, VisitType.ROUTINE));
         assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
 
@@ -575,7 +575,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
 
         // Push it far outside the window — same "customer asks to move it" scenario as the
         // non-legacy regression tests above, but starting from a NULL occurrence year.
-        Instant farFuture = Instant.now().plus(Duration.ofDays(400));
+        Instant farFuture = dbNow().plus(Duration.ofDays(400));
         visitAdminService.rescheduleVisit(legacyVisit.getId(), farFuture, null, VisitEventSource.ADMIN);
 
         Visit reloaded = visitRepository.findById(legacyVisit.getId()).orElseThrow();
@@ -634,7 +634,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
 
         // First reschedule: the current month still matches the template's, so the year is
         // inferred from the ORIGINAL date and recorded.
-        Instant firstMove = Instant.now().plus(Duration.ofDays(400));
+        Instant firstMove = dbNow().plus(Duration.ofDays(400));
         visitAdminService.rescheduleVisit(legacyVisit.getId(), firstMove, null, VisitEventSource.ADMIN);
         Visit afterFirst = visitRepository.findById(legacyVisit.getId()).orElseThrow();
         assertThat(afterFirst.getTemplateOccurrenceYear()).isEqualTo(expectedOccurrenceYear);
@@ -643,7 +643,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         // different year) than its true occurrence. If the write-once rule were violated, this
         // would recompute the year from firstMove's date instead of leaving the
         // already-recorded value alone.
-        Instant secondMove = Instant.now().plus(Duration.ofDays(20));
+        Instant secondMove = dbNow().plus(Duration.ofDays(20));
         visitAdminService.rescheduleVisit(legacyVisit.getId(), secondMove, null, VisitEventSource.ADMIN);
         Visit afterSecond = visitRepository.findById(legacyVisit.getId()).orElseThrow();
 
@@ -688,7 +688,7 @@ class VisitSchedulingIntegrationTest extends AbstractIntegrationTest {
         assertThat(legacyVisit.getTemplateOccurrenceYear()).isNull();
 
         visitAdminService.rescheduleVisit(
-                legacyVisit.getId(), Instant.now().plus(Duration.ofDays(500)), null, VisitEventSource.ADMIN);
+                legacyVisit.getId(), dbNow().plus(Duration.ofDays(500)), null, VisitEventSource.ADMIN);
 
         Visit reloaded = visitRepository.findById(legacyVisit.getId()).orElseThrow();
         assertThat(reloaded.getTemplateOccurrenceYear())

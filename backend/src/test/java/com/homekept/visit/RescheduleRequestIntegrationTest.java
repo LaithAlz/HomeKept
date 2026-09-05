@@ -75,7 +75,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
                 SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
 
         // A SCHEDULED visit, two weeks out.
-        Instant scheduledFor = Instant.now().plus(14, ChronoUnit.DAYS);
+        Instant scheduledFor = dbNow().plus(14, ChronoUnit.DAYS);
         visit = visitRepository.save(new Visit(
                 subscriber.getId(), property.getId(), null,
                 scheduledFor, 120, VisitType.ROUTINE));
@@ -123,7 +123,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
         // Two admins (or one double-clicked confirm) resolve the SAME request at once. The
         // PESSIMISTIC_WRITE lock must let exactly one through; the other blocks, re-reads the
         // now-CONFIRMED status, and is rejected BEFORE it can reschedule the visit a second time.
-        Instant newSlot = Instant.now().plus(21, ChronoUnit.DAYS);
+        Instant newSlot = dbNow().plus(21, ChronoUnit.DAYS);
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
         java.util.concurrent.CountDownLatch fire = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.Callable<Boolean> confirmTask = () -> {
@@ -173,7 +173,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
                 other.getId(), otherProp.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
         Visit otherVisit = visitRepository.save(new Visit(
                 otherSub.getId(), otherProp.getId(), null,
-                Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
+                dbNow().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
 
         mockMvc.perform(post(rescheduleUrl(otherVisit.getId()))
                         .cookie(new Cookie("hk_access", customerToken))
@@ -303,7 +303,7 @@ class RescheduleRequestIntegrationTest extends AbstractIntegrationTest {
                 other.getId(), otherProp.getId(), SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
         Visit otherVisit = visitRepository.save(new Visit(
                 otherSub.getId(), otherProp.getId(), null,
-                Instant.now().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
+                dbNow().plus(10, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
 
         mockMvc.perform(delete(rescheduleUrl(otherVisit.getId()))
                         .cookie(new Cookie("hk_access", customerToken)))
