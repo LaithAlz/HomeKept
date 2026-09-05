@@ -653,6 +653,7 @@ export const STATUS_TONE: Record<string, string> = {
 };
 
 export const PLAN_LABEL: Record<string, string> = {
+  ESSENTIAL: "Essential",
   COMPLETE: "Complete",
   PREMIER: "Premier",
 };

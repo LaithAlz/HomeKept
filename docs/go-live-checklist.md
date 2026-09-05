@@ -32,7 +32,7 @@ the visit `photos[]` contract) are all **done** — see "Already handled in code
 - [ ] **Cloudflare** — deploy the TanStack Start frontend. From `frontend/`:
       `bun run build && wrangler deploy` (worker config in `wrangler.jsonc`). Build with
       `VITE_API_URL=https://api.homekept.ca` (and `VITE_PUBLIC_POSTHOG_KEY=…` if using analytics).
-- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V13 on boot.
+- [ ] Managed **Postgres** (Render / Neon / Supabase). Flyway runs V1..V15 on boot.
 
 ## 2. Secrets (set in the prod environment, never in git)
 
@@ -65,13 +65,17 @@ Order matters here — do these in sequence, not in parallel:
       `V12__remove_essential_and_founding.sql`). V12 nulls out COMPLETE's Stripe price ids
       on every deploy that runs it for the first time — running the script below before this
       migration has landed means V12 just nulls them right back out again.
-- [ ] **Then** create the live **Products + Prices**: PREMIER's live prices already exist in
-      production and are unchanged by the repositioning — you only need to create 2 new
-      recurring prices for **COMPLETE** (monthly $169 / annual $1,690), matching
-      `docs/pricing-and-visits.md`.
-- [ ] **Then** wire the new COMPLETE Price IDs into the catalog: fill in and run
+- [ ] **Then** sort out the **Products + Prices**, matching `docs/pricing-and-visits.md`:
+      - **PREMIER** ($249 / $2,490): live prices already exist and are unchanged. Leave them.
+      - **COMPLETE** ($169 / $1,690): needs 2 brand-new recurring prices. The old $149 /
+        $1,490 / $129 prices are retired and must not be reused.
+      - **ESSENTIAL** ($89 / $890): retired in V12, reinstated in V15 at *exactly* its
+        original numbers. So if the old $89 / $890 prices are still active in Stripe (you
+        have not archived them yet), **reuse them** rather than making duplicates at the
+        same amount. Only create new ones if you have already archived them.
+- [ ] **Then** wire the new COMPLETE and ESSENTIAL Price IDs into the catalog: fill in and run
       **`docs/stripe-price-ids.sql`** against prod (a fill-in-the-blanks `UPDATE` script,
-      COMPLETE only — it does not touch PREMIER).
+      COMPLETE and ESSENTIAL only, it does not touch PREMIER).
 - [ ] **Then** enable **Stripe Tax** and set all four live prices to
       `tax_behavior: exclusive`. Prices are quoted before tax ("on top"), and the pricing page
       and the customer billing page both already say "plus HST" — but Stripe currently adds
@@ -80,9 +84,10 @@ Order matters here — do these in sequence, not in parallel:
       **Tell the agent once this is done**: the checkout session still needs `automatic_tax`
       enabled in code, and that change cannot ship before this step, because Stripe errors on
       `automatic_tax` when the prices are `unspecified`.
-- [ ] **Then** archive the retired prices: Essential $89/$890 and Complete $149/$1,490/$129.
-      Keep every PREMIER price. Do this only after the new Complete checkout is verified
-      working, and after the test subscription in step 0 is cancelled.
+- [ ] **Then** archive the genuinely retired prices: Complete **$149 / $1,490 / $129** only.
+      Keep every PREMIER price, and keep the Essential $89 / $890 prices if you are reusing
+      them per the step above. Do this only after the new checkout is verified working, and
+      after the test subscription in step 0 is cancelled.
 - [ ] Add the **webhook endpoint** → `https://api.homekept.ca/api/webhooks/stripe`; copy its
       signing secret into `STRIPE_WEBHOOK_SECRET`.
 - [ ] Set `STRIPE_SECRET_KEY` (`sk_live_…`) and the success / cancel / portal URLs.

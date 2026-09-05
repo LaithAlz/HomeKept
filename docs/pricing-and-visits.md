@@ -17,26 +17,36 @@ Technicians observe → photograph → flag → refer. Never diagnose, never lic
 
 ## Tiers
 
-| | 🏡 Complete ★ Recommended | 🔑 Premier |
-|---|---|---|
-| Price | $169/mo · $1,690/yr | $249/mo · $2,490/yr |
-| Visits/year | 8 (anchors + 4 mid-season) | 12 (monthly, each named) |
-| Included picks/yr | 3 (max 1 Premium) | 6 (max 3 Premium) |
-| Your-list time/visit | ~20 min | up to 1 hr incl. minor repairs |
-| Technician | Consistent where possible | Dedicated — guaranteed same person |
-| Scheduling | Priority: issue visits in 48h + emergency line | Same-week + 24h emergency |
-| Repairs | Quote/refer | ≤1 hr labor/visit incl., parts at cost |
-| Extras | Licensed gas tune-up coordination | Smart-home support · Annual Home Plan (5-yr capital forecast) |
-| For | Most detached/semis | Larger homes, busy households, aging-in-place |
+| | 🌱 Essential | 🏡 Complete ★ Recommended | 🔑 Premier |
+|---|---|---|---|
+| Price | $89/mo · $890/yr | $169/mo · $1,690/yr | $249/mo · $2,490/yr |
+| Visits/year | 4 (seasonal anchors) | 8 (anchors + 4 mid-season) | 12 (monthly, each named) |
+| Included picks/yr | 1 (Basic or Medium, no Premium) | 3 (max 1 Premium) | 6 (max 3 Premium) |
+| Your-list time/visit | Not included | ~20 min | up to 1 hr incl. minor repairs |
+| Technician | Consistent where possible | Consistent where possible | Dedicated, guaranteed same person |
+| Scheduling | Standard | Priority: issue visits in 48h + emergency line | Same-week + 24h emergency |
+| Repairs | Quote/refer | Quote/refer | ≤1 hr labor/visit incl., parts at cost |
+| Extras | None | Licensed gas tune-up coordination | Smart-home support · Annual Home Plan (5-yr capital forecast) |
+| For | Smaller homes and lighter needs **(founder to confirm positioning)** | Most detached/semis | Larger homes, busy households, aging-in-place |
 
 Annual = 2 months free (10x the monthly price). Prices CAD + HST. Never discount the
 public list.
 
+Essential was retired in the September 2026 repositioning (V12) and reinstated on
+2026-09-05 (V15) at the founder's request, at its original numbers. Its non-numeric rows
+above are taken verbatim from the V2 seed description; the "For" cell is the one cell that
+was never specified and is an inference awaiting founder sign-off.
+
 **Price per visit hour** (visits are 90 minutes; derived, never hardcoded):
 monthly x 12 / visits per year / 1.5 = price per visit hour.
 
+- Essential: $89 x 12 / 4 / 1.5 = **$178/visit-hour**
 - Complete: $169 x 12 / 8 / 1.5 = **$169/visit-hour**
 - Premier: $249 x 12 / 12 / 1.5 = **$166/visit-hour**
+
+Note that Essential carries the *highest* price per field hour of the three. Spreading a
+monthly fee over only 4 visits a year is better per hour than over 8 or 12; the tier's cost
+is strategic (fewer touchpoints, less relationship depth) rather than financial.
 
 ## Every visit, every tier
 

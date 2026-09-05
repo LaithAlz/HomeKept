@@ -202,13 +202,20 @@ public class VisitSchedulingService {
 
     /**
      * Returns the cumulative list of {@link PlanCode} values that a subscriber at
-     * {@code tier} qualifies for. Cumulative means: PREMIER gets both tiers; COMPLETE
-     * (the base tier) gets only COMPLETE.
+     * {@code tier} qualifies for. Cumulative means each tier inherits every tier below
+     * it: ESSENTIAL gets its own 4 seasonal anchors, COMPLETE gets those 4 plus its own
+     * 4 (8 a year), PREMIER gets all 12.
+     *
+     * <p>This mirrors {@code visit_template.min_tier} being a floor rather than an
+     * exclusive assignment. The switch is deliberately exhaustive and unguarded by a
+     * default: adding a tier to {@link PlanCode} must fail to compile here rather than
+     * silently scheduling that tier zero visits.
      */
     static List<PlanCode> eligibleTiersFor(PlanCode tier) {
         return switch (tier) {
-            case COMPLETE -> List.of(PlanCode.COMPLETE);
-            case PREMIER  -> List.of(PlanCode.COMPLETE, PlanCode.PREMIER);
+            case ESSENTIAL -> List.of(PlanCode.ESSENTIAL);
+            case COMPLETE  -> List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE);
+            case PREMIER   -> List.of(PlanCode.ESSENTIAL, PlanCode.COMPLETE, PlanCode.PREMIER);
         };
     }
 

@@ -8,8 +8,13 @@
 -- plan_tier.stripe_price_id_monthly / stripe_price_id_annual for COMPLETE on every deploy
 -- that includes it, since it hasn't run yet on this database).
 --
--- SCOPE: COMPLETE only. Premier's live Stripe price ids are already in production and
--- unchanged by the repositioning — do not touch the PREMIER row.
+-- SCOPE: COMPLETE and ESSENTIAL. Premier's live Stripe price ids are already in
+-- production and unchanged by the repositioning — do not touch the PREMIER row.
+--
+-- ESSENTIAL was retired by V12 and reinstated by V15 at its original $89/$890. Its old
+-- Stripe prices were archived, so it needs two brand-new Prices exactly like COMPLETE
+-- does. V15 seeds its price id columns as NULL, so ESSENTIAL checkout fails closed
+-- (409 PLAN_NOT_PURCHASABLE) until you fill them in below.
 --
 -- HOW: create the two recurring Stripe Prices to match the amounts in the comments below,
 -- copy their `price_…` ids into the matching slots, then run this file
@@ -21,11 +26,17 @@
 -- part of the Sep 2026 repositioning). DO NOT change the amounts here — this script only
 -- records which Stripe Price maps to which billing cycle.
 --
+--   ESSENTIAL  $89.00/mo   (8900)   ·  $890.00/yr   (89000)
 --   COMPLETE   $169.00/mo  (16900)  ·  $1,690.00/yr (169000)
 --
--- You will create 2 Stripe Prices total. Both are recurring subscription prices.
+-- You will create 4 Stripe Prices total. All are recurring subscription prices.
 
 BEGIN;
+
+UPDATE plan_tier SET
+    stripe_price_id_monthly  = 'price_REPLACE_essential_monthly',  -- $89/mo   (8900)
+    stripe_price_id_annual   = 'price_REPLACE_essential_annual'    -- $890/yr  (89000)
+WHERE code = 'ESSENTIAL';
 
 UPDATE plan_tier SET
     stripe_price_id_monthly  = 'price_REPLACE_complete_monthly',   -- $169/mo  (16900)
@@ -33,7 +44,8 @@ UPDATE plan_tier SET
 WHERE code = 'COMPLETE';
 
 -- Sanity check — review this before committing:
---   * every stripe_price_id_* is a real `price_…` id (no REPLACE left) for COMPLETE,
+--   * every stripe_price_id_* is a real `price_…` id (no REPLACE left) for both
+--     ESSENTIAL and COMPLETE,
 --   * PREMIER's ids are untouched (whatever was already live in production),
 --   * the *_price_cents columns are unchanged.
 SELECT code,

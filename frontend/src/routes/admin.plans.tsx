@@ -10,7 +10,7 @@ export const Route = createFileRoute("/admin/plans")({
 });
 
 /**
- * Renders the two real plan tiers straight from `@/lib/plans` (the same
+ * Renders the real plan tiers straight from `@/lib/plans` (the same
  * source the public `/plans` page and checkout use), so the numbers here can
  * never drift from what customers actually see. There is no endpoint for
  * per-plan subscriber counts or derived per-plan MRR, so neither appears
@@ -27,7 +27,7 @@ function PlansAdminPage() {
         </p>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
         {PLANS.map((p) => (
           <div key={p.id} className="rounded-2xl border border-border bg-card p-6">
             <h2 className="font-display text-xl font-bold">{p.name}</h2>

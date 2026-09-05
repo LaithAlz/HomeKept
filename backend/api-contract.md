@@ -53,12 +53,19 @@ Walk-through booking form submission (frontend `book` wizard).
 booking-confirmation email.
 
 ### `GET /api/catalog/plans`
-Plan tiers for the pricing page. Two tiers: COMPLETE (base) and PREMIER. The ESSENTIAL
-tier and the founding-member rate were removed entirely (not deprecated) in the September
-2026 repositioning — see the V11 migration. COMPLETE's Stripe price ids are `null` until
-the founder creates the new Stripe prices at the repositioned amount; until then, checkout
-for COMPLETE fails closed (see `POST /api/checkout/session` below).
-→ `200 [ { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 16900, "annualPriceCents": 169000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
+Plan tiers for the pricing page. Three tiers: ESSENTIAL, COMPLETE (the recommended tier)
+and PREMIER, returned cheapest-first.
+
+The September 2026 repositioning (V12) removed ESSENTIAL and the founding-member rate
+together. **V15 reinstated ESSENTIAL** at its original numbers ($89/mo · $890/yr · 4
+visits · 1 included pick · 0 Premium) at the founder's request. The founding-member rate
+was NOT reinstated and remains deleted, so no tier carries a founding price.
+
+ESSENTIAL's and COMPLETE's Stripe price ids are both `null` until the founder creates the
+live Stripe prices; until then, checkout for either fails closed (see
+`POST /api/checkout/session` below). PREMIER's ids are live and unchanged.
+
+→ `200 [ { "code": "ESSENTIAL", "displayName": "Essential", "monthlyPriceCents": 8900, "annualPriceCents": 89000, "visitsPerYear": 4, "includedPicksPerYear": 1, "maxPremiumPicksPerYear": 0, "description": "...", "services": [ … ] }, { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 16900, "annualPriceCents": 169000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
 
 ### `GET /api/catalog/picks`
 The pickable services menu, grouped by tier class, with à la carte prices
@@ -167,14 +174,16 @@ real need appears.
 ## Checkout & billing (role: CUSTOMER)
 
 ### `POST /api/checkout/session`
-`{ "planCode": "COMPLETE", "billingCycle": "MONTHLY" }`
+`{ "planCode": "ESSENTIAL" | "COMPLETE" | "PREMIER", "billingCycle": "MONTHLY" | "ANNUAL" }`
 → `200 { "checkoutUrl": "https://checkout.stripe.com/..." }` (Stripe-hosted page)
 
 Fails closed with `409 { "error": { "code": "PLAN_NOT_PURCHASABLE", "message": "This plan
 can't be purchased yet." } }` when the resolved plan tier has no Stripe price id for the
-requested `billingCycle` (e.g. COMPLETE's ids are `null` pending the founder's new Stripe
-prices per the September 2026 repositioning) — checkout never reaches Stripe and never
-charges a stale price in that case.
+requested `billingCycle` — checkout never reaches Stripe and never charges a stale price.
+Both ESSENTIAL and COMPLETE currently have `null` ids and so fail closed: COMPLETE's
+because the September 2026 repositioning retired its old $149 prices (V12), ESSENTIAL's
+because V15 reinstated the tier without assuming its archived prices still exist. PREMIER
+is purchasable.
 
 ### `POST /api/billing/portal-session`
 → `200 { "portalUrl": "https://billing.stripe.com/..." }` (plan change / cancel / cards)

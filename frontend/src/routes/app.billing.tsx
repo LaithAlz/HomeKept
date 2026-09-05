@@ -88,6 +88,19 @@ function MembershipSection({ subscription }: { subscription: AppSubscription }) 
   // sourced from the same vetted plan copy (docs/pricing-and-visits.md) that backs the
   // public landing/plans pages, matched by plan code.
   const marketingPlan = PLANS.find((p) => p.id === planCode?.toLowerCase());
+  // Built as one string (rather than inline JSX text + expressions) so pluralization
+  // and the "0 Premium" (Essential) case can't be split awkwardly across JSX text
+  // nodes/line breaks. Essential includes 1 pick a year, Basic or Medium only — the
+  // first real tier where these counts aren't safely plural or non-zero.
+  const picksLabel = catalogPlan
+    ? `${catalogPlan.includedPicksPerYear} included pick${
+        catalogPlan.includedPicksPerYear === 1 ? "" : "s"
+      } a year (${
+        catalogPlan.maxPremiumPicksPerYear > 0
+          ? `up to ${catalogPlan.maxPremiumPicksPerYear} Premium`
+          : "Basic or Medium only"
+      })`
+    : "";
 
   return (
     <section aria-labelledby="membership-heading">
@@ -139,8 +152,7 @@ function MembershipSection({ subscription }: { subscription: AppSubscription }) 
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
-              {catalogPlan.includedPicksPerYear} included picks a year (up to{" "}
-              {catalogPlan.maxPremiumPicksPerYear} Premium)
+              {picksLabel}
             </li>
             {marketingPlan && (
               <li className="flex items-start gap-2">
