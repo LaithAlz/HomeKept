@@ -24,25 +24,44 @@
 -- and never touched by a reschedule, which is the whole point: it identifies which visit
 -- the row is, not when it currently sits.
 --
--- NULLABLE on purpose. Rows predating this migration have no recorded occurrence, and
--- backfilling every historical visit is not required for correctness: the guard only ever
--- looks at templates inside the current window. The backfill below covers the rows that
--- could matter, and the scheduler treats NULL as "no recorded occurrence".
+-- ─────────────────────────────────────────────────────────────────────────────
+-- DELIBERATELY NO BACKFILL. This migration adds the column and leaves every existing row
+-- NULL.
+--
+-- An earlier draft backfilled from EXTRACT(YEAR FROM scheduled_for), justified by "no visit
+-- has been rescheduled under the in-place model yet, so scheduled_for is still the
+-- occurrence it was created for". That reasoning is about the NEW model and misses the OLD
+-- one. Pre-V16 reschedule created the replacement as a new row carrying the SAME
+-- visit_template_id with a DIFFERENT date, and nothing stopped that date landing in another
+-- calendar year. An October 2026 visit moved to February 2027 leaves a row that such a
+-- backfill would stamp as occurrence-year 2027. Twelve months later the guard would ask
+-- "does this subscriber already have T_OCT for 2027?", match that row, and skip: the
+-- customer silently never gets their October 2027 visit. That is the exact failure this
+-- design set out to avoid, reintroduced through the back door, surfacing a year after
+-- deploy with no error and no log line.
+--
+-- Rather than assert a precondition about production data that a migration cannot verify
+-- and can never be edited to correct, the column starts NULL and is filled in where the
+-- answer is knowable:
+--   * new template-driven visits record their occurrence year at creation;
+--   * a legacy row gets its year assigned lazily, on its first in-place reschedule,
+--     computed from where it sits at that moment. That is the last instant the current
+--     scheduled_for is still guaranteed to BE the occurrence, so it is the correct and
+--     only safe moment to infer it.
+-- Until then the guard falls back to the pre-V16 window rule for NULL rows, which was
+-- correct for rows that have never been moved in place, and is the behaviour those rows
+-- have today. See VisitSchedulingService's "Idempotency" javadoc.
+--
+-- This also removes any rolling-deploy hazard: an old instance still serving during the
+-- deploy creates NULL-year rows, and NULL-year rows are handled correctly by construction
+-- rather than by timing.
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE visit
     ADD COLUMN template_occurrence_year INTEGER;
 
--- Backfill from where each visit currently sits. Correct for every existing row: no visit
--- has yet been rescheduled under the in-place model (V16 ships alongside this migration),
--- so scheduled_for is still the occurrence it was created for. Rendered in Toronto rather
--- than UTC because placeholders are generated at local noon, and a UTC year boundary would
--- misfile a visit scheduled in the first hours of January.
-UPDATE visit
-SET template_occurrence_year =
-        EXTRACT(YEAR FROM (scheduled_for AT TIME ZONE 'America/Toronto'))::INTEGER
-WHERE visit_template_id IS NOT NULL;
-
 -- Serves the guard's exact lookup: does this subscriber already have a visit for this
--- template's occurrence in this year.
+-- template's occurrence in this year. Partial, because the NULL rows are answered by the
+-- fallback window predicate and never by an equality match on this column.
 CREATE INDEX idx_visit_subscriber_template_occurrence
-    ON visit (subscriber_id, visit_template_id, template_occurrence_year);
+    ON visit (subscriber_id, visit_template_id, template_occurrence_year)
+    WHERE template_occurrence_year IS NOT NULL;
