@@ -670,3 +670,33 @@ export function formatWeekOf(dateStr: string): string {
     day: "numeric",
   }).format(new Date(`${dateStr}T12:00:00Z`));
 }
+
+/* -------------------------------------------------------------------------- */
+/* Visit day load (Routes page month-sidebar aggregate)                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One row of `GET /api/admin/visits/day-load` — a local calendar day ("YYYY-MM-DD", in
+ * the backend's configured render zone) with at least one SCHEDULED visit. Days with none
+ * are omitted by the backend entirely, never sent as zero.
+ */
+export interface AdminVisitDayLoadItem {
+  day: string;
+  total: number;
+  unassigned: number;
+}
+
+/**
+ * `GET /api/admin/visits/day-load?from=&to=` — SCHEDULED-visit counts per local day,
+ * backing the Routes page's month-sidebar calendar (`MonthLoadCalendar`). `from`/`to` are
+ * inclusive "YYYY-MM-DD" local dates; the backend rejects a span over 62 days with
+ * `INVALID_REQUEST`. Honest counts only by design — there is deliberately no
+ * capacity/percentage field here (technician working hours aren't modelled).
+ */
+export function useAdminVisitDayLoad(options: { from: string; to: string }) {
+  const { from, to } = options;
+  return useQuery({
+    queryKey: ["admin", "visit-day-load", from, to],
+    queryFn: () => get<AdminVisitDayLoadItem[]>(`/api/admin/visits/day-load${qs({ from, to })}`),
+  });
+}

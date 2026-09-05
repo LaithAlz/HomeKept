@@ -121,6 +121,37 @@ export function formatTodayLong(date: Date = new Date()): string {
   }).format(date);
 }
 
+/**
+ * "2026-07-05" style key in America/Toronto, used to group a real timestamp onto the
+ * calendar day a viewer in any timezone would call "today" (or another specific day)
+ * rather than the viewer's own local date. Relocated from `routes/admin.routes.tsx` (the
+ * Routes page's original inline helper) so the new month-sidebar calendar can share it
+ * instead of re-deriving the same "today in Toronto" key a second way.
+ */
+export function dayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/**
+ * "Tuesday, September 8" style long date from a plain "YYYY-MM-DD" calendar-date string
+ * (a `dayKey`, not a real timestamp) — anchored at UTC noon before formatting with an
+ * explicit UTC timeZone, the same off-by-one-day guard `formatWeekOf` (`@/lib/admin`)
+ * uses for a bare LocalDate. Used by the admin Routes page's day view and month sidebar.
+ */
+export function formatDayKeyLong(day: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(`${day}T12:00:00Z`));
+}
+
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   const diffMs = now.getTime() - then.getTime();
