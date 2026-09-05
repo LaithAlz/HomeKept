@@ -90,7 +90,10 @@ class AppAccountUpdateIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"phone\":\"9055550123\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.firstName").value("Priya"))
-                .andExpect(jsonPath("$.lastName").value("Sharma"));
+                .andExpect(jsonPath("$.lastName").value("Sharma"))
+                // The phone must come back out, not just go in: the settings form pre-fills
+                // from this response, so a write-only field would blank itself after a save.
+                .andExpect(jsonPath("$.phone").value("9055550123"));
 
         User reloaded = userRepository.findById(customerUser.getId()).orElseThrow();
         assertThat(reloaded.getPhone()).isEqualTo("9055550123");

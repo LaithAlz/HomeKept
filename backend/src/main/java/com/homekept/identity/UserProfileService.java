@@ -69,7 +69,8 @@ public class UserProfileService {
         }
 
         userRepository.save(user);
-        return new UserQueryService.UserProfile(user.getFirstName(), user.getLastName(), user.getEmail());
+        return new UserQueryService.UserProfile(
+                user.getFirstName(), user.getLastName(), user.getEmail(), user.getPhone());
     }
 
     private void requireNonBlankAndAtMost(String value, int maxLength, String label) {

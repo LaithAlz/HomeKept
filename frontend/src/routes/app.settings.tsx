@@ -240,6 +240,12 @@ function PasswordCard() {
     const errs: PasswordFieldErrors = {};
     if (!currentPassword) errs.currentPassword = "Enter your current password.";
     if (newPassword.length < 8) errs.newPassword = "Password must be at least 8 characters.";
+    // The backend returns the same bare 400 for a wrong current password and for a new
+    // password equal to the current one, so catch the second case here rather than
+    // telling the customer their current password is wrong when it isn't.
+    if (newPassword.length > 0 && newPassword === currentPassword) {
+      errs.newPassword = "Choose a password different from your current one.";
+    }
     if (newPassword !== confirmPassword) errs.confirmPassword = "Passwords don't match.";
     if (Object.keys(errs).length) {
       setErrors(errs);

@@ -49,11 +49,11 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void changePassword_happyPath_setsNewPassword_revokesOldRefreshTokens_andKeepsCallerSignedIn() throws Exception {
-        User user = createTestUser("change-happy@test.local", "OldPassword1");
+        User user = createTestUser("change-happy@test.local", "Test1234!");
 
         MvcResult loginResult = mockMvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"change-happy@test.local\",\"password\":\"OldPassword1\"}"))
+                        .content("{\"email\":\"change-happy@test.local\",\"password\":\"Test1234!\"}"))
                 .andExpect(status().isOk())
                 .andReturn();
         String accessToken = extractCookieValue(
@@ -64,7 +64,7 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
         MvcResult changeResult = mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"NewPassword2\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"Valid5678!\"}"))
                 .andExpect(status().isNoContent())
                 .andExpect(cookie().exists("hk_access"))
                 .andExpect(cookie().exists("hk_refresh"))
@@ -72,13 +72,13 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
 
         // New password takes effect; old password no longer matches.
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        assertThat(passwordEncoder.matches("NewPassword2", reloaded.getPasswordHash())).isTrue();
-        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isFalse();
+        assertThat(passwordEncoder.matches("Valid5678!", reloaded.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("Test1234!", reloaded.getPasswordHash())).isFalse();
 
         // Old password can no longer log in.
         mockMvc.perform(post(LOGIN_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"change-happy@test.local\",\"password\":\"OldPassword1\"}"))
+                        .content("{\"email\":\"change-happy@test.local\",\"password\":\"Test1234!\"}"))
                 .andExpect(status().isUnauthorized());
 
         // The refresh token issued before the change must now be revoked.
@@ -97,43 +97,43 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void changePassword_wrongCurrentPassword_returns400_andDoesNotChangePassword() throws Exception {
-        User user = createTestUser("change-wrongcurrent@test.local", "OldPassword1");
-        String accessToken = loginAndGetAccessToken("change-wrongcurrent@test.local", "OldPassword1");
+        User user = createTestUser("change-wrongcurrent@test.local", "Test1234!");
+        String accessToken = loginAndGetAccessToken("change-wrongcurrent@test.local", "Test1234!");
 
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"WrongPassword9\",\"newPassword\":\"NewPassword2\"}"))
+                        .content("{\"currentPassword\":\"WrongPassword9\",\"newPassword\":\"Valid5678!\"}"))
                 .andExpect(status().isBadRequest());
 
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("Test1234!", reloaded.getPasswordHash())).isTrue();
     }
 
     @Test
     void changePassword_newPasswordTooShort_returns400_andDoesNotChangePassword() throws Exception {
-        User user = createTestUser("change-tooshort@test.local", "OldPassword1");
-        String accessToken = loginAndGetAccessToken("change-tooshort@test.local", "OldPassword1");
+        User user = createTestUser("change-tooshort@test.local", "Test1234!");
+        String accessToken = loginAndGetAccessToken("change-tooshort@test.local", "Test1234!");
 
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"short\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"short\"}"))
                 .andExpect(status().isBadRequest());
 
         User reloaded = userRepository.findById(user.getId()).orElseThrow();
-        assertThat(passwordEncoder.matches("OldPassword1", reloaded.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("Test1234!", reloaded.getPasswordHash())).isTrue();
     }
 
     @Test
     void changePassword_newPasswordSameAsCurrent_returns400() throws Exception {
-        createTestUser("change-samepassword@test.local", "OldPassword1");
-        String accessToken = loginAndGetAccessToken("change-samepassword@test.local", "OldPassword1");
+        createTestUser("change-samepassword@test.local", "Test1234!");
+        String accessToken = loginAndGetAccessToken("change-samepassword@test.local", "Test1234!");
 
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"OldPassword1\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"Test1234!\"}"))
                 .andExpect(status().isBadRequest());
     }
 
@@ -141,32 +141,32 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
     void changePassword_adminRole_succeeds() throws Exception {
         // "Any authenticated role" — not CUSTOMER-only.
         User admin = userRepository.save(new User(
-                "change-admin@test.local", passwordEncoder.encode("OldPassword1"),
+                "change-admin@test.local", passwordEncoder.encode("Test1234!"),
                 "Admin", "Test", Role.ADMIN, UserStatus.ACTIVE));
-        String accessToken = loginAndGetAccessToken("change-admin@test.local", "OldPassword1");
+        String accessToken = loginAndGetAccessToken("change-admin@test.local", "Test1234!");
 
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"NewPassword2\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"Valid5678!\"}"))
                 .andExpect(status().isNoContent());
 
         User reloaded = userRepository.findById(admin.getId()).orElseThrow();
-        assertThat(passwordEncoder.matches("NewPassword2", reloaded.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("Valid5678!", reloaded.getPasswordHash())).isTrue();
     }
 
     @Test
     void changePassword_anonymous_returns401() throws Exception {
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"NewPassword2\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"Valid5678!\"}"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
     void changePassword_rateLimitExceeded_returns429() throws Exception {
         String accessToken = loginAndGetAccessToken(
-                createTestUser("change-ratelimit@test.local", "OldPassword1").getEmail(), "OldPassword1");
+                createTestUser("change-ratelimit@test.local", "Test1234!").getEmail(), "Test1234!");
 
         for (int i = 0; i < ChangePasswordRateLimiter.MAX_ATTEMPTS; i++) {
             changePasswordRateLimiter.tryConsume("127.0.0.1");
@@ -175,7 +175,7 @@ class ChangePasswordIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(post(CHANGE_PASSWORD_URL)
                         .cookie(new Cookie("hk_access", accessToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"currentPassword\":\"OldPassword1\",\"newPassword\":\"NewPassword2\"}"))
+                        .content("{\"currentPassword\":\"Test1234!\",\"newPassword\":\"Valid5678!\"}"))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error.code").value("RATE_LIMITED"));
     }

@@ -218,6 +218,7 @@ public class SubscriptionAppService {
                 profile.firstName(),
                 profile.lastName(),
                 profile.email(),
+                profile.phone(),
                 property != null ? property.getStreetAddress() : null,
                 property != null ? property.getUnit() : null,
                 property != null ? property.getCity() : null,

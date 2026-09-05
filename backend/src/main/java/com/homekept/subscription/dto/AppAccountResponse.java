@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 /**
  * Response for {@code GET /api/app/account} — the customer app's settings/profile page.
  *
- * <p>Bundles identity ({@code firstName}/{@code lastName}/{@code email}) with the service
+ * <p>Bundles identity ({@code firstName}/{@code lastName}/{@code email}/{@code phone}) with the service
  * property's address so the settings page can render both without two round trips. Name and
  * email duplicate a subset of {@code GET /api/auth/me}; that is deliberate for this endpoint.
  *
@@ -18,6 +18,7 @@ public record AppAccountResponse(
         String firstName,
         String lastName,
         String email,
+        String phone,
         String streetAddress,
         String unit,
         String city,

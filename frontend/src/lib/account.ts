@@ -164,7 +164,7 @@ export function useInvoices(): UseQueryResult<AppInvoice[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Billing self-serve: portal handoff + pause/resume/cancel
+// Billing self-serve: portal handoff + cancel
 // ---------------------------------------------------------------------------
 
 interface PortalSessionResponse {
@@ -212,41 +212,6 @@ export function usePortalSession(): UseMutationResult<void, unknown, void> {
       const dest = trustedStripeBillingUrl(portalUrl);
       if (!dest) throw new Error("Untrusted billing portal URL.");
       window.location.assign(dest);
-    },
-  });
-}
-
-/**
- * POST /api/app/subscription/pause — requires ACTIVE, else `409
- * ILLEGAL_STATE_TRANSITION`; no Stripe subscription yet → `409
- * NO_BILLING_ACCOUNT`. Invalidates the subscription query on success; the
- * status itself flips when the Stripe webhook lands.
- */
-export function usePauseSubscription(): UseMutationResult<
-  SubscriptionActionResponse,
-  unknown,
-  void
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => post<SubscriptionActionResponse>("/api/app/subscription/pause"),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["app-subscription"] });
-    },
-  });
-}
-
-/** POST /api/app/subscription/resume — requires PAUSED, else `409 ILLEGAL_STATE_TRANSITION`. */
-export function useResumeSubscription(): UseMutationResult<
-  SubscriptionActionResponse,
-  unknown,
-  void
-> {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => post<SubscriptionActionResponse>("/api/app/subscription/resume"),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["app-subscription"] });
     },
   });
 }
