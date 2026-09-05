@@ -22,11 +22,12 @@ import { getSession } from "@/lib/auth";
 import { ApiError, post } from "@/lib/api";
 
 const searchSchema = z.object({
-  tier: fallback(z.enum(["complete", "premier"]), "complete").default("complete"),
+  tier: fallback(z.enum(["essential", "complete", "premier"]), "complete").default("complete"),
 });
 
 /** Maps the frontend's plan ids to the backend's `PlanCode` enum values. */
-const PLAN_CODE: Record<PlanId, "COMPLETE" | "PREMIER"> = {
+const PLAN_CODE: Record<PlanId, "ESSENTIAL" | "COMPLETE" | "PREMIER"> = {
+  essential: "ESSENTIAL",
   complete: "COMPLETE",
   premier: "PREMIER",
 };
@@ -84,6 +85,7 @@ function trustedStripeCheckoutUrl(checkoutUrl: string): string | null {
 function usePlanCheckout(billing: "monthly" | "annual") {
   const navigate = useNavigate();
   const [state, setState] = useState<Record<PlanId, CheckoutState>>({
+    essential: IDLE_CHECKOUT,
     complete: IDLE_CHECKOUT,
     premier: IDLE_CHECKOUT,
   });
@@ -141,9 +143,9 @@ export const Route = createFileRoute("/plans")({
       {
         name: "description",
         content:
-          "Compare Complete and Premier plans for HomeKept home maintenance. Monthly or annual billing. All prices in CAD.",
+          "Compare Essential, Complete, and Premier plans for HomeKept home maintenance. Monthly or annual billing. All prices in CAD.",
       },
-      { property: "og:title", content: "HomeKept Plans: Complete and Premier" },
+      { property: "og:title", content: "HomeKept Plans: Essential, Complete, and Premier" },
       {
         property: "og:description",
         content: "Pick the level of proactive home maintenance that fits your home.",
@@ -159,11 +161,31 @@ export const Route = createFileRoute("/plans")({
 
 type Cell = boolean | string;
 
-type Row = { label: string; values: [Cell, Cell] };
+/** One value per entry in `PLANS`, in the same order — built with `PLANS.map`
+ * below so a row never hardcodes a tier count or position. */
+type Row = { label: string; values: Cell[] };
 
 type Group = { name: string; rows: Row[] };
 
-const [complete, premier] = PLANS;
+/**
+ * Short table-cell form of `Plan.yourListTime` (the plan-card copy is a full
+ * sentence; a comparison-table cell needs the compact version). Keyed by
+ * `PlanId` rather than position so this can't silently drift if `PLANS` is
+ * reordered.
+ */
+const YOUR_LIST_TIME_SHORT: Record<PlanId, string> = {
+  essential: "Not included",
+  complete: "~20 min",
+  premier: "Up to 1 hr, incl. minor repairs",
+};
+
+/** Turns a row/group label into a DOM-safe id fragment for `headers` association. */
+function slugify(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
 
 const groups: Group[] = [
   {
@@ -171,33 +193,33 @@ const groups: Group[] = [
     rows: [
       {
         label: "Scheduled visits per year",
-        values: [String(complete.visitsPerYear), String(premier.visitsPerYear)],
+        values: PLANS.map((p) => String(p.visitsPerYear)),
       },
       {
         label: "Priority scheduling (48h + emergency line)",
-        values: [complete.priorityScheduling, premier.priorityScheduling],
+        values: PLANS.map((p) => p.priorityScheduling),
       },
       {
         label: "Same-week scheduling + 24h emergency",
-        values: [complete.sameWeekEmergency, premier.sameWeekEmergency],
+        values: PLANS.map((p) => p.sameWeekEmergency),
       },
       {
         label: "Dedicated technician (guaranteed same person)",
-        values: [complete.dedicatedTechnician, premier.dedicatedTechnician],
+        values: PLANS.map((p) => p.dedicatedTechnician),
       },
     ],
   },
   {
     name: "Every visit",
     rows: [
-      { label: "Filter checks & swaps", values: [true, true] },
-      { label: "Smoke & CO detector tests + batteries", values: [true, true] },
-      { label: "Seasonal mechanicals walkaround", values: [true, true] },
+      { label: "Filter checks & swaps", values: PLANS.map(() => true) },
+      { label: "Smoke & CO detector tests + batteries", values: PLANS.map(() => true) },
+      { label: "Seasonal mechanicals walkaround", values: PLANS.map(() => true) },
       {
         label: "Your-list time per visit",
-        values: ["~20 min", "Up to 1 hr, incl. minor repairs"],
+        values: PLANS.map((p) => YOUR_LIST_TIME_SHORT[p.id]),
       },
-      { label: "Photo report + Home Health Score update", values: [true, true] },
+      { label: "Photo report + Home Health Score update", values: PLANS.map(() => true) },
     ],
   },
   {
@@ -205,27 +227,27 @@ const groups: Group[] = [
     rows: [
       {
         label: "Included picks per year",
-        values: [String(complete.includedPicks), String(premier.includedPicks)],
+        values: PLANS.map((p) => String(p.includedPicks)),
       },
       {
         label: "Max Premium picks included",
-        values: [String(complete.maxPremiumPicks), String(premier.maxPremiumPicks)],
+        values: PLANS.map((p) => String(p.maxPremiumPicks)),
       },
       {
         label: "Licensed gas tune-up coordination",
-        values: [complete.gasTuneupCoordination, premier.gasTuneupCoordination],
+        values: PLANS.map((p) => p.gasTuneupCoordination),
       },
       {
         label: "Smart-home support",
-        values: [complete.smartHomeSupport, premier.smartHomeSupport],
+        values: PLANS.map((p) => p.smartHomeSupport),
       },
       {
         label: "Minor repairs included (parts at cost)",
-        values: [complete.repairsIncluded, premier.repairsIncluded],
+        values: PLANS.map((p) => p.repairsIncluded),
       },
       {
         label: "Annual Home Plan (5-yr capital forecast)",
-        values: [complete.annualHomePlan, premier.annualHomePlan],
+        values: PLANS.map((p) => p.annualHomePlan),
       },
     ],
   },
@@ -258,18 +280,25 @@ const faqs = [
   },
 ];
 
+/**
+ * Never signals included/not-included by colour or icon shape alone: each
+ * state also carries real, screen-reader-only text so the distinction survives
+ * for assistive tech and in high-contrast/no-colour rendering.
+ */
 function CellMark({ value }: { value: Cell }) {
   if (value === true) {
     return (
-      <span className="inline-flex items-center justify-center">
-        <Check className="size-5 text-accent" aria-label="Included" />
+      <span className="inline-flex items-center justify-center gap-1.5">
+        <Check className="size-5 text-accent" aria-hidden="true" />
+        <span className="sr-only">Included</span>
       </span>
     );
   }
   if (value === false) {
     return (
-      <span className="inline-flex items-center justify-center text-muted-foreground/60">
-        <Minus className="size-5" aria-label="Not included" />
+      <span className="inline-flex items-center justify-center gap-1.5 text-muted-foreground/60">
+        <Minus className="size-5" aria-hidden="true" />
+        <span className="sr-only">Not included</span>
       </span>
     );
   }
@@ -281,9 +310,12 @@ function PlansPage() {
   const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
   const { state: checkoutState, startCheckout } = usePlanCheckout(billing);
 
+  // "2 months free" applies uniformly across tiers (annualPriceCad = monthlyPriceCad
+  // x 10 for every plan), so the savings percentage is the same regardless of which
+  // plan we compute it from — see the identical comment in routes/index.tsx.
   const annualSavings = useMemo(() => {
-    const monthlyEq = annualMonthlyEquivalent(complete);
-    return Math.round(((complete.monthlyPriceCad - monthlyEq) / complete.monthlyPriceCad) * 100);
+    const monthlyEq = annualMonthlyEquivalent(PLANS[0]);
+    return Math.round(((PLANS[0].monthlyPriceCad - monthlyEq) / PLANS[0].monthlyPriceCad) * 100);
   }, []);
 
   return (
@@ -302,8 +334,8 @@ function PlansPage() {
               Your whole home, looked after.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-base text-muted-foreground md:text-lg">
-              Pick the level of care that fits your home. Every plan is month-to-month, pausable,
-              and cancellable in two clicks. All prices in Canadian dollars.
+              Pick the level of care that fits your home. Every plan is month-to-month and
+              cancellable in two clicks. All prices in Canadian dollars.
             </p>
 
             <BillingToggle billing={billing} setBilling={setBilling} savings={annualSavings} />
@@ -311,8 +343,8 @@ function PlansPage() {
         </section>
 
         {/* Plan cards */}
-        <section className="mx-auto max-w-4xl px-6 py-16 md:py-20">
-          <div className="grid gap-6 sm:grid-cols-2 sm:gap-6">
+        <section className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+          <div className="grid gap-6 md:grid-cols-3">
             {PLANS.map((p) => (
               <PlanCard
                 key={p.id}
@@ -612,12 +644,12 @@ function ComparisonTable({
 }) {
   return (
     <div className="overflow-x-auto rounded-3xl border border-border bg-card shadow-sm">
-      <table className="w-full min-w-[640px] border-collapse text-left">
+      <table className="w-full min-w-[760px] border-collapse text-left">
         <thead>
           <tr className="border-b border-border">
             <th
               scope="col"
-              className="w-[40%] p-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
+              className="w-[30%] p-6 text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
             >
               Features
             </th>
@@ -625,7 +657,12 @@ function ComparisonTable({
               const price = billing === "monthly" ? t.monthlyPriceCad : annualMonthlyEquivalent(t);
               const isHi = highlightedTier === t.id;
               return (
-                <th key={t.id} scope="col" className={cn("p-6 align-top", isHi && "bg-accent/10")}>
+                <th
+                  key={t.id}
+                  id={`col-${t.id}`}
+                  scope="col"
+                  className={cn("p-6 align-top", isHi && "bg-accent/10")}
+                >
                   <div className="flex flex-col">
                     <span className="font-display text-xl font-extrabold tracking-tight text-foreground">
                       {t.name}
@@ -641,37 +678,52 @@ function ComparisonTable({
           </tr>
         </thead>
         <tbody>
-          {groups.map((g) => (
-            <Fragment key={g.name}>
-              <tr className="bg-surface/60">
-                <th
-                  scope="rowgroup"
-                  colSpan={3}
-                  className="p-4 text-xs font-bold uppercase tracking-[0.18em] text-foreground"
-                >
-                  {g.name}
-                </th>
-              </tr>
-              {g.rows.map((r) => (
-                <tr key={`${g.name}-${r.label}`} className="border-t border-border">
-                  <th scope="row" className="p-4 text-sm font-medium text-foreground/90">
-                    {r.label}
+          {groups.map((g) => {
+            const groupId = `group-${slugify(g.name)}`;
+            return (
+              <Fragment key={g.name}>
+                <tr className="bg-surface/60">
+                  <th
+                    scope="rowgroup"
+                    id={groupId}
+                    colSpan={PLANS.length + 1}
+                    className="p-4 text-xs font-bold uppercase tracking-[0.18em] text-foreground"
+                  >
+                    {g.name}
                   </th>
-                  {r.values.map((v, i) => (
-                    <td
-                      key={i}
-                      className={cn(
-                        "p-4 text-center",
-                        highlightedTier === PLANS[i].id && "bg-accent/5",
-                      )}
-                    >
-                      <CellMark value={v} />
-                    </td>
-                  ))}
                 </tr>
-              ))}
-            </Fragment>
-          ))}
+                {g.rows.map((r) => {
+                  const rowId = `row-${slugify(r.label)}`;
+                  return (
+                    <tr key={`${g.name}-${r.label}`} className="border-t border-border">
+                      <th
+                        scope="row"
+                        id={rowId}
+                        className="p-4 text-sm font-medium text-foreground/90"
+                      >
+                        {r.label}
+                      </th>
+                      {r.values.map((v, i) => {
+                        const plan = PLANS[i];
+                        return (
+                          <td
+                            key={plan.id}
+                            headers={`${groupId} ${rowId} col-${plan.id}`}
+                            className={cn(
+                              "p-4 text-center",
+                              highlightedTier === plan.id && "bg-accent/5",
+                            )}
+                          >
+                            <CellMark value={v} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </Fragment>
+            );
+          })}
         </tbody>
         <tfoot>
           <tr className="border-t border-border bg-surface/60">
@@ -738,18 +790,7 @@ function MobileTierBreakdown({
                   >
                     <span className="text-foreground/90">{r.label}</span>
                     <span className="shrink-0">
-                      {typeof v === "boolean" ? (
-                        v ? (
-                          <Check className="size-4 text-accent" aria-label="Included" />
-                        ) : (
-                          <Minus
-                            className="size-4 text-muted-foreground/60"
-                            aria-label="Not included"
-                          />
-                        )
-                      ) : (
-                        <span className="font-semibold text-foreground">{v}</span>
-                      )}
+                      <CellMark value={v} />
                     </span>
                   </li>
                 );

@@ -16,7 +16,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api";
 
-export type PlanCode = "COMPLETE" | "PREMIER";
+export type PlanCode = "ESSENTIAL" | "COMPLETE" | "PREMIER";
 export type TierClass = "BASIC" | "MEDIUM" | "PREMIUM";
 export type ServiceCategory = "HVAC" | "PLUMBING" | "EXTERIOR" | "SMART_HOME";
 

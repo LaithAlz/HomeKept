@@ -7,7 +7,7 @@
  * import from here so the numbers can never drift or diverge again.
  */
 
-export type PlanId = "complete" | "premier";
+export type PlanId = "essential" | "complete" | "premier";
 
 export interface Plan {
   id: PlanId;
@@ -44,6 +44,40 @@ export interface Plan {
 }
 
 export const PLANS: Plan[] = [
+  {
+    id: "essential",
+    emoji: "🌱",
+    name: "Essential",
+    tagline: "The seasonal essentials, on schedule.",
+    // The spec marks this cell "awaiting founder sign-off" (never specified before
+    // Essential was retired). This is a best-honest-guess placeholder, not settled copy.
+    forWho: "Smaller homes with lighter maintenance needs",
+    monthlyPriceCad: 89,
+    annualPriceCad: 890,
+    visitsPerYear: 4,
+    visitsDescription: "4 visits a year: the seasonal anchors (winter, spring, summer, fall)",
+    includedPicks: 1,
+    maxPremiumPicks: 0,
+    yourListTime: "Not included",
+    technician: "Consistent technician where possible",
+    scheduling: "Standard scheduling",
+    repairs: "Repairs quoted or referred",
+    extras: [],
+    priorityScheduling: false,
+    sameWeekEmergency: false,
+    dedicatedTechnician: false,
+    gasTuneupCoordination: false,
+    smartHomeSupport: false,
+    annualHomePlan: false,
+    repairsIncluded: false,
+    features: [
+      "4 visits a year: winter check, spring readiness, summer systems, fall winterization",
+      "Standing checklist every visit: filter check, detector test, mechanicals walkaround, humidity reading",
+      "Same-day photo report and Home Health Score update",
+      "1 included pick a year (Basic or Medium tier)",
+      "Consistent technician where possible",
+    ],
+  },
   {
     id: "complete",
     emoji: "🏡",
