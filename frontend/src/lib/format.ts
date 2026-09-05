@@ -82,6 +82,24 @@ export function formatCentsCad(cents: number | null | undefined): string {
 }
 
 /**
+ * Formats integer cents as an exact currency amount with cents shown, e.g. `16900` ->
+ * `"$169.00"`. Unlike `formatCentsCad`, this never floors to a whole dollar: use it
+ * wherever the amount is a real charged/paid total (a Stripe invoice, "your next charge
+ * is exactly $X") rather than a marketing price. `currency` defaults to CAD (the only
+ * currency subscriptions bill in) but accepts an invoice's own `currency` field verbatim.
+ * Returns "—" for null/undefined, matching `formatCentsCad`.
+ */
+export function formatCentsExact(cents: number | null | undefined, currency = "CAD"): string {
+  if (cents === undefined || cents === null) return "—";
+  return new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/**
  * "Jul 5" style short date, always rendered in America/Toronto. Relocated
  * from the deleted `@/lib/mock-admin` (used by the admin console).
  */

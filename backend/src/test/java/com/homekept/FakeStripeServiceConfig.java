@@ -12,6 +12,7 @@ import org.springframework.context.annotation.Primary;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Top-level test configuration that registers a {@code @Primary} {@link StripeService}
@@ -52,13 +53,25 @@ public class FakeStripeServiceConfig {
         public final List<String> resumedSubscriptionIds       = new ArrayList<>();
         public final List<String> cancelledSubscriptionIds     = new ArrayList<>();
         public final List<String> cancelledNowSubscriptionIds  = new ArrayList<>();
+        public final List<String> listInvoicesCustomerIds      = new ArrayList<>();
+        public final List<String> findPaymentMethodCustomerIds = new ArrayList<>();
 
-        /** Clears all recorded calls — call in @BeforeEach. */
+        /** Canned {@link #listInvoices} result — set by a test before exercising the endpoint. */
+        public List<StripeInvoiceSummary> invoicesToReturn = new ArrayList<>();
+
+        /** Canned {@link #findDefaultPaymentMethod} result — empty by default (no card on file). */
+        public Optional<StripePaymentMethodSummary> paymentMethodToReturn = Optional.empty();
+
+        /** Clears all recorded calls and canned fixtures — call in @BeforeEach. */
         public void reset() {
             pausedSubscriptionIds.clear();
             resumedSubscriptionIds.clear();
             cancelledSubscriptionIds.clear();
             cancelledNowSubscriptionIds.clear();
+            listInvoicesCustomerIds.clear();
+            findPaymentMethodCustomerIds.clear();
+            invoicesToReturn = new ArrayList<>();
+            paymentMethodToReturn = Optional.empty();
         }
 
         @Override
@@ -102,6 +115,18 @@ public class FakeStripeServiceConfig {
             throw new UnsupportedOperationException(
                     "FakeStripeServiceConfig does not support constructWebhookEvent. "
                     + "Use the real StripeService in webhook integration tests.");
+        }
+
+        @Override
+        public List<StripeInvoiceSummary> listInvoices(String stripeCustomerId, int limit) {
+            listInvoicesCustomerIds.add(stripeCustomerId);
+            return invoicesToReturn;
+        }
+
+        @Override
+        public Optional<StripePaymentMethodSummary> findDefaultPaymentMethod(String stripeCustomerId) {
+            findPaymentMethodCustomerIds.add(stripeCustomerId);
+            return paymentMethodToReturn;
         }
     }
 }

@@ -2,6 +2,7 @@ package com.homekept.identity;
 
 import com.homekept.identity.dto.MeResponse;
 import com.homekept.identity.exception.AuthenticationException;
+import com.homekept.identity.exception.InvalidPasswordChangeRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
@@ -257,6 +258,48 @@ public class AuthService {
         }
 
         return Optional.of(issueTokensFor(user));
+    }
+
+    /**
+     * Changes the authenticated user's password: verifies the current password, requires
+     * the new one to be at least 8 characters and different from the current password, sets
+     * it, revokes all of the user's refresh tokens, and issues a fresh token pair so the
+     * caller (who already proved possession of the account) stays signed in.
+     *
+     * <p>Any authenticated role may call this (not CUSTOMER-only) — every role authenticates
+     * with a password.
+     *
+     * @param userId          the authenticated user's id (JWT principal)
+     * @param currentPassword the password to verify against the stored hash
+     * @param newPassword     the new plaintext password (bcrypt-hashed here)
+     * @return a fresh token pair to set in cookies
+     * @throws InvalidPasswordChangeRequestException if the current password is wrong, the
+     *         new password is shorter than 8 characters, or it matches the current password
+     */
+    @Transactional
+    public TokenPair changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found: " + userId));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidPasswordChangeRequestException("Current password is incorrect");
+        }
+
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new InvalidPasswordChangeRequestException("New password must be at least 8 characters");
+        }
+
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new InvalidPasswordChangeRequestException(
+                    "New password must be different from your current password");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        refreshTokenService.revokeAll(user.getId());
+
+        return issueTokensFor(user);
     }
 
     /**

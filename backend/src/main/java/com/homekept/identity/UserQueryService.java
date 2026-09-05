@@ -74,11 +74,11 @@ public class UserQueryService {
     @Transactional(readOnly = true)
     public Optional<UserProfile> findProfileById(Long userId) {
         return userRepository.findById(userId)
-                .map(u -> new UserProfile(u.getFirstName(), u.getLastName(), u.getEmail()));
+                .map(u -> new UserProfile(u.getFirstName(), u.getLastName(), u.getEmail(), u.getPhone()));
     }
 
-    /** Full name + email for the customer app's account/settings page. */
-    public record UserProfile(String firstName, String lastName, String email) {}
+    /** Full name, email and phone for the customer app's account/settings page. */
+    public record UserProfile(String firstName, String lastName, String email, String phone) {}
 
     /** Display summary for admin rosters: name, email, role, and account status. */
     public record UserSummary(Long id, String email, String firstName, String lastName,

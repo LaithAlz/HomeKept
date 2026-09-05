@@ -4,6 +4,10 @@ import com.homekept.catalog.PlanTier;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 /**
  * Outbound Stripe API seam.
  *
@@ -122,4 +126,55 @@ public interface StripeService {
      *                                        should return 400 to Stripe
      */
     Event constructWebhookEvent(String payload, String sigHeader) throws SignatureVerificationException;
+
+    /**
+     * Lists a customer's most recent invoices (billing history), newest first.
+     *
+     * <p>Graceful degradation: returns an empty list — never throws — when
+     * {@code app.stripe.secret-key} is blank (same pattern as
+     * {@link com.homekept.notification.SendGridEmailSender} /
+     * {@link com.homekept.storage.R2StorageService}). Callers are responsible for skipping
+     * this call entirely when the subscriber has no Stripe customer id yet.
+     *
+     * @param stripeCustomerId the Stripe customer id (cus_...)
+     * @param limit            max number of invoices to return
+     * @return invoice summaries, newest first (possibly empty, never {@code null})
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    List<StripeInvoiceSummary> listInvoices(String stripeCustomerId, int limit);
+
+    /**
+     * Finds a customer's default payment method (the card Stripe will charge next),
+     * resolved from {@code customer.invoice_settings.default_payment_method}.
+     *
+     * <p>Graceful degradation: returns {@link Optional#empty()} — never throws — when
+     * {@code app.stripe.secret-key} is blank, or when the customer has no default payment
+     * method set, or when the default payment method is not a card. Callers are responsible
+     * for skipping this call entirely when the subscriber has no Stripe customer id yet.
+     *
+     * @param stripeCustomerId the Stripe customer id (cus_...)
+     * @return the default card summary, or empty
+     * @throws RuntimeException wrapping any {@link com.stripe.exception.StripeException}
+     */
+    Optional<StripePaymentMethodSummary> findDefaultPaymentMethod(String stripeCustomerId);
+
+    /** A thin projection of a Stripe {@code Invoice} for the customer billing history view. */
+    record StripeInvoiceSummary(
+            String id,
+            String number,
+            Instant createdAt,
+            int amountPaidCents,
+            String currency,
+            String status,
+            String hostedInvoiceUrl,
+            String invoicePdf
+    ) {}
+
+    /** A thin, PII-minimal projection of a Stripe {@code PaymentMethod}'s card details. */
+    record StripePaymentMethodSummary(
+            String brand,
+            String last4,
+            int expMonth,
+            int expYear
+    ) {}
 }

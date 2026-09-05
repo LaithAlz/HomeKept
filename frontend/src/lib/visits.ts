@@ -124,6 +124,26 @@ export function useNextVisit(): UseQueryResult<AppVisitListItem[]> {
   });
 }
 
+/**
+ * Every SCHEDULED visit that isn't already in the past, soonest first. Unlike
+ * `useNextVisit` (which narrows to a single visit for the dashboard's hero card), this
+ * powers the Visits page's full upcoming schedule — a Premier subscriber has up to 12
+ * SCHEDULED visits on the calendar at once and the membership promises all of them are
+ * visible, not just the next one.
+ *
+ * `GET /api/app/visits` orders by `scheduledFor` descending, so the client-side sort
+ * below reverses it to soonest-first for display.
+ */
+export function useUpcomingVisits(): UseQueryResult<AppVisitListItem[]> {
+  // limit 100 is the API maximum; a subscriber has at most a year of scheduled visits.
+  return useVisits({ status: "SCHEDULED", limit: 100 }, (visits) => {
+    const now = Date.now();
+    return visits
+      .filter((v) => v.status === "SCHEDULED" && new Date(v.scheduledFor).getTime() >= now)
+      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
+  });
+}
+
 /** Recent completed visits, newest first — used for the activity feed and past-visits list. */
 export function useRecentCompletedVisits(limit = 10): UseQueryResult<AppVisitListItem[]> {
   return useVisits({ status: "COMPLETED", limit });

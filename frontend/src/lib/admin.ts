@@ -308,33 +308,6 @@ export function useAdminCancelSubscription(id: number) {
 }
 
 /**
- * `POST /api/admin/subscribers/{id}/pause` — staff-initiated pause. Sends `{}` as
- * the body (not `undefined`) so `post()` sets `Content-Type: application/json` —
- * the endpoint requires it even though there's nothing meaningful to send.
- */
-export function useAdminPauseSubscription(id: number) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/pause`, {}),
-    onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
-  });
-}
-
-/**
- * `POST /api/admin/subscribers/{id}/resume` — staff-initiated resume. Sends `{}`
- * as the body for the same reason as pause above.
- */
-export function useAdminResumeSubscription(id: number) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      post<AdminSubscriptionActionResponse>(`/api/admin/subscribers/${id}/resume`, {}),
-    onSuccess: () => invalidateAfterAdminSubscriptionAction(queryClient, id),
-  });
-}
-
-/**
  * Request body for `PATCH /api/admin/properties/{propertyId}/sku`. Every field is
  * optional/nullable on the backend (`AdminUpdateSkuRequest.java`) — an omitted key
  * or an explicit `null` both leave that column unchanged (partial/ongoing capture

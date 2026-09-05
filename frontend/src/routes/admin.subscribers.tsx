@@ -38,8 +38,6 @@ import { formatCentsCad, formatDateShort, formatDateTime } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import {
   useAdminCancelSubscription,
-  useAdminPauseSubscription,
-  useAdminResumeSubscription,
   useAdminSubscriber,
   useAdminSubscriberEvents,
   useAdminSubscribers,
@@ -385,13 +383,13 @@ function describeSubscriptionActionError(err: unknown): string {
 
 const CANCEL_REASON_MAX_LENGTH = 500;
 
-type SubscriptionDialogMode = "pause" | "resume" | "cancel";
+type SubscriptionDialogMode = "cancel";
 
 /**
- * Staff-initiated pause/resume/cancel controls, gated by the subscriber's current
- * status per the state machine: ACTIVE can pause or cancel, PAUSED can resume or
- * cancel, PAYMENT_ISSUE can only cancel (no pause-from-payment-issue transition),
- * CANCELLED and PENDING_ACTIVATION show no controls.
+ * Staff-initiated cancellation. HomeKept does not offer pausing, so cancelling is the
+ * only staff action here; a subscription paused directly in Stripe still shows its
+ * status above. ACTIVE, PAUSED and PAYMENT_ISSUE can be cancelled; CANCELLED and
+ * PENDING_ACTIVATION show no controls.
  */
 function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   const queryClient = useQueryClient();
@@ -410,8 +408,6 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   const latestEvent = events?.find((e) => e.type === "CANCELLATION_REQUESTED");
   const cancellationPending = latestEvent !== undefined && detail.status !== "CANCELLED";
 
-  const pauseMutation = useAdminPauseSubscription(detail.id);
-  const resumeMutation = useAdminResumeSubscription(detail.id);
   const cancelMutation = useAdminCancelSubscription(detail.id);
 
   function handleError(err: unknown) {
@@ -424,8 +420,6 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
   }
 
   function openDialog(mode: SubscriptionDialogMode) {
-    pauseMutation.reset();
-    resumeMutation.reset();
     cancelMutation.reset();
     setError(null);
     setReason("");
@@ -433,33 +427,11 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
     setDialogMode(mode);
   }
 
-  const pending = pauseMutation.isPending || resumeMutation.isPending || cancelMutation.isPending;
+  const pending = cancelMutation.isPending;
 
   function closeDialog() {
     if (pending) return;
     setDialogMode(null);
-  }
-
-  function confirmPause() {
-    setError(null);
-    pauseMutation.mutate(undefined, {
-      onSuccess: () => {
-        toast.success("Subscription paused.");
-        setDialogMode(null);
-      },
-      onError: handleError,
-    });
-  }
-
-  function confirmResume() {
-    setError(null);
-    resumeMutation.mutate(undefined, {
-      onSuccess: () => {
-        toast.success("Subscription resumed.");
-        setDialogMode(null);
-      },
-      onError: handleError,
-    });
   }
 
   function confirmCancel() {
@@ -478,8 +450,6 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
     );
   }
 
-  const showPause = detail.status === "ACTIVE" && !cancellationPending;
-  const showResume = detail.status === "PAUSED";
   const showCancel =
     (detail.status === "ACTIVE" ||
       detail.status === "PAUSED" ||
@@ -514,23 +484,11 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
         )}
       </dl>
 
-      {(showPause || showResume || showCancel) && (
+      {showCancel && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {showPause && (
-            <Button size="sm" variant="secondary" onClick={() => openDialog("pause")}>
-              Pause
-            </Button>
-          )}
-          {showResume && (
-            <Button size="sm" onClick={() => openDialog("resume")}>
-              Resume
-            </Button>
-          )}
-          {showCancel && (
-            <Button size="sm" variant="destructive" onClick={() => openDialog("cancel")}>
-              Cancel
-            </Button>
-          )}
+          <Button size="sm" variant="destructive" onClick={() => openDialog("cancel")}>
+            Cancel
+          </Button>
         </div>
       )}
 
@@ -567,13 +525,7 @@ function SubscriptionSection({ detail }: { detail: AdminSubscriberDetail }) {
         onReasonChange={setReason}
         immediately={immediately}
         onImmediatelyChange={setImmediately}
-        onConfirm={
-          dialogMode === "cancel"
-            ? confirmCancel
-            : dialogMode === "resume"
-              ? confirmResume
-              : confirmPause
-        }
+        onConfirm={confirmCancel}
         pending={pending}
         error={error}
       />
@@ -594,7 +546,7 @@ interface SubscriptionActionDialogProps {
   error: string | null;
 }
 
-/** Shared confirm dialog for the pause/resume/cancel actions, switched by `mode`. */
+/** Confirm dialog for a staff-initiated cancellation. */
 function SubscriptionActionDialog({
   mode,
   onOpenChange,
@@ -614,9 +566,6 @@ function SubscriptionActionDialog({
   const reasonId = `${baseId}-reason`;
   const immediatelyId = `${baseId}-immediately`;
 
-  const isCancel = mode === "cancel";
-  const isPause = mode === "pause";
-
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     onConfirm();
@@ -632,71 +581,58 @@ function SubscriptionActionDialog({
     >
       <DialogContent aria-labelledby={titleId} aria-describedby={descId} className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle id={titleId}>
-            {isCancel
-              ? "Cancel this subscription?"
-              : isPause
-                ? "Pause this subscription?"
-                : "Resume this subscription?"}
-          </DialogTitle>
+          <DialogTitle id={titleId}>Cancel this subscription?</DialogTitle>
           <DialogDescription id={descId}>
-            {isCancel
-              ? "This records who requested the cancellation and why, then asks Stripe to end the subscription."
-              : isPause
-                ? "Visits stop and billing pauses while the subscription is paused."
-                : "Visits and billing resume for this subscriber."}
+            This records who requested the cancellation and why, then asks Stripe to end the
+            subscription.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          {isCancel && (
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor={reasonId}>Reason</Label>
-                <Textarea
-                  id={reasonId}
-                  value={reason}
-                  onChange={(e) =>
-                    onReasonChange(e.target.value.slice(0, CANCEL_REASON_MAX_LENGTH))
-                  }
-                  maxLength={CANCEL_REASON_MAX_LENGTH}
-                  required
-                  disabled={pending}
-                  rows={3}
-                  aria-describedby={error ? errorId : undefined}
-                  className="mt-1"
-                />
-                <p className="mt-1 text-right text-xs text-muted-foreground">
-                  {reason.length}/{CANCEL_REASON_MAX_LENGTH}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-start gap-2">
-                  <Checkbox
-                    id={immediatelyId}
-                    checked={immediately}
-                    onCheckedChange={(checked) => onImmediatelyChange(checked === true)}
-                    disabled={pending}
-                    className="mt-0.5"
-                  />
-                  <Label htmlFor={immediatelyId} className="text-sm font-normal">
-                    Cancel immediately. Access ends now and Stripe issues no refund for unused time.
-                    Leave unchecked to let access run to{" "}
-                    {currentPeriodEnd
-                      ? formatDateShort(currentPeriodEnd)
-                      : "the end of the current period"}
-                    .
-                  </Label>
-                </div>
-                {immediately && (
-                  <p className="mt-1 pl-6 text-xs text-muted-foreground">
-                    If a refund is owed, issue it in the Stripe dashboard after cancelling.
-                  </p>
-                )}
-              </div>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor={reasonId}>Reason</Label>
+              <Textarea
+                id={reasonId}
+                value={reason}
+                onChange={(e) => onReasonChange(e.target.value.slice(0, CANCEL_REASON_MAX_LENGTH))}
+                maxLength={CANCEL_REASON_MAX_LENGTH}
+                required
+                disabled={pending}
+                rows={3}
+                aria-describedby={error ? errorId : undefined}
+                className="mt-1"
+              />
+              <p className="mt-1 text-right text-xs text-muted-foreground">
+                {reason.length}/{CANCEL_REASON_MAX_LENGTH}
+              </p>
             </div>
-          )}
+
+            <div>
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id={immediatelyId}
+                  checked={immediately}
+                  onCheckedChange={(checked) => onImmediatelyChange(checked === true)}
+                  disabled={pending}
+                  className="mt-0.5"
+                />
+                <Label htmlFor={immediatelyId} className="text-sm font-normal">
+                  Cancel immediately. Access ends now and Stripe issues no refund for unused time.
+                  Leave unchecked to let access run to{" "}
+                  {currentPeriodEnd
+                    ? formatDateShort(currentPeriodEnd)
+                    : "the end of the current period"}
+                  .
+                </Label>
+              </div>
+              {immediately && (
+                <p className="mt-1 pl-6 text-xs text-muted-foreground">
+                  If a refund is owed, issue it in the Stripe dashboard after cancelling.
+                </p>
+              )}
+            </div>
+          </div>
 
           {error && (
             <p id={errorId} role="alert" className="mt-2 text-sm text-destructive">
@@ -712,16 +648,12 @@ function SubscriptionActionDialog({
             </DialogClose>
             <Button
               type="submit"
-              variant={isCancel ? "destructive" : "default"}
-              disabled={pending || (isCancel && reason.trim().length === 0)}
+              variant="destructive"
+              disabled={pending || reason.trim().length === 0}
               aria-busy={pending}
             >
               {pending && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-              {isCancel
-                ? "Cancel subscription"
-                : isPause
-                  ? "Pause subscription"
-                  : "Resume subscription"}
+              Cancel subscription
             </Button>
           </DialogFooter>
         </form>

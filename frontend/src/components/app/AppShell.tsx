@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   LogOut,
+  Mail,
 } from "lucide-react";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Toaster } from "@/components/ui/sonner";
@@ -208,6 +209,10 @@ function AuthedShell() {
                 )}
               </div>
             </div>
+            <HelpLink
+              onClick={() => setMobileOpen(false)}
+              className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-foreground/80 hover:bg-surface hover:text-foreground"
+            />
             <button
               type="button"
               onClick={handleSignOut}
@@ -277,6 +282,7 @@ function AuthedShell() {
                 )}
               </div>
             </div>
+            <HelpLink className="mt-1 flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-foreground/70 transition-colors hover:bg-surface hover:text-foreground" />
             <button
               type="button"
               onClick={handleSignOut}
@@ -295,6 +301,19 @@ function AuthedShell() {
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * The one place in the app to reach a human: a restrained mailto affordance shown in
+ * both the mobile drawer and the desktop sidebar footer, alongside Sign out.
+ */
+function HelpLink({ className, onClick }: { className: string; onClick?: () => void }) {
+  return (
+    <a href="mailto:hello@homekept.ca" onClick={onClick} className={className}>
+      <Mail className="size-4 shrink-0" aria-hidden="true" />
+      Help
+    </a>
   );
 }
 

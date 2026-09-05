@@ -5,10 +5,16 @@ import com.homekept.common.Hashing;
 import com.homekept.config.AppProperties;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Customer;
 import com.stripe.model.Event;
+import com.stripe.model.Invoice;
+import com.stripe.model.InvoiceCollection;
+import com.stripe.model.PaymentMethod;
 import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
+import com.stripe.param.CustomerRetrieveParams;
+import com.stripe.param.InvoiceListParams;
 import com.stripe.param.SubscriptionCancelParams;
 import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
@@ -16,6 +22,10 @@ import com.stripe.param.common.EmptyParam;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Real Stripe API implementation of {@link StripeService}.
@@ -203,7 +213,86 @@ public class StripeServiceImpl implements StripeService {
         return Webhook.constructEvent(payload, sigHeader, webhookSecret);
     }
 
+    @Override
+    public List<StripeInvoiceSummary> listInvoices(String stripeCustomerId, int limit) {
+        if (!isConfigured()) {
+            return List.of();
+        }
+
+        InvoiceListParams params = InvoiceListParams.builder()
+                .setCustomer(stripeCustomerId)
+                .setLimit((long) limit)
+                .build();
+
+        try {
+            InvoiceCollection invoices = Invoice.list(params);
+            return invoices.getData().stream()
+                    .map(this::toInvoiceSummary)
+                    .toList();
+        } catch (StripeException e) {
+            log.error("Stripe list invoices failed stripeCode={}", e.getCode());
+            throw new RuntimeException("Stripe list invoices failed", e);
+        }
+    }
+
+    @Override
+    public Optional<StripePaymentMethodSummary> findDefaultPaymentMethod(String stripeCustomerId) {
+        if (!isConfigured()) {
+            return Optional.empty();
+        }
+
+        CustomerRetrieveParams params = CustomerRetrieveParams.builder()
+                .addExpand("invoice_settings.default_payment_method")
+                .build();
+
+        try {
+            Customer customer = Customer.retrieve(stripeCustomerId, params, null);
+            PaymentMethod paymentMethod = customer.getInvoiceSettings() != null
+                    ? customer.getInvoiceSettings().getDefaultPaymentMethodObject()
+                    : null;
+
+            if (paymentMethod == null || paymentMethod.getCard() == null) {
+                return Optional.empty();
+            }
+
+            PaymentMethod.Card card = paymentMethod.getCard();
+            return Optional.of(new StripePaymentMethodSummary(
+                    card.getBrand(),
+                    card.getLast4(),
+                    card.getExpMonth() != null ? card.getExpMonth().intValue() : 0,
+                    card.getExpYear() != null ? card.getExpYear().intValue() : 0
+            ));
+        } catch (StripeException e) {
+            log.error("Stripe find default payment method failed stripeCode={}", e.getCode());
+            throw new RuntimeException("Stripe find default payment method failed", e);
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
+
+    /**
+     * True when {@code app.stripe.secret-key} is configured. Guards {@link #listInvoices}
+     * and {@link #findDefaultPaymentMethod} so a blank key degrades to an empty result
+     * instead of the Stripe SDK making a doomed call with no API key set (same pattern as
+     * {@link com.homekept.notification.SendGridEmailSender#send}).
+     */
+    private boolean isConfigured() {
+        String secretKey = appProperties.stripe().secretKey();
+        return secretKey != null && !secretKey.isBlank();
+    }
+
+    private StripeInvoiceSummary toInvoiceSummary(Invoice invoice) {
+        return new StripeInvoiceSummary(
+                invoice.getId(),
+                invoice.getNumber(),
+                invoice.getCreated() != null ? Instant.ofEpochSecond(invoice.getCreated()) : null,
+                invoice.getAmountPaid() != null ? invoice.getAmountPaid().intValue() : 0,
+                invoice.getCurrency(),
+                invoice.getStatus(),
+                invoice.getHostedInvoiceUrl(),
+                invoice.getInvoicePdf()
+        );
+    }
 
     /**
      * Selects the correct Stripe price id from the plan tier based on billing cycle.
