@@ -6,6 +6,7 @@ import com.homekept.subscription.SubscriberNotFoundException;
 import com.homekept.subscription.SubscriberQueryService;
 import com.homekept.visit.dto.AdminCreateVisitRequest;
 import com.homekept.visit.dto.AdminPatchVisitRequest;
+import com.homekept.visit.dto.AdminVisitDayLoadItem;
 import com.homekept.visit.dto.AdminVisitListItem;
 import com.homekept.visit.dto.AdminVisitResponse;
 import com.homekept.visit.dto.VisitServiceItem;
@@ -19,6 +20,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -50,22 +54,28 @@ public class VisitAdminService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+    /** Max inclusive span, in days, accepted by {@link #listDayLoad}. */
+    private static final long MAX_DAY_LOAD_SPAN_DAYS = 62;
+
     private final VisitRepository visitRepository;
     private final VisitServiceRepository visitServiceRepository;
     private final VisitStateMachine stateMachine;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
+    private final ZoneId renderZoneId;
 
     public VisitAdminService(VisitRepository visitRepository,
                              VisitServiceRepository visitServiceRepository,
                              VisitStateMachine stateMachine,
                              SubscriberQueryService subscriberQueryService,
-                             CatalogService catalogService) {
+                             CatalogService catalogService,
+                             ZoneId renderZoneId) {
         this.visitRepository = visitRepository;
         this.visitServiceRepository = visitServiceRepository;
         this.stateMachine = stateMachine;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
+        this.renderZoneId = renderZoneId;
     }
 
     /**
@@ -166,6 +176,44 @@ public class VisitAdminService {
     @Transactional(readOnly = true)
     public long countUpcomingVisits() {
         return visitRepository.countByStatusAndScheduledForGreaterThanEqual(VisitStatus.SCHEDULED, Instant.now());
+    }
+
+    /**
+     * Returns the SCHEDULED-visit load per local calendar day within {@code [from, to]}
+     * (inclusive), for the admin Routes month-sidebar calendar. One entry per day that has
+     * at least one SCHEDULED visit — empty days are omitted, not sent as zero — ascending.
+     *
+     * <p>Honest counts only: {@code total} and {@code unassigned} are real visit counts.
+     * Never adds a capacity/percentage/"slots free" figure — there is no backing model of
+     * technician working hours, so a fabricated availability signal would be worse than none.
+     *
+     * <p>Backed by a single aggregate query ({@link VisitRepository#findScheduledDayLoad})
+     * grouped in the database on the visit's local date — never by loading every row in the
+     * range and grouping in Java. {@code from}/{@code to} are local dates in
+     * {@link #renderZoneId} (the same zone bean {@link VisitSchedulingService} uses — never
+     * hardcoded), converted here to the UTC instant bounds the query binds against.
+     *
+     * @param from inclusive local start date
+     * @param to   inclusive local end date
+     * @throws InvalidVisitRequestException if the range is empty/negative or spans more than
+     *                                       {@value MAX_DAY_LOAD_SPAN_DAYS} days
+     */
+    @Transactional(readOnly = true)
+    public List<AdminVisitDayLoadItem> listDayLoad(LocalDate from, LocalDate to) {
+        long inclusiveDays = ChronoUnit.DAYS.between(from, to) + 1;
+        if (inclusiveDays < 1 || inclusiveDays > MAX_DAY_LOAD_SPAN_DAYS) {
+            throw new InvalidVisitRequestException(
+                    "Date range must be between 1 and " + MAX_DAY_LOAD_SPAN_DAYS + " days");
+        }
+
+        Instant fromInstant = from.atStartOfDay(renderZoneId).toInstant();
+        Instant toInstantExclusive = to.plusDays(1).atStartOfDay(renderZoneId).toInstant();
+
+        return visitRepository
+                .findScheduledDayLoad(renderZoneId.getId(), fromInstant, toInstantExclusive)
+                .stream()
+                .map(row -> new AdminVisitDayLoadItem(row.getDay().toString(), row.getTotal(), row.getUnassigned()))
+                .collect(Collectors.toList());
     }
 
     /**

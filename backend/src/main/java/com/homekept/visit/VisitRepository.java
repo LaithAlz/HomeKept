@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -163,4 +164,52 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
             @Param("subscriberId") Long subscriberId,
             @Param("technicianUserId") Long technicianUserId,
             @Param("statuses") List<VisitStatus> statuses);
+
+    // ── Admin Routes month-sidebar aggregate ──────────────────────────────────
+
+    /**
+     * Projection for {@link #findScheduledDayLoad}: one row per local calendar day with at
+     * least one SCHEDULED visit, carrying the day's total visit count and how many of those
+     * have no technician assigned.
+     */
+    interface VisitDayLoadRow {
+        LocalDate getDay();
+        Long getTotal();
+        Long getUnassigned();
+    }
+
+    /**
+     * Aggregates SCHEDULED visits by local calendar day within {@code [from, to)}, in one
+     * grouped query — never by loading rows and grouping in application code. Backs
+     * {@code GET /api/admin/visits/day-load} (the admin Routes month sidebar): honest
+     * visit/unassigned counts only, ascending by day, omitting days with zero SCHEDULED
+     * visits.
+     *
+     * <p>{@code zone} is the IANA zone id (the same {@code renderZoneId} bean
+     * {@link com.homekept.visit.VisitSchedulingService} uses — never a hardcoded literal);
+     * grouping on {@code (scheduled_for AT TIME ZONE :zone)::date} converts the stored UTC
+     * instant to that zone's local wall-clock date before grouping, so a visit at 11pm UTC
+     * still lands on the correct Toronto-local day.
+     *
+     * @param zone the IANA zone id, e.g. {@code "America/Toronto"}
+     * @param from inclusive lower bound — the UTC instant of local midnight on the requested
+     *             "from" day
+     * @param to   exclusive upper bound — the UTC instant of local midnight the day after the
+     *             requested "to" day
+     */
+    @Query(value = """
+            SELECT (v.scheduled_for AT TIME ZONE :zone)::date AS day,
+                   COUNT(*) AS total,
+                   COUNT(*) FILTER (WHERE v.technician_id IS NULL) AS unassigned
+            FROM visit v
+            WHERE v.status = 'SCHEDULED'
+              AND v.scheduled_for >= :from
+              AND v.scheduled_for < :to
+            GROUP BY day
+            ORDER BY day
+            """, nativeQuery = true)
+    List<VisitDayLoadRow> findScheduledDayLoad(
+            @Param("zone") String zone,
+            @Param("from") java.time.Instant from,
+            @Param("to") java.time.Instant to);
 }

@@ -2,6 +2,7 @@ package com.homekept.visit;
 
 import com.homekept.visit.dto.AdminCreateVisitRequest;
 import com.homekept.visit.dto.AdminPatchVisitRequest;
+import com.homekept.visit.dto.AdminVisitDayLoadItem;
 import com.homekept.visit.dto.AdminVisitListItem;
 import com.homekept.visit.dto.AdminVisitResponse;
 import jakarta.validation.Valid;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -30,6 +32,8 @@ import java.util.List;
  *   <li>{@code GET /api/admin/visits?status=&cursor=&limit=} — cursor-paginated visit list</li>
  *   <li>{@code POST /api/admin/visits} — create a visit for a subscriber</li>
  *   <li>{@code PATCH /api/admin/visits/{id}} — reschedule / cancel / assign technician</li>
+ *   <li>{@code GET /api/admin/visits/day-load?from=&to=} — per-local-day SCHEDULED visit
+ *       load (Routes month-sidebar aggregate)</li>
  * </ul>
  */
 @RestController
@@ -93,5 +97,31 @@ public class AdminVisitController {
             @PathVariable Long id,
             @RequestBody AdminPatchVisitRequest request) {
         return ResponseEntity.ok(visitAdminService.patchVisit(id, request));
+    }
+
+    /**
+     * GET /api/admin/visits/day-load?from=YYYY-MM-DD&amp;to=YYYY-MM-DD
+     *
+     * <p>Per-local-day SCHEDULED visit load for the admin Routes month-sidebar calendar:
+     * one entry per day in {@code [from, to]} (inclusive, local dates in the configured
+     * render zone) that has at least one SCHEDULED visit, with the day's total visit count
+     * and how many are unassigned. Empty days are omitted; the response is ascending by day.
+     *
+     * <p>Deliberately no capacity/percentage/"slots free" figure — there is no backing model
+     * of technician working hours, so a fabricated availability signal would be worse than
+     * none.
+     *
+     * <p>{@code from}/{@code to} are required; missing or unparseable values fail with the
+     * standard 400 validation error. A span longer than 62 days → 400 {@code INVALID_REQUEST}.
+     *
+     * @param from inclusive local start date
+     * @param to   inclusive local end date
+     * @return 200 with the per-day load, ascending
+     */
+    @GetMapping("/day-load")
+    public ResponseEntity<List<AdminVisitDayLoadItem>> dayLoad(
+            @RequestParam LocalDate from,
+            @RequestParam LocalDate to) {
+        return ResponseEntity.ok(visitAdminService.listDayLoad(from, to));
     }
 }

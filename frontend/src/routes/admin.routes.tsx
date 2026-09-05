@@ -1,19 +1,51 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { zodValidator } from "@tanstack/zod-adapter";
+import { z } from "zod";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
-import { formatTime } from "@/lib/format";
-import { useAdminVisits, useAdminTechnicians, type AdminVisitListItem } from "@/lib/admin";
+import {
+  MonthLoadCalendar,
+  addDaysToKey,
+  getMonthGridRange,
+  toMonthKey,
+  type DayLoad,
+} from "@/components/admin/MonthLoadCalendar";
+import { dayKey, formatDayKeyLong, formatTime } from "@/lib/format";
+import {
+  useAdminVisits,
+  useAdminTechnicians,
+  useAdminVisitDayLoad,
+  type AdminVisitListItem,
+} from "@/lib/admin";
+
+/**
+ * `date` is a plain "YYYY-MM-DD" local (America/Toronto) calendar-date string. An
+ * absent or malformed value `.catch()`es to `undefined` rather than throwing —
+ * `RoutesPage` below falls back to "today in Toronto" whenever it's `undefined`, so
+ * a bad/missing query string never breaks the route, it just resets to today. The
+ * outer `.catch({})` is a second, belt-and-suspenders guard against any unparseable
+ * search shape at all (e.g. a non-object) — the schema itself must never throw.
+ */
+const routesSearchSchema = z
+  .object({
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .catch(undefined),
+  })
+  .catch({});
 
 export const Route = createFileRoute("/admin/routes")({
+  validateSearch: zodValidator(routesSearchSchema),
   head: () => ({
     meta: [{ title: "Routes — HomeKept Admin" }, { name: "robots", content: "noindex" }],
   }),
   component: RoutesPage,
 });
-
-const TZ = "America/Toronto";
 
 const TYPE_LABEL: Record<string, string> = {
   ROUTINE: "Routine",
@@ -21,20 +53,6 @@ const TYPE_LABEL: Record<string, string> = {
   WARRANTY: "Warranty",
   WALKTHROUGH: "Walkthrough",
 };
-
-/**
- * "2026-07-05" style key in America/Toronto, used to group visits onto the
- * calendar day a viewer in any timezone would call "today" (or the offset
- * day chosen with the arrows) rather than the viewer's own local date.
- */
-function dayKey(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
 
 /**
  * Groups real SCHEDULED visits (`GET /api/admin/visits?status=SCHEDULED`) for a chosen
@@ -46,14 +64,32 @@ function dayKey(date: Date): string {
  * There is no dispatch/route-optimization backend yet (no drive-time estimate, no
  * addresses, no reordering), so none of that appears here — only the real scheduled
  * times, visit ids, and subscriber/property ids the visits endpoint actually returns.
+ *
+ * The day itself lives in the URL (`?date=YYYY-MM-DD`, see `routesSearchSchema` above) so
+ * it's linkable and survives a reload; a month-sidebar calendar (`MonthLoadCalendar`)
+ * shows honest per-day SCHEDULED-visit counts (never a capacity/percentage figure — the
+ * backend doesn't model technician working hours) and doubles as the day picker, next to
+ * the original previous/next-day arrows and a native "Jump to date" input.
  */
 function RoutesPage() {
-  const [dayOffset, setDayOffset] = useState(0);
-  const selectedDate = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + dayOffset);
-    return d;
-  }, [dayOffset]);
+  const { date } = Route.useSearch();
+  const navigate = Route.useNavigate();
+
+  const todayKey = dayKey(new Date());
+  const selectedDay = date ?? todayKey;
+
+  // The visible month for the sidebar calendar. Independent of `selectedDay` so browsing
+  // months (prev/next-month, PageUp/PageDown) doesn't require a day to be selected in
+  // that month — but it re-centers on `selectedDay` whenever that changes from outside
+  // the calendar itself (the day arrows or the "Jump to date" input).
+  const [visibleMonth, setVisibleMonth] = useState<string>(() => toMonthKey(selectedDay));
+  useEffect(() => {
+    setVisibleMonth(toMonthKey(selectedDay));
+  }, [selectedDay]);
+
+  function goToDay(day: string) {
+    void navigate({ search: (prev) => ({ ...prev, date: day }), replace: true });
+  }
 
   const {
     data: visits,
@@ -68,23 +104,27 @@ function RoutesPage() {
     refetch: refetchTechs,
   } = useAdminTechnicians();
 
+  const { from, to } = useMemo(() => getMonthGridRange(visibleMonth), [visibleMonth]);
+  const { data: dayLoadRows } = useAdminVisitDayLoad({ from, to });
+  const dayLoad = useMemo(() => {
+    const map = new Map<string, DayLoad>();
+    for (const row of dayLoadRows ?? []) {
+      map.set(row.day, { total: row.total, unassigned: row.unassigned });
+    }
+    return map;
+  }, [dayLoadRows]);
+
   const isLoading = visitsLoading || techsLoading;
   const isError = visitsError || techsError;
 
-  const label = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  }).format(selectedDate);
+  const label = formatDayKeyLong(selectedDay);
 
   const dayVisits = useMemo(() => {
     if (!visits) return [];
-    const key = dayKey(selectedDate);
     return visits
-      .filter((v) => dayKey(new Date(v.scheduledFor)) === key)
+      .filter((v) => dayKey(new Date(v.scheduledFor)) === selectedDay)
       .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
-  }, [visits, selectedDate]);
+  }, [visits, selectedDay]);
 
   const techNameByUserId = useMemo(() => {
     const map = new Map<number, string>();
@@ -118,12 +158,12 @@ function RoutesPage() {
             Scheduled visits for the day, grouped by technician.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="icon"
             variant="outline"
             aria-label="Previous day"
-            onClick={() => setDayOffset((n) => n - 1)}
+            onClick={() => goToDay(addDaysToKey(selectedDay, -1))}
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -134,69 +174,97 @@ function RoutesPage() {
             size="icon"
             variant="outline"
             aria-label="Next day"
-            onClick={() => setDayOffset((n) => n + 1)}
+            onClick={() => goToDay(addDaysToKey(selectedDay, 1))}
           >
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </Button>
+          <div className="flex items-center gap-2 pl-2">
+            <Label htmlFor="routes-jump-to-date" className="text-xs text-muted-foreground">
+              Jump to date
+            </Label>
+            <input
+              id="routes-jump-to-date"
+              type="date"
+              value={selectedDay}
+              onChange={(e) => {
+                if (e.target.value) goToDay(e.target.value);
+              }}
+              className="h-9 rounded-lg border border-input bg-card px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
         </div>
       </div>
 
-      {isLoading && <PanelLoading label="Loading scheduled visits." className="mt-6" />}
+      <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="lg:w-72 lg:shrink-0">
+          <MonthLoadCalendar
+            month={visibleMonth}
+            selectedDay={selectedDay}
+            load={dayLoad}
+            onSelectDay={goToDay}
+            onMonthChange={setVisibleMonth}
+          />
+        </div>
 
-      {isError && !isLoading && (
-        <PanelError
-          label="We couldn't load the day's visits."
-          onRetry={() => {
-            void refetchVisits();
-            void refetchTechs();
-          }}
-          className="mt-6 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
-        />
-      )}
+        <div className="min-w-0 flex-1">
+          {isLoading && <PanelLoading label="Loading scheduled visits." />}
 
-      {!isLoading && !isError && dayVisits.length === 0 && (
-        <p className="mt-6 text-sm text-muted-foreground">No scheduled visits for this day.</p>
-      )}
+          {isError && !isLoading && (
+            <PanelError
+              label="We couldn't load the day's visits."
+              onRetry={() => {
+                void refetchVisits();
+                void refetchTechs();
+              }}
+              className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3"
+            />
+          )}
 
-      {!isLoading && !isError && dayVisits.length > 0 && (
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          {groups.map(([technicianId, techVisits]) => (
-            <div
-              key={technicianId ?? "unassigned"}
-              className="rounded-2xl border border-border bg-card p-5"
-            >
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-lg font-bold">
-                  {technicianId !== null
-                    ? (techNameByUserId.get(technicianId) ?? `Technician #${technicianId}`)
-                    : "Unassigned"}
-                </h2>
-                <div className="text-xs text-muted-foreground">
-                  {techVisits.length} visit{techVisits.length === 1 ? "" : "s"}
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                {techVisits.map((v) => (
-                  <div key={v.id} className="rounded-xl border border-border bg-background p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Visit #{v.id}</span>
-                      <span className="text-xs tabular-nums text-muted-foreground">
-                        {formatTime(v.scheduledFor)}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        Subscriber #{v.subscriberId} · Property #{v.propertyId}
-                      </span>
-                      <span>{TYPE_LABEL[v.type] ?? v.type}</span>
+          {!isLoading && !isError && dayVisits.length === 0 && (
+            <p className="text-sm text-muted-foreground">No scheduled visits for this day.</p>
+          )}
+
+          {!isLoading && !isError && dayVisits.length > 0 && (
+            <div className="grid gap-6 xl:grid-cols-2">
+              {groups.map(([technicianId, techVisits]) => (
+                <div
+                  key={technicianId ?? "unassigned"}
+                  className="rounded-2xl border border-border bg-card p-5"
+                >
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-display text-lg font-bold">
+                      {technicianId !== null
+                        ? (techNameByUserId.get(technicianId) ?? `Technician #${technicianId}`)
+                        : "Unassigned"}
+                    </h2>
+                    <div className="text-xs text-muted-foreground">
+                      {techVisits.length} visit{techVisits.length === 1 ? "" : "s"}
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="mt-4 space-y-2">
+                    {techVisits.map((v) => (
+                      <div key={v.id} className="rounded-xl border border-border bg-background p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">Visit #{v.id}</span>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {formatTime(v.scheduledFor)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
+                          <span>
+                            Subscriber #{v.subscriberId} · Property #{v.propertyId}
+                          </span>
+                          <span>{TYPE_LABEL[v.type] ?? v.type}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
