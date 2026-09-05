@@ -1,6 +1,7 @@
 package com.homekept.identity;
 
 import com.homekept.common.ClientIpResolver;
+import com.homekept.identity.dto.ChangePasswordRequest;
 import com.homekept.identity.dto.ForgotPasswordRequest;
 import com.homekept.identity.dto.LoginRequest;
 import com.homekept.identity.dto.MeResponse;
@@ -56,14 +57,17 @@ public class AuthController {
     private final CookieHelper cookieHelper;
     private final ForgotPasswordRateLimiter forgotPasswordRateLimiter;
     private final LoginIpRateLimiter loginIpRateLimiter;
+    private final ChangePasswordRateLimiter changePasswordRateLimiter;
 
     public AuthController(AuthService authService, CookieHelper cookieHelper,
                           ForgotPasswordRateLimiter forgotPasswordRateLimiter,
-                          LoginIpRateLimiter loginIpRateLimiter) {
+                          LoginIpRateLimiter loginIpRateLimiter,
+                          ChangePasswordRateLimiter changePasswordRateLimiter) {
         this.authService = authService;
         this.cookieHelper = cookieHelper;
         this.forgotPasswordRateLimiter = forgotPasswordRateLimiter;
         this.loginIpRateLimiter = loginIpRateLimiter;
+        this.changePasswordRateLimiter = changePasswordRateLimiter;
     }
 
     /**
@@ -238,5 +242,29 @@ public class AuthController {
             cookieHelper.clearAuthCookies(httpResponse, httpRequest.isSecure());
         }
         return ResponseEntity.ok(new ResetPasswordResponse(tokens.isPresent()));
+    }
+
+    /**
+     * POST /api/auth/change-password
+     * Any authenticated role. Verifies the current password, requires the new one to be at
+     * least 8 characters and different from the current password, sets it, revokes all of
+     * the caller's refresh tokens, and issues a fresh cookie pair so the caller stays signed
+     * in. Rate-limited: 10 attempts per IP per hour.
+     */
+    @PostMapping("/change-password")
+    public ResponseEntity<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request,
+                                               Authentication authentication,
+                                               HttpServletRequest httpRequest,
+                                               HttpServletResponse httpResponse) {
+        String ip = ClientIpResolver.resolve(httpRequest);
+        if (!changePasswordRateLimiter.tryConsume(ip)) {
+            throw new RateLimitExceededException();
+        }
+        Long userId = (Long) authentication.getPrincipal();
+        AuthService.TokenPair tokens = authService.changePassword(
+                userId, request.currentPassword(), request.newPassword());
+        cookieHelper.setAuthCookies(httpResponse, tokens.accessToken(), tokens.refreshToken(),
+                httpRequest.isSecure());
+        return ResponseEntity.noContent().build();
     }
 }

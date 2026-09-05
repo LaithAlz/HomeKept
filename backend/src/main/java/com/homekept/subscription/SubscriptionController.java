@@ -1,6 +1,9 @@
 package com.homekept.subscription;
 
 import com.homekept.subscription.dto.AppAccountResponse;
+import com.homekept.subscription.dto.AppAccountUpdateRequest;
+import com.homekept.subscription.dto.AppInvoiceResponse;
+import com.homekept.subscription.dto.AppPaymentMethodResponse;
 import com.homekept.subscription.dto.AppSubscriptionResponse;
 import com.homekept.subscription.dto.CancelSubscriptionRequest;
 import com.homekept.subscription.dto.SubscriptionActionResponse;
@@ -9,9 +12,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Customer-facing subscription reads + self-serve lifecycle actions (role: CUSTOMER).
@@ -66,6 +73,59 @@ public class SubscriptionController {
     public ResponseEntity<AppAccountResponse> getAccount(Authentication auth) {
         Long userId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(subscriptionAppService.getAccount(userId));
+    }
+
+    /**
+     * PATCH /api/app/account — updates the authenticated customer's first name, last name,
+     * and/or phone. Each field is optional; a field omitted or {@code null} leaves the
+     * corresponding value unchanged. Email and the service property address are not
+     * editable here (see {@link AppAccountUpdateRequest}).
+     *
+     * <p>Returns 404 if the authenticated user has no subscriber row (ownership rule),
+     * 400 if a provided field fails validation.
+     *
+     * @param auth injected by Spring Security — principal is the Long user id
+     */
+    @PatchMapping("/api/app/account")
+    public ResponseEntity<AppAccountResponse> updateAccount(
+            @RequestBody AppAccountUpdateRequest request, Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(subscriptionAppService.updateAccount(
+                userId, request.firstName(), request.lastName(), request.phone()));
+    }
+
+    /**
+     * GET /api/app/billing/invoices — the authenticated customer's billing history, newest
+     * first, capped at 24. Reads through {@link StripeService#listInvoices}; returns an
+     * empty list (never an error) when the subscriber has no Stripe customer id yet, or when
+     * Stripe isn't configured.
+     *
+     * <p>Returns 404 if the authenticated user has no subscriber row (ownership rule).
+     *
+     * @param auth injected by Spring Security — principal is the Long user id
+     */
+    @GetMapping("/api/app/billing/invoices")
+    public ResponseEntity<List<AppInvoiceResponse>> listInvoices(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(subscriptionAppService.listInvoices(userId));
+    }
+
+    /**
+     * GET /api/app/billing/payment-method — the authenticated customer's default card on
+     * file, or {@code null} when there is none or the subscriber has no Stripe customer id
+     * yet. The response is wrapped in an {@link Optional} purely so Spring actually invokes
+     * the JSON message converter for a "no result" response — a bare {@code null} return
+     * value from a {@code ResponseEntity<T>} controller method writes an empty body instead
+     * of the literal JSON {@code null} the API contract specifies.
+     *
+     * <p>Returns 404 if the authenticated user has no subscriber row (ownership rule).
+     *
+     * @param auth injected by Spring Security — principal is the Long user id
+     */
+    @GetMapping("/api/app/billing/payment-method")
+    public ResponseEntity<Optional<AppPaymentMethodResponse>> getDefaultPaymentMethod(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(Optional.ofNullable(subscriptionAppService.getDefaultPaymentMethod(userId)));
     }
 
     /**

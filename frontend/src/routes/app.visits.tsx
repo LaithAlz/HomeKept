@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { PendingReschedulePill, RescheduleDialog } from "@/components/app/reschedule-dialog";
 import { VisitDateBlock, VisitStatusBadge } from "@/components/app/visit-status";
 import { StatusPanel } from "@/components/app/StatusPanel";
-import { formatVisitWindow, getCalendarParts } from "@/lib/format";
-import { useNextVisit, useRecentCompletedVisits, type AppVisitListItem } from "@/lib/visits";
+import { formatFullDate, formatVisitWindow, getCalendarParts } from "@/lib/format";
+import { useRecentCompletedVisits, useUpcomingVisits, type AppVisitListItem } from "@/lib/visits";
 import { useSessionExpiredRedirect } from "@/lib/auth";
 
 export const Route = createFileRoute("/app/visits")({
@@ -17,12 +17,16 @@ export const Route = createFileRoute("/app/visits")({
 });
 
 function VisitsPage() {
-  const nextVisitQuery = useNextVisit();
+  const upcomingVisitsQuery = useUpcomingVisits();
   const pastVisitsQuery = useRecentCompletedVisits(50);
-  useSessionExpiredRedirect(nextVisitQuery.error);
+  useSessionExpiredRedirect(upcomingVisitsQuery.error);
   useSessionExpiredRedirect(pastVisitsQuery.error);
 
-  const nextVisit = nextVisitQuery.data?.[0] ?? null;
+  const upcomingVisits = upcomingVisitsQuery.data ?? [];
+  const nextVisit = upcomingVisits[0] ?? null;
+  // The membership promises the full year's cadence (8 or 12 visits) up front — the
+  // rest of the SCHEDULED visits beyond the immediate next one, soonest first.
+  const laterVisits = upcomingVisits.slice(1);
   const pastVisits = pastVisitsQuery.data ?? [];
 
   return (
@@ -41,12 +45,12 @@ function VisitsPage() {
           Up next
         </h2>
         <div className="mt-3">
-          {nextVisitQuery.isLoading ? (
+          {upcomingVisitsQuery.isLoading ? (
             <StatusPanel>
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               Loading your next visit.
             </StatusPanel>
-          ) : nextVisitQuery.isError ? (
+          ) : upcomingVisitsQuery.isError ? (
             <StatusPanel>We couldn't load your next visit. Try refreshing the page.</StatusPanel>
           ) : !nextVisit ? (
             <StatusPanel>
@@ -57,6 +61,27 @@ function VisitsPage() {
           )}
         </div>
       </section>
+
+      {/* Rest of the year's schedule */}
+      {laterVisits.length > 0 && (
+        <section className="mt-10" aria-labelledby="upcoming-schedule-heading">
+          <h2
+            id="upcoming-schedule-heading"
+            className="text-xs font-bold uppercase tracking-[0.18em] text-muted-foreground"
+          >
+            Also on your schedule
+          </h2>
+          <div className="mt-3">
+            <ul className="space-y-3" role="list" aria-label="Upcoming visits">
+              {laterVisits.map((v) => (
+                <li key={v.id}>
+                  <UpcomingVisitCard visit={v} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* Past visits */}
       <section className="mt-10" aria-labelledby="past-visits-heading">
@@ -175,7 +200,7 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
                 className="border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground hover:text-primary"
                 onClick={() => setDialogOpen(true)}
               >
-                Add request
+                Reschedule
               </Button>
             )}
           </div>
@@ -184,6 +209,55 @@ function NextVisitHero({ visit }: { visit: AppVisitListItem }) {
 
       <RescheduleDialog visitId={visit.id} open={dialogOpen} onOpenChange={setDialogOpen} />
     </article>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Also on your schedule: the rest of the year's SCHEDULED visits, soonest first
+// ---------------------------------------------------------------------------
+
+function UpcomingVisitCard({ visit }: { visit: AppVisitListItem }) {
+  const window = formatVisitWindow(visit.scheduledFor, visit.durationMinutes);
+
+  return (
+    <Link
+      to="/app/visits/$id"
+      params={{ id: String(visit.id) }}
+      className="group flex items-start gap-4 rounded-3xl border border-border bg-card p-5 transition hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <VisitDateBlock scheduledFor={visit.scheduledFor} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <VisitStatusBadge status={visit.status} />
+          {visit.technicianFirstName && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <User className="size-3" aria-hidden="true" />
+              {visit.technicianFirstName}
+            </span>
+          )}
+        </div>
+        <p className="mt-2 font-display text-base font-bold text-foreground">{visit.name}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {formatFullDate(visit.scheduledFor)}, {window}
+        </p>
+        {visit.services.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {visit.services.map((s) => (
+              <span
+                key={s.id}
+                className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-muted-foreground"
+              >
+                {s.serviceName}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <ArrowRight
+        className="mt-1.5 size-4 shrink-0 self-center text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
+        aria-hidden="true"
+      />
+    </Link>
   );
 }
 

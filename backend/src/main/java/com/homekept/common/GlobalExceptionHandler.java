@@ -21,6 +21,8 @@ import com.homekept.subscription.SubscriberNotFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.dao.DataIntegrityViolationException;
 import com.homekept.identity.exception.AuthenticationException;
+import com.homekept.identity.exception.InvalidAccountUpdateRequestException;
+import com.homekept.identity.exception.InvalidPasswordChangeRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetRequestException;
 import com.homekept.identity.exception.InvalidPasswordResetTokenException;
 import com.homekept.identity.exception.RateLimitExceededException;
@@ -177,6 +179,8 @@ public class GlobalExceptionHandler {
             InvalidBookingRequestException.class,
             InvalidActivationRequestException.class,
             InvalidPasswordResetRequestException.class,
+            InvalidPasswordChangeRequestException.class,
+            InvalidAccountUpdateRequestException.class,
             InvalidVisitRequestException.class
     })
     public ResponseEntity<ErrorEnvelope> handleInvalidRequest(RuntimeException ex,
