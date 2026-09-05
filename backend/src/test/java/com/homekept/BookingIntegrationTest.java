@@ -508,6 +508,65 @@ class BookingIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$[?(@.id >= " + cursorForPage2 + ")]").isEmpty());
     }
 
+    // ── GET /api/admin/bookings/{id} ──────────────────────────────────────────
+
+    @Test
+    void adminGetBooking_returnsSameShapeAsPatchResponse() throws Exception {
+        Long bookingId = createBookingViaApi();
+        String adminToken = loginAs(Role.ADMIN);
+
+        mockMvc.perform(get(ADMIN_BOOKINGS_URL + "/" + bookingId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(bookingId))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void adminGetBooking_reflectsPriorPatch() throws Exception {
+        Long bookingId = createBookingViaApi();
+        String adminToken = loginAs(Role.ADMIN);
+
+        mockMvc.perform(patch(ADMIN_BOOKINGS_URL + "/" + bookingId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .content("{\"status\": \"CONFIRMED\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(ADMIN_BOOKINGS_URL + "/" + bookingId)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
+
+    @Test
+    void adminGetBooking_missingBooking_returns404() throws Exception {
+        String adminToken = loginAs(Role.ADMIN);
+
+        mockMvc.perform(get(ADMIN_BOOKINGS_URL + "/999999999")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void adminGetBooking_asCustomer_returns403() throws Exception {
+        Long bookingId = createBookingViaApi();
+        String customerToken = loginAs(Role.CUSTOMER);
+
+        mockMvc.perform(get(ADMIN_BOOKINGS_URL + "/" + bookingId)
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminGetBooking_anonymous_returns401() throws Exception {
+        Long bookingId = createBookingViaApi();
+
+        mockMvc.perform(get(ADMIN_BOOKINGS_URL + "/" + bookingId))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ── PATCH /api/admin/bookings/{id} ────────────────────────────────────────
 
     @Test

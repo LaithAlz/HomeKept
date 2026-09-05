@@ -265,6 +265,7 @@ checklist response, are not yet built.
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/admin/bookings?status=&cursor=` | walk-through pipeline list; each row includes `invitedAt` (`Instant`, `null` until an activation invite has been sent for that booking, else the most recent invite's timestamp — resolved from `activation_token`, never a frontend-only flag) |
+| `GET /api/admin/bookings/{id}` | full booking detail — the same shape `PATCH /api/admin/bookings/{id}` returns, now also readable without making an update (backs a standalone walk-through detail page). Unknown `id` → `404` |
 | `PATCH /api/admin/bookings/{id}` | status transitions (via `WalkthroughBookingStateMachine`), set `scheduledFor`; response includes `invitedAt` (same semantics as the list) |
 | `POST /api/admin/bookings/{id}/activation-invite` | mint token + send activation email |
 | `GET /api/admin/subscribers?cursor=` | subscriber list w/ status, plan, MRR, and customer identity — `firstName`, `lastName`, `email`, `phone` (resolved from the identity domain via a single batched query per page, never N+1; customer PII, safe here only because this endpoint is ADMIN-gated — `phone` is frequently `null` since it isn't captured at account creation) |

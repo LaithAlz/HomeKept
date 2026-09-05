@@ -48,6 +48,17 @@ public class AdminBookingController {
     }
 
     /**
+     * GET /api/admin/bookings/{id}
+     * Full booking detail — the same shape {@code PATCH /api/admin/bookings/{id}} already
+     * returns, now also readable without making an update (backs a standalone walk-through
+     * detail page). Missing booking → 404.
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<AdminBookingDetail> getBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.getBooking(id));
+    }
+
+    /**
      * PATCH /api/admin/bookings/{id}
      * Status transition and/or scheduledFor update.
      * Status must be a legal transition per {@link WalkthroughBookingStateMachine}.
