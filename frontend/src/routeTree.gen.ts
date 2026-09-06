@@ -45,8 +45,12 @@ import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminMetricsRouteImport } from './routes/admin.metrics'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
 import { Route as AdminCatalogRouteImport } from './routes/admin.catalog'
+import { Route as AdminWalkthroughsIndexRouteImport } from './routes/admin.walkthroughs.index'
+import { Route as AdminVisitsIndexRouteImport } from './routes/admin.visits.index'
 import { Route as AdminSubscribersIndexRouteImport } from './routes/admin.subscribers.index'
 import { Route as AppVisitsIdRouteImport } from './routes/app.visits.$id'
+import { Route as AdminWalkthroughsIdRouteImport } from './routes/admin.walkthroughs.$id'
+import { Route as AdminVisitsIdRouteImport } from './routes/admin.visits.$id'
 import { Route as AdminSubscribersIdRouteImport } from './routes/admin.subscribers.$id'
 
 const TermsRoute = TermsRouteImport.update({
@@ -229,6 +233,16 @@ const AdminCatalogRoute = AdminCatalogRouteImport.update({
   path: '/catalog',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminWalkthroughsIndexRoute = AdminWalkthroughsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminWalkthroughsRoute,
+} as any)
+const AdminVisitsIndexRoute = AdminVisitsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminVisitsRoute,
+} as any)
 const AdminSubscribersIndexRoute = AdminSubscribersIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -238,6 +252,16 @@ const AppVisitsIdRoute = AppVisitsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => AppVisitsRoute,
+} as any)
+const AdminWalkthroughsIdRoute = AdminWalkthroughsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AdminWalkthroughsRoute,
+} as any)
+const AdminVisitsIdRoute = AdminVisitsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AdminVisitsRoute,
 } as any)
 const AdminSubscribersIdRoute = AdminSubscribersIdRouteImport.update({
   id: '/$id',
@@ -270,8 +294,8 @@ export interface FileRoutesByFullPath {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/subscribers': typeof AdminSubscribersRouteWithChildren
   '/admin/technicians': typeof AdminTechniciansRoute
-  '/admin/visits': typeof AdminVisitsRoute
-  '/admin/walkthroughs': typeof AdminWalkthroughsRoute
+  '/admin/visits': typeof AdminVisitsRouteWithChildren
+  '/admin/walkthroughs': typeof AdminWalkthroughsRouteWithChildren
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
   '/app/list': typeof AppListRoute
@@ -283,8 +307,12 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
+  '/admin/visits/$id': typeof AdminVisitsIdRoute
+  '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
   '/admin/subscribers/': typeof AdminSubscribersIndexRoute
+  '/admin/visits/': typeof AdminVisitsIndexRoute
+  '/admin/walkthroughs/': typeof AdminWalkthroughsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -308,8 +336,6 @@ export interface FileRoutesByTo {
   '/admin/routes': typeof AdminRoutesRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/technicians': typeof AdminTechniciansRoute
-  '/admin/visits': typeof AdminVisitsRoute
-  '/admin/walkthroughs': typeof AdminWalkthroughsRoute
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
   '/app/list': typeof AppListRoute
@@ -321,8 +347,12 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
+  '/admin/visits/$id': typeof AdminVisitsIdRoute
+  '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
   '/admin/subscribers': typeof AdminSubscribersIndexRoute
+  '/admin/visits': typeof AdminVisitsIndexRoute
+  '/admin/walkthroughs': typeof AdminWalkthroughsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -350,8 +380,8 @@ export interface FileRoutesById {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/subscribers': typeof AdminSubscribersRouteWithChildren
   '/admin/technicians': typeof AdminTechniciansRoute
-  '/admin/visits': typeof AdminVisitsRoute
-  '/admin/walkthroughs': typeof AdminWalkthroughsRoute
+  '/admin/visits': typeof AdminVisitsRouteWithChildren
+  '/admin/walkthroughs': typeof AdminWalkthroughsRouteWithChildren
   '/app/billing': typeof AppBillingRoute
   '/app/health': typeof AppHealthRoute
   '/app/list': typeof AppListRoute
@@ -363,8 +393,12 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
+  '/admin/visits/$id': typeof AdminVisitsIdRoute
+  '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
   '/admin/subscribers/': typeof AdminSubscribersIndexRoute
+  '/admin/visits/': typeof AdminVisitsIndexRoute
+  '/admin/walkthroughs/': typeof AdminWalkthroughsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -406,8 +440,12 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/admin/subscribers/$id'
+    | '/admin/visits/$id'
+    | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
     | '/admin/subscribers/'
+    | '/admin/visits/'
+    | '/admin/walkthroughs/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -431,8 +469,6 @@ export interface FileRouteTypes {
     | '/admin/routes'
     | '/admin/settings'
     | '/admin/technicians'
-    | '/admin/visits'
-    | '/admin/walkthroughs'
     | '/app/billing'
     | '/app/health'
     | '/app/list'
@@ -444,8 +480,12 @@ export interface FileRouteTypes {
     | '/admin'
     | '/app'
     | '/admin/subscribers/$id'
+    | '/admin/visits/$id'
+    | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
     | '/admin/subscribers'
+    | '/admin/visits'
+    | '/admin/walkthroughs'
   id:
     | '__root__'
     | '/'
@@ -485,8 +525,12 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/app/'
     | '/admin/subscribers/$id'
+    | '/admin/visits/$id'
+    | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
     | '/admin/subscribers/'
+    | '/admin/visits/'
+    | '/admin/walkthroughs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -764,6 +808,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCatalogRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/walkthroughs/': {
+      id: '/admin/walkthroughs/'
+      path: '/'
+      fullPath: '/admin/walkthroughs/'
+      preLoaderRoute: typeof AdminWalkthroughsIndexRouteImport
+      parentRoute: typeof AdminWalkthroughsRoute
+    }
+    '/admin/visits/': {
+      id: '/admin/visits/'
+      path: '/'
+      fullPath: '/admin/visits/'
+      preLoaderRoute: typeof AdminVisitsIndexRouteImport
+      parentRoute: typeof AdminVisitsRoute
+    }
     '/admin/subscribers/': {
       id: '/admin/subscribers/'
       path: '/'
@@ -777,6 +835,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/app/visits/$id'
       preLoaderRoute: typeof AppVisitsIdRouteImport
       parentRoute: typeof AppVisitsRoute
+    }
+    '/admin/walkthroughs/$id': {
+      id: '/admin/walkthroughs/$id'
+      path: '/$id'
+      fullPath: '/admin/walkthroughs/$id'
+      preLoaderRoute: typeof AdminWalkthroughsIdRouteImport
+      parentRoute: typeof AdminWalkthroughsRoute
+    }
+    '/admin/visits/$id': {
+      id: '/admin/visits/$id'
+      path: '/$id'
+      fullPath: '/admin/visits/$id'
+      preLoaderRoute: typeof AdminVisitsIdRouteImport
+      parentRoute: typeof AdminVisitsRoute
     }
     '/admin/subscribers/$id': {
       id: '/admin/subscribers/$id'
@@ -801,6 +873,33 @@ const AdminSubscribersRouteChildren: AdminSubscribersRouteChildren = {
 const AdminSubscribersRouteWithChildren =
   AdminSubscribersRoute._addFileChildren(AdminSubscribersRouteChildren)
 
+interface AdminVisitsRouteChildren {
+  AdminVisitsIdRoute: typeof AdminVisitsIdRoute
+  AdminVisitsIndexRoute: typeof AdminVisitsIndexRoute
+}
+
+const AdminVisitsRouteChildren: AdminVisitsRouteChildren = {
+  AdminVisitsIdRoute: AdminVisitsIdRoute,
+  AdminVisitsIndexRoute: AdminVisitsIndexRoute,
+}
+
+const AdminVisitsRouteWithChildren = AdminVisitsRoute._addFileChildren(
+  AdminVisitsRouteChildren,
+)
+
+interface AdminWalkthroughsRouteChildren {
+  AdminWalkthroughsIdRoute: typeof AdminWalkthroughsIdRoute
+  AdminWalkthroughsIndexRoute: typeof AdminWalkthroughsIndexRoute
+}
+
+const AdminWalkthroughsRouteChildren: AdminWalkthroughsRouteChildren = {
+  AdminWalkthroughsIdRoute: AdminWalkthroughsIdRoute,
+  AdminWalkthroughsIndexRoute: AdminWalkthroughsIndexRoute,
+}
+
+const AdminWalkthroughsRouteWithChildren =
+  AdminWalkthroughsRoute._addFileChildren(AdminWalkthroughsRouteChildren)
+
 interface AdminRouteChildren {
   AdminCatalogRoute: typeof AdminCatalogRoute
   AdminLeadsRoute: typeof AdminLeadsRoute
@@ -810,8 +909,8 @@ interface AdminRouteChildren {
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminSubscribersRoute: typeof AdminSubscribersRouteWithChildren
   AdminTechniciansRoute: typeof AdminTechniciansRoute
-  AdminVisitsRoute: typeof AdminVisitsRoute
-  AdminWalkthroughsRoute: typeof AdminWalkthroughsRoute
+  AdminVisitsRoute: typeof AdminVisitsRouteWithChildren
+  AdminWalkthroughsRoute: typeof AdminWalkthroughsRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
@@ -824,8 +923,8 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminSettingsRoute: AdminSettingsRoute,
   AdminSubscribersRoute: AdminSubscribersRouteWithChildren,
   AdminTechniciansRoute: AdminTechniciansRoute,
-  AdminVisitsRoute: AdminVisitsRoute,
-  AdminWalkthroughsRoute: AdminWalkthroughsRoute,
+  AdminVisitsRoute: AdminVisitsRouteWithChildren,
+  AdminWalkthroughsRoute: AdminWalkthroughsRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
 }
 

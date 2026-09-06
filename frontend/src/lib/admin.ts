@@ -9,7 +9,8 @@
  *     (backend/src/main/java/com/homekept/subscription/dto/*.java)
  *   - AdminUpdateSkuRequest / AdminPropertySkuResponse
  *     (backend/src/main/java/com/homekept/property/dto/*.java)
- *   - AdminVisitListItem (backend/src/main/java/com/homekept/visit/dto/AdminVisitListItem.java)
+ *   - AdminVisitListItem / AdminVisitDetail / AdminVisitPropertySummary / VisitEventItem
+ *     (backend/src/main/java/com/homekept/visit/dto/*.java)
  *   - AdminTechnicianListItem
  *     (backend/src/main/java/com/homekept/technician/dto/AdminTechnicianListItem.java)
  *   - AdminDashboardResponse
@@ -17,9 +18,11 @@
  *
  * The subscriber DTOs are annotated `@JsonInclude(NON_NULL)` on the backend, so a
  * null field is omitted from the JSON body entirely rather than sent as `null` —
- * those fields are typed as optional (`?:`) here, not nullable. The booking, visit,
- * and technician DTOs have no such annotation, so nullable fields there are sent as
- * explicit `null` and typed with `| null`.
+ * those fields are typed as optional (`?:`) here, not nullable. `AdminVisitDetail` has
+ * the same annotation (see the type below for exactly which fields that covers). The
+ * booking, visit-list, visit-property, visit-event, and technician DTOs have no such
+ * annotation, so nullable fields there are sent as explicit `null` and typed with
+ * `| null`.
  *
  * Every hook is a thin TanStack Query wrapper over `get`/`post`/`patch` from
  * `@/lib/api`. Callers are responsible for only mounting these hooks once the
@@ -29,14 +32,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, patch, post, qs } from "@/lib/api";
 import { submitWalkthroughBooking, type WalkthroughBookingRequest } from "@/lib/booking";
-import type { RescheduleRequestStatus, VisitStatus, VisitType } from "@/lib/visits";
+import type {
+  AppVisitPhoto,
+  RescheduleRequestStatus,
+  VisitServiceItem,
+  VisitStatus,
+  VisitType,
+} from "@/lib/visits";
 
 /* -------------------------------------------------------------------------- */
 /* Bookings (walk-through pipeline)                                           */
 /* -------------------------------------------------------------------------- */
 
 export type BookingStatus =
-  "PENDING" | "CONFIRMED" | "PERFORMED" | "CONVERTED" | "LOST" | "NO_SHOW";
+  | "PENDING"
+  | "CONFIRMED"
+  | "PERFORMED"
+  | "CONVERTED"
+  | "LOST"
+  | "NO_SHOW";
+
+/**
+ * Whether a booking is still open in the pipeline (has an available next action)
+ * versus closed (CONVERTED/LOST/NO_SHOW, nothing left to do). Single source of truth
+ * for both the pipeline list's "Closed" grouping (`admin.walkthroughs.index.tsx`) and
+ * the detail page's decision to show a "Pipeline" actions section at all
+ * (`admin.walkthroughs.$id.tsx`).
+ */
+export function isBookingOpen(status: BookingStatus): boolean {
+  return status === "PENDING" || status === "CONFIRMED" || status === "PERFORMED";
+}
 
 export interface AdminBookingListItem {
   id: number;
@@ -93,6 +118,19 @@ export function useAdminBookings(options?: { status?: BookingStatus; limit?: num
 }
 
 /**
+ * `GET /api/admin/bookings/{id}` — full booking detail, backing the standalone
+ * walk-through detail page (`/admin/walkthroughs/$id`). Same response shape as a
+ * successful `PATCH` on the same URL, now also readable without making an update.
+ */
+export function useAdminBooking(id: number | null) {
+  return useQuery({
+    queryKey: ["admin", "booking", id],
+    queryFn: () => get<AdminBookingDetail>(`/api/admin/bookings/${id}`),
+    enabled: id !== null,
+  });
+}
+
+/**
  * `PATCH /api/admin/bookings/{id}` — status transition (validated server-side).
  * Also invalidates the dashboard aggregate: a booking's status change can move
  * it in or out of the "pending walk-throughs" count.
@@ -102,8 +140,9 @@ export function usePatchBooking() {
   return useMutation({
     mutationFn: ({ id, request }: { id: number; request: AdminPatchBookingRequest }) =>
       patch<AdminBookingDetail>(`/api/admin/bookings/${id}`, request),
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "booking", id] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
     },
   });
@@ -111,17 +150,19 @@ export function usePatchBooking() {
 
 /**
  * `POST /api/admin/bookings/{id}/activation-invite` — issue #35. Invalidates the
- * bookings list so the newly-set `invitedAt` (issue audit #4) lands on refetch —
- * callers should still keep a short-lived local "sent" state for the optimistic UI
- * between the mutation resolving and the refetch completing.
+ * bookings list (and this booking's own detail query) so the newly-set `invitedAt`
+ * (issue audit #4) lands on refetch — callers should still keep a short-lived local
+ * "sent" state for the optimistic UI between the mutation resolving and the refetch
+ * completing.
  */
 export function useSendActivationInvite() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (bookingId: number) =>
       post<{ status: string }>(`/api/admin/bookings/${bookingId}/activation-invite`),
-    onSuccess: () => {
+    onSuccess: (_data, bookingId) => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "bookings"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "booking", bookingId] });
     },
   });
 }
@@ -462,8 +503,11 @@ export function useAdminVisits(options?: {
  * Request body for `PATCH /api/admin/visits/{id}` — mirrors
  * `AdminPatchVisitRequest.java` field-for-field. All fields optional; apply
  * only what's present:
- *   - `scheduledFor` → reschedule (old visit marked RESCHEDULED, a new
- *     SCHEDULED visit is created at the new time with the same services).
+ *   - `scheduledFor` → reschedule IN PLACE (updates this same visit row's
+ *     `scheduledFor`/technician; no replacement visit is created). Must be in
+ *     the future or the backend rejects it with `400 VALIDATION_FAILED`
+ *     (`fields.scheduledFor`). The before/after is recorded as a `RESCHEDULED`
+ *     `visit_event` — see `useAdminVisitEvents`.
  *   - `status: "CANCELLED"` → cancel, via the visit state machine.
  *   - `technicianUserId` → assign/reassign the technician (the user's
  *     `userId`, not a `technician_profile` id — see `useAdminTechnicians`).
@@ -476,7 +520,7 @@ export interface AdminPatchVisitRequest {
   technicianUserId?: number;
 }
 
-/** Response body for `PATCH /api/admin/visits/{id}` — the updated (or newly created, on reschedule) visit. */
+/** Response body for `PATCH /api/admin/visits/{id}` — the updated visit, rescheduled/cancelled/reassigned in place. */
 export interface AdminVisitResponse extends AdminVisitListItem {
   visitTemplateId: number | null;
   completionNotes: string | null;
@@ -484,19 +528,121 @@ export interface AdminVisitResponse extends AdminVisitListItem {
 
 /**
  * `PATCH /api/admin/visits/{id}` — reschedule / cancel / assign technician (see
- * `AdminPatchVisitRequest` above). Invalidates the visits list and the dashboard
- * aggregate so the "upcoming visits" card/badge and any visit-derived counts
- * stay in sync with the change.
+ * `AdminPatchVisitRequest` above). Invalidates the visits list, this visit's own
+ * detail and events queries, and the dashboard aggregate so the "upcoming visits"
+ * card/badge, the detail page, and its activity log all stay in sync with the change.
  */
 export function usePatchAdminVisit() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, request }: { id: number; request: AdminPatchVisitRequest }) =>
       patch<AdminVisitResponse>(`/api/admin/visits/${id}`, request),
-    onSuccess: () => {
+    onSuccess: (_data, { id }) => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "visits"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "visit", id] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "visit-events", id] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "dashboard"] });
     },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Visit detail + activity log                                               */
+/* -------------------------------------------------------------------------- */
+
+/** The property address embedded in `AdminVisitDetail` — mirrors `AdminVisitPropertySummary.java`. */
+export interface AdminVisitPropertySummary {
+  propertyId: number;
+  streetAddress: string;
+  unit: string | null;
+  city: string;
+  postalCode: string;
+}
+
+/**
+ * `GET /api/admin/visits/{id}` response — everything an operator needs when they open
+ * one visit. Mirrors `AdminVisitDetail.java` field-for-field. That DTO is
+ * `@JsonInclude(NON_NULL)`, so every nullable field below is optional (omitted), not
+ * an explicit `null` — same convention as `AdminSubscriberDetail` above.
+ *
+ * `services`/`photos` reuse the customer-app shapes (`VisitServiceItem`/`AppVisitPhoto`
+ * from `@/lib/visits`) verbatim — the backend DTO does too. `photos[]` are signed R2
+ * download URLs with a ~15-minute TTL: never cache or persist one client-side, and
+ * never render one anywhere outside this ADMIN-gated page.
+ */
+export interface AdminVisitDetail {
+  id: number;
+  subscriberId: number;
+  technicianId?: number;
+  technicianFirstName?: string;
+  technicianLastName?: string;
+  visitTemplateId?: number;
+  name: string;
+  scheduledFor: string;
+  durationMinutes: number;
+  actualDurationMinutes?: number;
+  materialsCostCents?: number;
+  status: VisitStatus;
+  type: VisitType;
+  completionNotes?: string;
+  materialsNotes?: string;
+  completedAt?: string;
+  createdAt: string;
+  services: VisitServiceItem[];
+  photos: AppVisitPhoto[];
+  property: AdminVisitPropertySummary;
+  customerFirstName?: string;
+  customerLastName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+}
+
+/** `firstName`/`lastName` joined, trimmed; empty string when both are absent. */
+export function visitCustomerFullName(v: {
+  customerFirstName?: string;
+  customerLastName?: string;
+}): string {
+  return [v.customerFirstName, v.customerLastName].filter(Boolean).join(" ").trim();
+}
+
+/** `GET /api/admin/visits/{id}` — full single-visit detail, backing `/admin/visits/$id`. */
+export function useAdminVisit(id: number | null) {
+  return useQuery({
+    queryKey: ["admin", "visit", id],
+    queryFn: () => get<AdminVisitDetail>(`/api/admin/visits/${id}`),
+    enabled: id !== null,
+  });
+}
+
+/**
+ * One row of `GET /api/admin/visits/{id}/events` — mirrors `VisitEventItem.java`
+ * field-for-field. `type` is not a fixed/exhaustive enum: new event types can be added
+ * on the backend without a migration, so callers must degrade a `type` they don't
+ * recognize to something sensible rather than assuming a `payload` shape. `payload` is
+ * the event's raw JSONB detail embedded as a JSON object (e.g. `{ from, to }` for
+ * `RESCHEDULED`/`TECHNICIAN_ASSIGNED`), or `null` for an event with no extra detail
+ * (e.g. `CANCELLED`) — typed `unknown` here for the same reason `type` isn't a union:
+ * treat it as untrusted shape, not a known DTO.
+ */
+export interface AdminVisitEvent {
+  id: number;
+  type: string;
+  source: "ADMIN" | "CUSTOMER" | "TECHNICIAN" | "SYSTEM" | string;
+  occurredAt: string;
+  byUserId: number | null;
+  payload: unknown;
+}
+
+/**
+ * `GET /api/admin/visits/{id}/events` — the visit's activity log, newest first,
+ * capped at 100 rows. This is the replacement for the old behaviour where every
+ * reschedule inserted a duplicate row into the visit list (founder's explicit ask).
+ */
+export function useAdminVisitEvents(id: number | null) {
+  return useQuery({
+    queryKey: ["admin", "visit-events", id],
+    queryFn: () => get<AdminVisitEvent[]>(`/api/admin/visits/${id}/events`),
+    enabled: id !== null,
   });
 }
 
@@ -656,6 +802,109 @@ export const PLAN_LABEL: Record<string, string> = {
   ESSENTIAL: "Essential",
   COMPLETE: "Complete",
   PREMIER: "Premier",
+};
+
+/* -------------------------------------------------------------------------- */
+/* Display maps — visit status/type, shared by the visits list and the visit  */
+/* detail page.                                                               */
+/* -------------------------------------------------------------------------- */
+
+export const VISIT_STATUS_LABEL: Record<string, string> = {
+  SCHEDULED: "Scheduled",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  INCOMPLETE: "Incomplete",
+  CANCELLED: "Cancelled",
+  RESCHEDULED: "Rescheduled",
+};
+
+export const VISIT_STATUS_TONE: Record<string, string> = {
+  SCHEDULED: "bg-sky-500/10 text-sky-700",
+  IN_PROGRESS: "bg-emerald-500/10 text-emerald-700",
+  COMPLETED: "bg-muted text-muted-foreground",
+  INCOMPLETE: "bg-amber-500/10 text-amber-700",
+  CANCELLED: "bg-muted text-muted-foreground",
+  RESCHEDULED: "bg-sky-500/10 text-sky-700",
+};
+
+export const VISIT_TYPE_LABEL: Record<string, string> = {
+  ROUTINE: "Routine",
+  EXTRA: "Extra",
+  WARRANTY: "Warranty",
+  WALKTHROUGH: "Walkthrough",
+};
+
+/* -------------------------------------------------------------------------- */
+/* Display maps — walk-through booking status/enums, shared by the pipeline   */
+/* list and the booking detail page.                                         */
+/* -------------------------------------------------------------------------- */
+
+export const BOOKING_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Needs confirmation",
+  CONFIRMED: "Confirmed",
+  PERFORMED: "Walked, ready to invite",
+  CONVERTED: "Converted",
+  LOST: "Lost",
+  NO_SHOW: "No-show",
+};
+
+export const BOOKING_STATUS_TONE: Record<string, string> = {
+  PENDING: "bg-amber-500/10 text-amber-700",
+  CONFIRMED: "bg-sky-500/10 text-sky-700",
+  PERFORMED: "bg-sky-500/10 text-sky-700",
+  CONVERTED: "bg-emerald-500/10 text-emerald-700",
+  LOST: "bg-muted text-muted-foreground",
+  NO_SHOW: "bg-muted text-muted-foreground",
+};
+
+/** `PropertyType.java` — humanized for display. */
+export const BOOKING_PROPERTY_TYPE_LABEL: Record<string, string> = {
+  DETACHED: "Detached",
+  SEMI: "Semi",
+  TOWNHOUSE: "Townhouse",
+};
+
+/**
+ * `squareFootageRange` (`WalkthroughBookingRequest.squareFootageRange` on the backend)
+ * is a free-form string, not a Java enum — these four values are the only ones the
+ * booking wizard and the admin "New booking" form ever send (see `SQFT_OPTIONS` in
+ * `components/admin/NewBookingDialog.tsx`), so this map is deliberately not exhaustive:
+ * an unrecognized value falls back to showing the raw string rather than hiding it.
+ */
+export const BOOKING_SQFT_LABEL: Record<string, string> = {
+  "<1500": "< 1,500 sq ft",
+  "1500-2500": "1,500 – 2,500 sq ft",
+  "2500-4000": "2,500 – 4,000 sq ft",
+  ">4000": "4,000+ sq ft",
+};
+
+/** `TimeOfDay.java` — humanized for display, with the customer-facing window. */
+export const BOOKING_TIME_OF_DAY_LABEL: Record<string, string> = {
+  MORNING: "Morning (8 – 11 AM)",
+  AFTERNOON: "Afternoon (12 – 4 PM)",
+  EVENING: "Evening (5 – 7 PM)",
+};
+
+/** `BookingDayOfWeek.java` — humanized for display. */
+export const BOOKING_DAY_LABEL: Record<string, string> = {
+  MON: "Monday",
+  TUE: "Tuesday",
+  WED: "Wednesday",
+  THU: "Thursday",
+  FRI: "Friday",
+  SAT: "Saturday",
+  SUN: "Sunday",
+};
+
+/** `LeadSource.java` — humanized for display. */
+export const BOOKING_LEAD_SOURCE_LABEL: Record<string, string> = {
+  NEXTDOOR: "Nextdoor",
+  FACEBOOK_GROUP: "Facebook group",
+  REFERRAL: "Referral",
+  DOOR_KNOCK: "Door knock",
+  WEBSITE_ORGANIC: "Website (organic)",
+  WEBSITE_DIRECT: "Website (direct)",
+  OTHER: "Other",
 };
 
 /**

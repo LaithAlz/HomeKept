@@ -170,6 +170,76 @@ export function formatDayKeyLong(day: string): string {
   }).format(new Date(`${day}T12:00:00Z`));
 }
 
+/**
+ * Wall-clock date/time parts of an instant, as they read in `timeZone` — the building
+ * block for both directions of the `<input type="datetime-local">` conversion below.
+ * `hourCycle: "h23"` avoids the AM/PM parts `formatTime` uses elsewhere: a
+ * `datetime-local` value's `HH` is always 24-hour.
+ */
+function zonedParts(iso: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(iso));
+  const byType = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return {
+    year: Number(byType.year),
+    month: Number(byType.month),
+    day: Number(byType.day),
+    hour: Number(byType.hour),
+    minute: Number(byType.minute),
+  };
+}
+
+/**
+ * Converts an ISO instant to the value a `<input type="datetime-local">` expects,
+ * rendered as wall-clock time in `timeZone` (defaults to `TZ`, America/Toronto).
+ * A `datetime-local` input carries no timezone of its own — it is exactly a
+ * "YYYY-MM-DDTHH:mm" local wall-clock string — so prefilling one from an ISO instant
+ * requires rendering that instant in a specific zone first. Used to prefill the admin
+ * reschedule dialog with a visit's current `scheduledFor` so opening the picker starts
+ * at the visit's own time rather than blank/today (the founder's reported bug).
+ */
+export function toDatetimeLocalValue(iso: string, timeZone: string = TZ): string {
+  const { year, month, day, hour, minute } = zonedParts(iso, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}`;
+}
+
+/**
+ * Inverse of `toDatetimeLocalValue`: converts a `<input type="datetime-local">` value
+ * ("YYYY-MM-DDTHH:mm"), interpreted as wall-clock time in `timeZone` (defaults to `TZ`,
+ * America/Toronto), to an ISO instant (UTC).
+ *
+ * Deliberately does NOT do `new Date(value).toISOString()` — the runtime parses a
+ * timezone-less `datetime-local` string as the SYSTEM clock's local timezone, not
+ * America/Toronto. That's only correct by coincidence when the admin's device happens
+ * to be set to Toronto time; anywhere else it silently shifts the submitted instant by
+ * the difference between the two zones' UTC offsets (the exact bug class the founder
+ * flagged: "getting this wrong shifts every visit by the UTC offset").
+ *
+ * Standard two-pass technique: treat the wall-clock value as if it were already UTC to
+ * get a first guess, render that guess back in `timeZone` to read off the zone's actual
+ * offset at that moment (correct across the DST boundary), then apply the offset once.
+ */
+export function fromDatetimeLocalValue(value: string, timeZone: string = TZ): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) {
+    throw new Error(`Invalid datetime-local value: ${value}`);
+  }
+  const [, y, mo, d, h, mi] = match.map(Number);
+  const guessUtcMs = Date.UTC(y, mo - 1, d, h, mi);
+  const shown = zonedParts(new Date(guessUtcMs).toISOString(), timeZone);
+  const shownAsUtcMs = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute);
+  const offsetMs = guessUtcMs - shownAsUtcMs;
+  return new Date(guessUtcMs + offsetMs).toISOString();
+}
+
 export function formatRelativeTime(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   const diffMs = now.getTime() - then.getTime();
