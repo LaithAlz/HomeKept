@@ -1,19 +1,26 @@
 /**
- * MonthLoadCalendar — the admin Routes page's month calendar.
+ * CalendarGrid / MonthLoadCalendar — the admin console's shared month-grid calendar.
  *
- * Its only job, per the ops research this was built from (Jobber / Housecall Pro /
- * ServiceTitan): pick a day, and see how much work is on it. It shows **honest counts
- * only** — total SCHEDULED visits and how many are unassigned — and never a capacity
- * percentage or "slots free" figure, because the backend does not model technician
- * working hours and a fabricated availability signal is worse than none.
+ * `CalendarGrid` is the underlying implementation: a WAI-ARIA date-picker grid with
+ * month navigation, roving tabindex, and full keyboard support. It knows nothing about
+ * visit load — per-day content and disabled state are supplied by the caller, so this is
+ * the ONE grid implementation in the admin console, not one per screen that needs a
+ * calendar.
  *
- * A day's load renders as a compact, non-textual signal, never a sentence: a small
- * numeral badge (the total) and, only when at least one visit is unassigned, a
- * warning-triangle icon beside it. That pairing (a shape plus a number) is deliberate —
- * it must never be colour alone that tells an admin a day has unassigned work — and,
- * because it's a fixed-size badge rather than wrapped text, it can't overflow the cell
- * at any grid width. The full sentence ("3 visits, 1 unassigned") still lives in the
- * cell's `aria-label` for screen readers.
+ * `MonthLoadCalendar` (the admin Routes page's calendar) wraps `CalendarGrid` to add its
+ * own concern: **honest visit-load counts only**, per the ops research this was built
+ * from (Jobber / Housecall Pro / ServiceTitan) — total SCHEDULED visits and how many are
+ * unassigned, and never a capacity percentage or "slots free" figure, because the backend
+ * does not model technician working hours and a fabricated availability signal is worse
+ * than none. A day's load renders as a compact, non-textual signal, never a sentence: a
+ * small numeral badge (the total) and, only when at least one visit is unassigned, a
+ * warning-triangle icon beside it — a shape plus a number, deliberately not colour alone,
+ * so it can't overflow the cell and doesn't rely on colour perception. The full sentence
+ * ("3 visits, 1 unassigned") still lives in the cell's `aria-label` for screen readers.
+ *
+ * The admin Visits page's reschedule dialog (`admin.visits.index.tsx`) uses `CalendarGrid`
+ * directly instead, with no load badges and `isDayDisabled` excluding past days (the
+ * backend rejects a past `scheduledFor`).
  *
  * All day values are plain "YYYY-MM-DD" calendar-date strings (a `dayKey`, see
  * `@/lib/format`), not real timestamps — grid arithmetic below is done on a UTC-noon
@@ -33,6 +40,13 @@
  *   - Crossing a month boundary calls `onMonthChange`, then moves DOM focus onto the
  *     target day once it renders in the new grid.
  * No popup, no focus trap — this is a plain, always-visible grid.
+ *
+ * A disabled day (`isDayDisabled`) is deliberately NOT implemented with the native
+ * `disabled` attribute — that would drop the cell from focusability entirely, breaking
+ * roving-tabindex arrow-key navigation (a keyboard/screen-reader user could no longer
+ * arrow onto it to be told it's unavailable). Instead it stays a plain, focusable button;
+ * only its selection (click / Enter / Space) is suppressed, `aria-disabled="true"` is set,
+ * and its accessible name gets an ", unavailable" suffix.
  */
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
@@ -43,31 +57,6 @@ import { dayKey as torontoDayKey } from "@/lib/format";
 export interface DayLoad {
   total: number;
   unassigned: number;
-}
-
-export interface MonthLoadCalendarProps {
-  /** The visible month — a `Date` (any day within it) or a canonical "YYYY-MM" string. */
-  month: Date | string;
-  /** The currently chosen day, "YYYY-MM-DD". */
-  selectedDay: string;
-  /** SCHEDULED-visit load by day ("YYYY-MM-DD"), from `GET /api/admin/visits/day-load`. */
-  load: Map<string, DayLoad>;
-  onSelectDay: (day: string) => void;
-  onMonthChange: (month: string) => void;
-  /**
-   * Forward-compat hook: optional content rendered below a day's load line (nothing
-   * unless a caller supplies this). A later phase assigns each town a fixed weekday and
-   * will use this to tag the matching days — built in now so that phase doesn't need to
-   * rebuild this component.
-   */
-  dayTag?: (day: string) => ReactNode;
-  /**
-   * Forward-compat hook: optional second line under a weekday column header (e.g. the
-   * town assigned to that weekday, once that exists). `weekdayIndex` is 0 (Sunday)
-   * through 6 (Saturday).
-   */
-  weekdaySubtitle?: (weekdayIndex: number) => ReactNode;
-  className?: string;
 }
 
 const WEEKDAYS: { abbr: string; full: string }[] = [
@@ -210,16 +199,52 @@ function formatLoadForName(load: DayLoad): string {
   return `${visitsPart}, ${load.unassigned} unassigned`;
 }
 
-export function MonthLoadCalendar({
+// ── CalendarGrid ───────────────────────────────────────────────────────────────
+
+export interface CalendarDayContext {
+  isSelected: boolean;
+  isToday: boolean;
+  isCurrentMonth: boolean;
+  isDisabled: boolean;
+}
+
+export interface CalendarGridProps {
+  /** The visible month — a `Date` (any day within it) or a canonical "YYYY-MM" string. */
+  month: Date | string;
+  /** The currently chosen day, "YYYY-MM-DD". */
+  selectedDay: string;
+  onSelectDay: (day: string) => void;
+  onMonthChange: (month: string) => void;
+  /** Marks a day non-selectable (still focusable and announced — see the file doc comment). */
+  isDayDisabled?: (day: string) => boolean;
+  /** Extra content rendered under the day numeral (a load badge, a town tag, or nothing). */
+  renderDayExtra?: (day: string, ctx: CalendarDayContext) => ReactNode;
+  /**
+   * Extends a day's accessible name beyond its plain label ("Wednesday, November 19"),
+   * e.g. with a load summary. Receives the plain label so callers don't have to re-derive
+   * it. An ", unavailable" suffix is appended automatically for a disabled day.
+   */
+  describeDay?: (day: string, label: string) => string;
+  /**
+   * Forward-compat hook: optional second line under a weekday column header (e.g. the
+   * town assigned to that weekday, once that exists). `weekdayIndex` is 0 (Sunday)
+   * through 6 (Saturday).
+   */
+  weekdaySubtitle?: (weekdayIndex: number) => ReactNode;
+  className?: string;
+}
+
+export function CalendarGrid({
   month,
   selectedDay,
-  load,
   onSelectDay,
   onMonthChange,
-  dayTag,
+  isDayDisabled,
+  renderDayExtra,
+  describeDay,
   weekdaySubtitle,
   className,
-}: MonthLoadCalendarProps) {
+}: CalendarGridProps) {
   const monthKey = toMonthKey(month);
   const grid = getMonthGridDays(monthKey);
   const gridSet = new Set(grid);
@@ -278,6 +303,7 @@ export function MonthLoadCalendar({
   }
 
   function selectDay(day: string) {
+    if (isDayDisabled?.(day)) return;
     pendingFocusRef.current = day;
     setFocusedDay(day);
     onSelectDay(day);
@@ -333,7 +359,8 @@ export function MonthLoadCalendar({
 
   // A dispatcher pressing Today means "show me today's work", so this selects the day
   // as well as moving the view and the roving focus. `navigateTo` already calls
-  // `onMonthChange` when today isn't in the currently displayed month.
+  // `onMonthChange` when today isn't in the currently displayed month. Today is never a
+  // disabled day in any current caller, so this bypasses `selectDay`'s disabled check.
   function goToToday() {
     navigateTo(today);
     onSelectDay(today);
@@ -406,13 +433,13 @@ export function MonthLoadCalendar({
               const isCurrentMonth = monthKeyOfDay(day) === monthKey;
               const isToday = day === today;
               const isSelected = day === selectedDay;
-              const dayLoad = load.get(day);
+              const isDisabled = isDayDisabled?.(day) ?? false;
               const dayNum = parseDayKey(day).day;
-              const tag = dayTag?.(day);
+              const ctx: CalendarDayContext = { isSelected, isToday, isCurrentMonth, isDisabled };
 
-              const accessibleName = dayLoad
-                ? `${fullDayLabel(day)}, ${formatLoadForName(dayLoad)}`
-                : fullDayLabel(day);
+              const label = fullDayLabel(day);
+              const described = describeDay ? describeDay(day, label) : label;
+              const accessibleName = isDisabled ? `${described}, unavailable` : described;
 
               return (
                 <button
@@ -426,6 +453,7 @@ export function MonthLoadCalendar({
                   tabIndex={day === focusedDay ? 0 : -1}
                   aria-current={isToday ? "date" : undefined}
                   aria-selected={isSelected}
+                  aria-disabled={isDisabled || undefined}
                   aria-label={accessibleName}
                   onClick={() => selectDay(day)}
                   onKeyDown={(e) => handleKeyDown(e, day)}
@@ -435,42 +463,14 @@ export function MonthLoadCalendar({
                     !isCurrentMonth && "text-muted-foreground/50",
                     isToday && !isSelected && "ring-1 ring-inset ring-primary/60",
                     isSelected && "bg-primary text-primary-foreground hover:bg-primary/90",
+                    isDisabled &&
+                      "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
                   )}
                 >
                   <span aria-hidden="true" className={cn(isToday && "font-bold")}>
                     {dayNum}
                   </span>
-                  {/* Fixed-height slot, reserved whether or not this day has load, so every
-                      cell in a row lines up regardless of which days have a badge. */}
-                  <span className="flex h-4 items-center justify-center gap-0.5">
-                    {dayLoad && (
-                      <>
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums",
-                            isSelected
-                              ? "bg-primary-foreground/20 text-primary-foreground"
-                              : "bg-foreground/10 text-foreground/70",
-                          )}
-                        >
-                          {dayLoad.total}
-                        </span>
-                        {dayLoad.unassigned > 0 && (
-                          <AlertTriangle
-                            aria-hidden="true"
-                            className="h-3 w-3 shrink-0 text-warning"
-                            strokeWidth={2.5}
-                          />
-                        )}
-                      </>
-                    )}
-                  </span>
-                  {tag && (
-                    <span aria-hidden="true" className="text-[10px] leading-tight">
-                      {tag}
-                    </span>
-                  )}
+                  {renderDayExtra?.(day, ctx)}
                 </button>
               );
             })}
@@ -478,5 +478,92 @@ export function MonthLoadCalendar({
         ))}
       </div>
     </div>
+  );
+}
+
+// ── MonthLoadCalendar ────────────────────────────────────────────────────────
+
+export interface MonthLoadCalendarProps {
+  /** The visible month — a `Date` (any day within it) or a canonical "YYYY-MM" string. */
+  month: Date | string;
+  /** The currently chosen day, "YYYY-MM-DD". */
+  selectedDay: string;
+  /** SCHEDULED-visit load by day ("YYYY-MM-DD"), from `GET /api/admin/visits/day-load`. */
+  load: Map<string, DayLoad>;
+  onSelectDay: (day: string) => void;
+  onMonthChange: (month: string) => void;
+  /**
+   * Forward-compat hook: optional content rendered below a day's load line (nothing
+   * unless a caller supplies this). A later phase assigns each town a fixed weekday and
+   * will use this to tag the matching days — built in now so that phase doesn't need to
+   * rebuild this component.
+   */
+  dayTag?: (day: string) => ReactNode;
+  weekdaySubtitle?: (weekdayIndex: number) => ReactNode;
+  className?: string;
+}
+
+export function MonthLoadCalendar({
+  month,
+  selectedDay,
+  load,
+  onSelectDay,
+  onMonthChange,
+  dayTag,
+  weekdaySubtitle,
+  className,
+}: MonthLoadCalendarProps) {
+  return (
+    <CalendarGrid
+      month={month}
+      selectedDay={selectedDay}
+      onSelectDay={onSelectDay}
+      onMonthChange={onMonthChange}
+      weekdaySubtitle={weekdaySubtitle}
+      className={className}
+      describeDay={(day, label) => {
+        const dayLoad = load.get(day);
+        return dayLoad ? `${label}, ${formatLoadForName(dayLoad)}` : label;
+      }}
+      renderDayExtra={(day, ctx) => {
+        const dayLoad = load.get(day);
+        const tag = dayTag?.(day);
+        return (
+          <>
+            {/* Fixed-height slot, reserved whether or not this day has load, so every
+                cell in a row lines up regardless of which days have a badge. */}
+            <span className="flex h-4 items-center justify-center gap-0.5">
+              {dayLoad && (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none tabular-nums",
+                      ctx.isSelected
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-foreground/10 text-foreground/70",
+                    )}
+                  >
+                    {dayLoad.total}
+                  </span>
+                  {dayLoad.unassigned > 0 && (
+                    <AlertTriangle
+                      aria-hidden="true"
+                      className="h-3 w-3 shrink-0 text-warning"
+                      strokeWidth={2.5}
+                    />
+                  )}
+                </>
+              )}
+            </span>
+            {tag && (
+              <span aria-hidden="true" className="text-[10px] leading-tight">
+                {tag}
+              </span>
+            )}
+          </>
+        );
+      }}
+    />
   );
 }
