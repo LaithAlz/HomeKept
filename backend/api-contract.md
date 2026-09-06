@@ -65,7 +65,14 @@ ESSENTIAL's and COMPLETE's Stripe price ids are both `null` until the founder cr
 live Stripe prices; until then, checkout for either fails closed (see
 `POST /api/checkout/session` below). PREMIER's ids are live and unchanged.
 
-→ `200 [ { "code": "ESSENTIAL", "displayName": "Essential", "monthlyPriceCents": 8900, "annualPriceCents": 89000, "visitsPerYear": 4, "includedPicksPerYear": 1, "maxPremiumPicksPerYear": 0, "description": "...", "services": [ … ] }, { "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 16900, "annualPriceCents": 169000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "description": "...", "services": [ { "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
+Each tier and each entry in `services[]` carries its numeric `id` (the `plan_tier`/
+`service` primary key) — added alongside the admin catalog-editing endpoints below so the
+admin console can target a plan tier or a plan-tier/service composition row without a
+separate lookup. Plan tier ids are **not** stable/guessable across environments (the
+September 2026 repositioning deleted and later re-inserted the ESSENTIAL row, so it does
+not keep its original id) — always read `id` from this response rather than assuming one.
+
+→ `200 [ { "id": 3, "code": "ESSENTIAL", "displayName": "Essential", "monthlyPriceCents": 8900, "annualPriceCents": 89000, "visitsPerYear": 4, "includedPicksPerYear": 1, "maxPremiumPicksPerYear": 0, "description": "...", "services": [ … ] }, { "id": 1, "code": "COMPLETE", "displayName": "Complete", "monthlyPriceCents": 16900, "annualPriceCents": 169000, "visitsPerYear": 8, "includedPicksPerYear": 3, "maxPremiumPicksPerYear": 1, "description": "...", "services": [ { "id": 5, "name": "Furnace filter swap", "tierClass": "BASIC", "frequencyPerYear": 4 } ] } ]`
 
 ### `GET /api/catalog/picks`
 The pickable services menu, grouped by tier class, with à la carte prices

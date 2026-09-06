@@ -30,8 +30,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { get, patch, post, qs } from "@/lib/api";
+import { del, get, patch, post, qs } from "@/lib/api";
 import { submitWalkthroughBooking, type WalkthroughBookingRequest } from "@/lib/booking";
+import type { ServiceCategory, TierClass } from "@/lib/catalog";
 import type {
   AppVisitPhoto,
   RescheduleRequestStatus,
@@ -783,6 +784,202 @@ export function useResendTechnicianInvite() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "technicians"] });
     },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Catalog editing (services + plan-tier composition)                        */
+/*                                                                             */
+/* `AdminServiceResponse`/`AdminCreateServiceRequest`/`AdminUpdateServiceRequest`/ */
+/* `AdminPlanTierServiceResponse`/`AdminAddPlanTierServiceRequest`/                */
+/* `AdminUpdatePlanTierServiceRequest`                                             */
+/* (backend/src/main/java/com/homekept/catalog/dto/*.java, AdminCatalogController) */
+/*                                                                             */
+/* Plan tier pricing/visit-count/pick-allowance fields are never written here — */
+/* there is no endpoint for it (founder's deliberate scope boundary: Stripe is  */
+/* what actually charges a customer, so this console must never show a number   */
+/* Stripe doesn't also charge). Reading a plan's current composition/pricing    */
+/* still goes through the public `useCatalogPlans` (`@/lib/catalog`) — there is */
+/* no separate admin "list this plan's services" endpoint — so every mutation   */
+/* below invalidates `["catalog", "plans"]` (and, for service edits, also       */
+/* `["catalog", "picks"]`) alongside the admin-only `["admin", "services"]`.    */
+/* -------------------------------------------------------------------------- */
+
+/** `GET /api/admin/services` response item — mirrors `AdminServiceResponse.java`. */
+export interface AdminServiceItem {
+  id: number;
+  name: string;
+  category: ServiceCategory;
+  tierClass: TierClass;
+  defaultDurationMinutes: number;
+  /** `null` for a standing item that is never sold à la carte. */
+  aLaCartePriceCents: number | null;
+  description: string;
+  isFreeWithEveryVisit: boolean;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * `GET /api/admin/services` — every catalog service, active AND archived (the public
+ * `GET /api/catalog/picks` filters to active only — this is the one place the console can
+ * see what's been archived).
+ */
+export function useAdminServices() {
+  return useQuery({
+    queryKey: ["admin", "services"],
+    queryFn: () => get<AdminServiceItem[]>("/api/admin/services"),
+  });
+}
+
+/** Request body for `POST /api/admin/services`. */
+export interface AdminCreateServiceRequest {
+  name: string;
+  category: ServiceCategory;
+  tierClass: TierClass;
+  defaultDurationMinutes: number;
+  aLaCartePriceCents?: number;
+  description: string;
+  isFreeWithEveryVisit?: boolean;
+}
+
+/**
+ * Request body for `PATCH /api/admin/services/{id}`. Every field optional — an omitted
+ * field leaves that column unchanged. There is currently no way to reset
+ * `aLaCartePriceCents` back to `null` once it has been set (same limitation as the
+ * property SKU sheet's fields) — callers must not build UI that implies otherwise.
+ */
+export interface AdminUpdateServiceRequest {
+  name?: string;
+  category?: ServiceCategory;
+  tierClass?: TierClass;
+  defaultDurationMinutes?: number;
+  aLaCartePriceCents?: number;
+  description?: string;
+  isFreeWithEveryVisit?: boolean;
+}
+
+/** A service create/edit/archive/restore all touch the same three caches. */
+function invalidateAfterServiceChange(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["admin", "services"] });
+  void queryClient.invalidateQueries({ queryKey: ["catalog", "plans"] });
+  void queryClient.invalidateQueries({ queryKey: ["catalog", "picks"] });
+}
+
+/** `POST /api/admin/services` — creates a new service, always starting `active: true`. */
+export function useCreateService() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: AdminCreateServiceRequest) =>
+      post<AdminServiceItem>("/api/admin/services", request),
+    onSuccess: () => invalidateAfterServiceChange(queryClient),
+  });
+}
+
+/** `PATCH /api/admin/services/{id}` — partial update; never touches `active`. */
+export function useUpdateService(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: AdminUpdateServiceRequest) =>
+      patch<AdminServiceItem>(`/api/admin/services/${id}`, request),
+    onSuccess: () => invalidateAfterServiceChange(queryClient),
+  });
+}
+
+/**
+ * `POST /api/admin/services/{id}/archive` — sets `active: false`. Never a hard delete:
+ * past visits keep referencing this service by id/name, it only drops out of the
+ * customer-facing picks menu for future bookings. Idempotent.
+ */
+export function useArchiveService() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => post<AdminServiceItem>(`/api/admin/services/${id}/archive`),
+    onSuccess: () => invalidateAfterServiceChange(queryClient),
+  });
+}
+
+/** `POST /api/admin/services/{id}/restore` — sets `active: true`. Idempotent. */
+export function useRestoreService() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => post<AdminServiceItem>(`/api/admin/services/${id}/restore`),
+    onSuccess: () => invalidateAfterServiceChange(queryClient),
+  });
+}
+
+/**
+ * Response body for the plan-composition write endpoints — mirrors
+ * `AdminPlanTierServiceResponse.java`.
+ */
+export interface AdminPlanTierServiceItem {
+  planTierId: number;
+  serviceId: number;
+  serviceName: string;
+  serviceTierClass: TierClass;
+  frequencyPerYear: number;
+}
+
+/** Request body for `POST /api/admin/plan-tiers/{planTierId}/services`. */
+export interface AdminAddPlanTierServiceRequest {
+  serviceId: number;
+  frequencyPerYear: number;
+}
+
+function invalidatePlanComposition(queryClient: ReturnType<typeof useQueryClient>) {
+  // The public plans endpoint is the only place composition is read from — see the
+  // section header above.
+  void queryClient.invalidateQueries({ queryKey: ["catalog", "plans"] });
+}
+
+/**
+ * `POST /api/admin/plan-tiers/{planTierId}/services` — adds a service to a plan tier's
+ * composition. Adding a service that's already on this plan is rejected with `409`, not
+ * an upsert — callers should exclude already-added services from whatever picker offers
+ * `serviceId` so this is unreachable in the common case, but must still handle the race
+ * (e.g. two admins editing the same plan at once).
+ */
+export function useAddPlanTierService(planTierId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: AdminAddPlanTierServiceRequest) =>
+      post<AdminPlanTierServiceItem>(`/api/admin/plan-tiers/${planTierId}/services`, request),
+    onSuccess: () => invalidatePlanComposition(queryClient),
+  });
+}
+
+/**
+ * `PATCH /api/admin/plan-tiers/{planTierId}/services/{serviceId}` — changes an existing
+ * composition row's frequency. `frequencyPerYear` is the only field this action supports.
+ */
+export function useUpdatePlanTierServiceFrequency(planTierId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      frequencyPerYear,
+    }: {
+      serviceId: number;
+      frequencyPerYear: number;
+    }) =>
+      patch<AdminPlanTierServiceItem>(`/api/admin/plan-tiers/${planTierId}/services/${serviceId}`, {
+        frequencyPerYear,
+      }),
+    onSuccess: () => invalidatePlanComposition(queryClient),
+  });
+}
+
+/**
+ * `DELETE /api/admin/plan-tiers/{planTierId}/services/{serviceId}` — removes a service
+ * from a plan tier's composition.
+ */
+export function useRemovePlanTierService(planTierId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (serviceId: number) =>
+      del<void>(`/api/admin/plan-tiers/${planTierId}/services/${serviceId}`),
+    onSuccess: () => invalidatePlanComposition(queryClient),
   });
 }
 

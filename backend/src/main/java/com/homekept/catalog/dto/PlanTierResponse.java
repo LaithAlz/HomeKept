@@ -10,8 +10,17 @@ import java.util.List;
  *
  * <p>Shape matches the api-contract.md specification exactly. Money fields are integer
  * cents.
+ *
+ * <p>{@code id} was added alongside the admin catalog-editing endpoints so the admin
+ * console can address a plan tier for the composition endpoints ({@code POST}/{@code PATCH}/
+ * {@code DELETE /api/admin/plan-tiers/{planTierId}/services...}) — this endpoint was
+ * otherwise the only place the frontend ever saw a plan tier at all, and it had no way to
+ * recover the numeric id (plan tier ids are not stable/guessable: the September 2026
+ * repositioning deleted and later re-inserted the ESSENTIAL row, so it does not keep its
+ * original id). Purely additive — existing consumers that ignore the field are unaffected.
  */
 public record PlanTierResponse(
+        Long id,
         PlanCode code,
         String displayName,
         int monthlyPriceCents,
@@ -31,6 +40,7 @@ public record PlanTierResponse(
     public static PlanTierResponse from(PlanTier tier) {
         List<ServiceSummary> services = tier.getPlanTierServices().stream()
                 .map(pts -> new ServiceSummary(
+                        pts.getService().getId(),
                         pts.getService().getName(),
                         pts.getService().getTierClass(),
                         pts.getFrequencyPerYear()))
@@ -38,6 +48,7 @@ public record PlanTierResponse(
                 .toList();
 
         return new PlanTierResponse(
+                tier.getId(),
                 tier.getCode(),
                 tier.getDisplayName(),
                 tier.getMonthlyPriceCents(),

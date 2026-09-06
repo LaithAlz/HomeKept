@@ -21,12 +21,25 @@ export type TierClass = "BASIC" | "MEDIUM" | "PREMIUM";
 export type ServiceCategory = "HVAC" | "PLUMBING" | "EXTERIOR" | "SMART_HOME";
 
 export interface ServiceSummary {
+  /**
+   * The service's id — added alongside the admin catalog-editing endpoints so the admin
+   * console can address this composition row (`PATCH`/`DELETE
+   * /api/admin/plan-tiers/{planTierId}/services/{serviceId}`) without a separate lookup.
+   */
+  id: number;
   name: string;
   tierClass: TierClass;
   frequencyPerYear: number;
 }
 
 export interface PlanTierResponse {
+  /**
+   * The plan tier's id — added alongside the admin catalog-editing endpoints so the admin
+   * console can target `POST/PATCH/DELETE /api/admin/plan-tiers/{planTierId}/services...`.
+   * Not stable/guessable across environments (ESSENTIAL was deleted and later re-inserted
+   * by migration, so it does not keep its original id) — always read this field.
+   */
+  id: number;
   code: PlanCode;
   displayName: string;
   monthlyPriceCents: number;
