@@ -72,6 +72,26 @@ public class Service {
 
     protected Service() {}
 
+    /**
+     * Creates a new admin-authored service ({@code POST /api/admin/services}).
+     * {@code active} always starts {@code true} — see the field initializer above; new
+     * services are never created pre-archived.
+     *
+     * @param aLaCartePriceCents integer cents, or {@code null} for a standing item that is
+     *                           not sold à la carte
+     */
+    public Service(String name, ServiceCategory category, TierClass tierClass,
+                   int defaultDurationMinutes, Integer aLaCartePriceCents,
+                   String description, boolean isFreeWithEveryVisit) {
+        this.name = name;
+        this.category = category;
+        this.tierClass = tierClass;
+        this.defaultDurationMinutes = defaultDurationMinutes;
+        this.aLaCartePriceCents = aLaCartePriceCents;
+        this.description = description;
+        this.isFreeWithEveryVisit = isFreeWithEveryVisit;
+    }
+
     // ── Getters ───────────────────────────────────────────────────────────────
 
     public Long getId() { return id; }
@@ -82,6 +102,22 @@ public class Service {
     public Integer getALaCartePriceCents() { return aLaCartePriceCents; }
     public String getDescription() { return description; }
     public boolean isFreeWithEveryVisit() { return isFreeWithEveryVisit; }
+    public boolean isActive() { return active; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+
+    // ── Setters — admin CRUD only (CatalogAdminService) ──────────────────────
+    // Service fields only. Never add a setter for anything on PlanTier's pricing
+    // columns — pricing stays migration + Stripe only, per docs/pricing-and-visits.md.
+
+    public void setName(String name) { this.name = name; }
+    public void setCategory(ServiceCategory category) { this.category = category; }
+    public void setTierClass(TierClass tierClass) { this.tierClass = tierClass; }
+    public void setDefaultDurationMinutes(int defaultDurationMinutes) { this.defaultDurationMinutes = defaultDurationMinutes; }
+    public void setALaCartePriceCents(Integer aLaCartePriceCents) { this.aLaCartePriceCents = aLaCartePriceCents; }
+    public void setDescription(String description) { this.description = description; }
+    public void setFreeWithEveryVisit(boolean freeWithEveryVisit) { this.isFreeWithEveryVisit = freeWithEveryVisit; }
+
+    /** Archive/restore flag. Never a hard delete — see {@code CatalogAdminService}. */
+    public void setActive(boolean active) { this.active = active; }
 }

@@ -8,4 +8,7 @@ import java.util.List;
 interface ServiceRepository extends JpaRepository<Service, Long> {
 
     List<Service> findAllByActiveTrueOrderByTierClassAscNameAsc();
+
+    /** Admin listing — includes archived (inactive) services, same sort as the public read. */
+    List<Service> findAllByOrderByTierClassAscNameAsc();
 }

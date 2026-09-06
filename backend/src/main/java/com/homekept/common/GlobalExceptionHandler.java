@@ -1,6 +1,10 @@
 package com.homekept.common;
 
 import com.homekept.booking.exception.BookingNotFoundException;
+import com.homekept.catalog.exception.PlanTierNotFoundException;
+import com.homekept.catalog.exception.PlanTierServiceConflictException;
+import com.homekept.catalog.exception.PlanTierServiceNotFoundException;
+import com.homekept.catalog.exception.ServiceNotFoundException;
 import com.homekept.property.exception.PropertyNotFoundException;
 import com.homekept.technician.InvalidStaffInviteRequestException;
 import com.homekept.technician.StaffEmailAlreadyExistsException;
@@ -163,6 +167,45 @@ public class GlobalExceptionHandler {
                                                                  HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ErrorEnvelope.of("NOT_FOUND", "Property not found", requestId(request)));
+    }
+
+    /** Catalog service id does not exist — 404. */
+    @ExceptionHandler(ServiceNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handleServiceNotFound(ServiceNotFoundException ex,
+                                                                HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Service not found", requestId(request)));
+    }
+
+    /** Plan tier id does not exist — 404. */
+    @ExceptionHandler(PlanTierNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handlePlanTierNotFound(PlanTierNotFoundException ex,
+                                                                 HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Plan tier not found", requestId(request)));
+    }
+
+    /**
+     * A service is not currently part of a plan tier's composition (frequency change or
+     * removal targeting a (planTierId, serviceId) pair that isn't in {@code plan_tier_service})
+     * — 404.
+     */
+    @ExceptionHandler(PlanTierServiceNotFoundException.class)
+    public ResponseEntity<ErrorEnvelope> handlePlanTierServiceNotFound(PlanTierServiceNotFoundException ex,
+                                                                        HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorEnvelope.of("NOT_FOUND", "Plan tier does not include this service", requestId(request)));
+    }
+
+    /**
+     * Adding a service to a plan tier that already includes it — 409 Conflict. Pre-canned,
+     * safe message set by {@code CatalogAdminService} (names the PATCH endpoint to use instead).
+     */
+    @ExceptionHandler(PlanTierServiceConflictException.class)
+    public ResponseEntity<ErrorEnvelope> handlePlanTierServiceConflict(PlanTierServiceConflictException ex,
+                                                                        HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorEnvelope.of("CONFLICT", ex.getMessage(), requestId(request)));
     }
 
     /** Illegal state machine transition — 409 Conflict per api-contract.md. */
