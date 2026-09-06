@@ -100,6 +100,36 @@ export function formatCentsExact(cents: number | null | undefined, currency = "C
 }
 
 /**
+ * Parses a dollar-amount string into integer cents without floating-point arithmetic —
+ * splits on the decimal point and pads the fractional part instead of multiplying by 100,
+ * so `"49.99"` always becomes `4999` exactly, never a float-rounding artifact like `4998`
+ * or `5000`. Returns `null` for a blank input (the caller decides what "no price" means)
+ * and `"invalid"` for anything that isn't a non-negative amount with at most two decimal
+ * places. Used by the admin catalog's service form, which collects dollars but the API
+ * (`AdminCreateServiceRequest`/`AdminUpdateServiceRequest`) takes integer cents.
+ */
+export function parseDollarsToCents(raw: string): number | null | "invalid" {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return "invalid";
+  const [dollarsStr, centsStr = ""] = trimmed.split(".");
+  const cents = Number(dollarsStr) * 100 + Number(centsStr.padEnd(2, "0"));
+  return Number.isSafeInteger(cents) ? cents : "invalid";
+}
+
+/**
+ * Inverse of `parseDollarsToCents`, for prefilling an editable dollar-amount input from a
+ * stored cents value — integer division/modulo only, never a float divide. `null` (no
+ * price set) becomes an empty string.
+ */
+export function centsToDollarsInput(cents: number | null): string {
+  if (cents === null) return "";
+  const dollars = Math.floor(cents / 100);
+  const remainder = cents % 100;
+  return remainder === 0 ? String(dollars) : `${dollars}.${String(remainder).padStart(2, "0")}`;
+}
+
+/**
  * "Jul 5" style short date, always rendered in America/Toronto. Relocated
  * from the deleted `@/lib/mock-admin` (used by the admin console).
  */
