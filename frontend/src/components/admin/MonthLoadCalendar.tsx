@@ -141,10 +141,26 @@ function weekdayIndexOf(day: string): number {
   return utcNoon(year, month, d).getUTCDay();
 }
 
+/** Weeks rendered in every month grid. See {@link getMonthGridDays}. */
+const GRID_WEEKS = 6;
+
+/** Days rendered in every month grid: a constant six Sunday-start weeks. */
+export const MONTH_GRID_DAY_COUNT = GRID_WEEKS * 7;
+
 /**
- * Every day shown in the month grid, in order — full Sunday-start weeks, so the grid
- * always includes the leading days from the previous month and trailing days from the
- * next month needed to fill out the first/last week.
+ * Every day shown in the month grid, in order — full Sunday-start weeks, starting with
+ * the leading days from the previous month and running on into the next.
+ *
+ * <p>Always exactly {@link MONTH_GRID_DAY_COUNT} days, which is the point. A month needs
+ * five or six week rows depending on its length and which weekday it starts on (January
+ * 2027 needs six, February 2027 needs five), so emitting only the weeks a month strictly
+ * needs makes the grid change height as you page through months. In the reschedule dialog
+ * that moves the Time field and the buttons under the user's cursor mid-interaction, which
+ * is exactly what the founder asked never to happen ("u see how the height changes. i dont
+ * want that ever").
+ *
+ * Six is the maximum any month can require (31 days starting on a Saturday), so padding to
+ * six always contains the whole month and never truncates it.
  */
 export function getMonthGridDays(month: Date | string): string[] {
   const monthKey = toMonthKey(month);
@@ -152,13 +168,11 @@ export function getMonthGridDays(month: Date | string): string[] {
   const firstOfMonth = utcNoon(year, m, 1);
   const gridStartKey = addDaysToKey(formatDayKeyUTC(firstOfMonth), -firstOfMonth.getUTCDay());
 
-  const lastOfMonth = utcNoon(year, m, daysInMonth(year, m));
-  const gridEndKey = addDaysToKey(formatDayKeyUTC(lastOfMonth), 6 - lastOfMonth.getUTCDay());
-
   const days: string[] = [];
-  for (let day = gridStartKey; ; day = addDaysToKey(day, 1)) {
+  let day = gridStartKey;
+  for (let i = 0; i < MONTH_GRID_DAY_COUNT; i++) {
     days.push(day);
-    if (day === gridEndKey) break;
+    day = addDaysToKey(day, 1);
   }
   return days;
 }
