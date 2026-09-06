@@ -44,14 +44,17 @@ import { Route as AdminRoutesRouteImport } from './routes/admin.routes'
 import { Route as AdminPlansRouteImport } from './routes/admin.plans'
 import { Route as AdminMetricsRouteImport } from './routes/admin.metrics'
 import { Route as AdminLeadsRouteImport } from './routes/admin.leads'
+import { Route as AdminCustomersRouteImport } from './routes/admin.customers'
 import { Route as AdminCatalogRouteImport } from './routes/admin.catalog'
 import { Route as AdminWalkthroughsIndexRouteImport } from './routes/admin.walkthroughs.index'
 import { Route as AdminVisitsIndexRouteImport } from './routes/admin.visits.index'
 import { Route as AdminSubscribersIndexRouteImport } from './routes/admin.subscribers.index'
+import { Route as AdminCustomersIndexRouteImport } from './routes/admin.customers.index'
 import { Route as AppVisitsIdRouteImport } from './routes/app.visits.$id'
 import { Route as AdminWalkthroughsIdRouteImport } from './routes/admin.walkthroughs.$id'
 import { Route as AdminVisitsIdRouteImport } from './routes/admin.visits.$id'
 import { Route as AdminSubscribersIdRouteImport } from './routes/admin.subscribers.$id'
+import { Route as AdminCustomersIdRouteImport } from './routes/admin.customers.$id'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -228,6 +231,11 @@ const AdminLeadsRoute = AdminLeadsRouteImport.update({
   path: '/leads',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCustomersRoute = AdminCustomersRouteImport.update({
+  id: '/customers',
+  path: '/customers',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCatalogRoute = AdminCatalogRouteImport.update({
   id: '/catalog',
   path: '/catalog',
@@ -247,6 +255,11 @@ const AdminSubscribersIndexRoute = AdminSubscribersIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminSubscribersRoute,
+} as any)
+const AdminCustomersIndexRoute = AdminCustomersIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminCustomersRoute,
 } as any)
 const AppVisitsIdRoute = AppVisitsIdRouteImport.update({
   id: '/$id',
@@ -268,6 +281,11 @@ const AdminSubscribersIdRoute = AdminSubscribersIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AdminSubscribersRoute,
 } as any)
+const AdminCustomersIdRoute = AdminCustomersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AdminCustomersRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -287,6 +305,7 @@ export interface FileRoutesByFullPath {
   '/tech': typeof TechRoute
   '/terms': typeof TermsRoute
   '/admin/catalog': typeof AdminCatalogRoute
+  '/admin/customers': typeof AdminCustomersRouteWithChildren
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/metrics': typeof AdminMetricsRoute
   '/admin/plans': typeof AdminPlansRoute
@@ -306,10 +325,12 @@ export interface FileRoutesByFullPath {
   '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/admin/customers/$id': typeof AdminCustomersIdRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/admin/visits/$id': typeof AdminVisitsIdRoute
   '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/customers/': typeof AdminCustomersIndexRoute
   '/admin/subscribers/': typeof AdminSubscribersIndexRoute
   '/admin/visits/': typeof AdminVisitsIndexRoute
   '/admin/walkthroughs/': typeof AdminWalkthroughsIndexRoute
@@ -346,10 +367,12 @@ export interface FileRoutesByTo {
   '/staff/activate': typeof StaffActivateRoute
   '/admin': typeof AdminIndexRoute
   '/app': typeof AppIndexRoute
+  '/admin/customers/$id': typeof AdminCustomersIdRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/admin/visits/$id': typeof AdminVisitsIdRoute
   '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/customers': typeof AdminCustomersIndexRoute
   '/admin/subscribers': typeof AdminSubscribersIndexRoute
   '/admin/visits': typeof AdminVisitsIndexRoute
   '/admin/walkthroughs': typeof AdminWalkthroughsIndexRoute
@@ -373,6 +396,7 @@ export interface FileRoutesById {
   '/tech': typeof TechRoute
   '/terms': typeof TermsRoute
   '/admin/catalog': typeof AdminCatalogRoute
+  '/admin/customers': typeof AdminCustomersRouteWithChildren
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/metrics': typeof AdminMetricsRoute
   '/admin/plans': typeof AdminPlansRoute
@@ -392,10 +416,12 @@ export interface FileRoutesById {
   '/staff/activate': typeof StaffActivateRoute
   '/admin/': typeof AdminIndexRoute
   '/app/': typeof AppIndexRoute
+  '/admin/customers/$id': typeof AdminCustomersIdRoute
   '/admin/subscribers/$id': typeof AdminSubscribersIdRoute
   '/admin/visits/$id': typeof AdminVisitsIdRoute
   '/admin/walkthroughs/$id': typeof AdminWalkthroughsIdRoute
   '/app/visits/$id': typeof AppVisitsIdRoute
+  '/admin/customers/': typeof AdminCustomersIndexRoute
   '/admin/subscribers/': typeof AdminSubscribersIndexRoute
   '/admin/visits/': typeof AdminVisitsIndexRoute
   '/admin/walkthroughs/': typeof AdminWalkthroughsIndexRoute
@@ -420,6 +446,7 @@ export interface FileRouteTypes {
     | '/tech'
     | '/terms'
     | '/admin/catalog'
+    | '/admin/customers'
     | '/admin/leads'
     | '/admin/metrics'
     | '/admin/plans'
@@ -439,10 +466,12 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin/'
     | '/app/'
+    | '/admin/customers/$id'
     | '/admin/subscribers/$id'
     | '/admin/visits/$id'
     | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
+    | '/admin/customers/'
     | '/admin/subscribers/'
     | '/admin/visits/'
     | '/admin/walkthroughs/'
@@ -479,10 +508,12 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin'
     | '/app'
+    | '/admin/customers/$id'
     | '/admin/subscribers/$id'
     | '/admin/visits/$id'
     | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
+    | '/admin/customers'
     | '/admin/subscribers'
     | '/admin/visits'
     | '/admin/walkthroughs'
@@ -505,6 +536,7 @@ export interface FileRouteTypes {
     | '/tech'
     | '/terms'
     | '/admin/catalog'
+    | '/admin/customers'
     | '/admin/leads'
     | '/admin/metrics'
     | '/admin/plans'
@@ -524,10 +556,12 @@ export interface FileRouteTypes {
     | '/staff/activate'
     | '/admin/'
     | '/app/'
+    | '/admin/customers/$id'
     | '/admin/subscribers/$id'
     | '/admin/visits/$id'
     | '/admin/walkthroughs/$id'
     | '/app/visits/$id'
+    | '/admin/customers/'
     | '/admin/subscribers/'
     | '/admin/visits/'
     | '/admin/walkthroughs/'
@@ -801,6 +835,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminLeadsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/customers': {
+      id: '/admin/customers'
+      path: '/customers'
+      fullPath: '/admin/customers'
+      preLoaderRoute: typeof AdminCustomersRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/catalog': {
       id: '/admin/catalog'
       path: '/catalog'
@@ -828,6 +869,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/subscribers/'
       preLoaderRoute: typeof AdminSubscribersIndexRouteImport
       parentRoute: typeof AdminSubscribersRoute
+    }
+    '/admin/customers/': {
+      id: '/admin/customers/'
+      path: '/'
+      fullPath: '/admin/customers/'
+      preLoaderRoute: typeof AdminCustomersIndexRouteImport
+      parentRoute: typeof AdminCustomersRoute
     }
     '/app/visits/$id': {
       id: '/app/visits/$id'
@@ -857,8 +905,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSubscribersIdRouteImport
       parentRoute: typeof AdminSubscribersRoute
     }
+    '/admin/customers/$id': {
+      id: '/admin/customers/$id'
+      path: '/$id'
+      fullPath: '/admin/customers/$id'
+      preLoaderRoute: typeof AdminCustomersIdRouteImport
+      parentRoute: typeof AdminCustomersRoute
+    }
   }
 }
+
+interface AdminCustomersRouteChildren {
+  AdminCustomersIdRoute: typeof AdminCustomersIdRoute
+  AdminCustomersIndexRoute: typeof AdminCustomersIndexRoute
+}
+
+const AdminCustomersRouteChildren: AdminCustomersRouteChildren = {
+  AdminCustomersIdRoute: AdminCustomersIdRoute,
+  AdminCustomersIndexRoute: AdminCustomersIndexRoute,
+}
+
+const AdminCustomersRouteWithChildren = AdminCustomersRoute._addFileChildren(
+  AdminCustomersRouteChildren,
+)
 
 interface AdminSubscribersRouteChildren {
   AdminSubscribersIdRoute: typeof AdminSubscribersIdRoute
@@ -902,6 +971,7 @@ const AdminWalkthroughsRouteWithChildren =
 
 interface AdminRouteChildren {
   AdminCatalogRoute: typeof AdminCatalogRoute
+  AdminCustomersRoute: typeof AdminCustomersRouteWithChildren
   AdminLeadsRoute: typeof AdminLeadsRoute
   AdminMetricsRoute: typeof AdminMetricsRoute
   AdminPlansRoute: typeof AdminPlansRoute
@@ -916,6 +986,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminCatalogRoute: AdminCatalogRoute,
+  AdminCustomersRoute: AdminCustomersRouteWithChildren,
   AdminLeadsRoute: AdminLeadsRoute,
   AdminMetricsRoute: AdminMetricsRoute,
   AdminPlansRoute: AdminPlansRoute,

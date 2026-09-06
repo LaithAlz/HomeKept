@@ -41,6 +41,7 @@ import {
   useConfirmRescheduleRequest,
   useDeclineRescheduleRequest,
   usePatchAdminVisit,
+  visitCustomerFullName,
   VISIT_STATUS_LABEL,
   VISIT_STATUS_TONE,
   VISIT_TYPE_LABEL,
@@ -223,6 +224,10 @@ function VisitRow({
 }) {
   const isScheduled = v.status === "SCHEDULED";
   const isCompleted = v.status === "COMPLETED";
+  const customerName = visitCustomerFullName(v);
+  const propertyLabel = v.propertyStreetAddress
+    ? `${v.propertyStreetAddress}${v.propertyCity ? `, ${v.propertyCity}` : ""}`
+    : `Property #${v.propertyId}`;
   return (
     <tr className="border-t border-border hover:bg-muted/30">
       <td className="px-4 py-3">
@@ -234,7 +239,14 @@ function VisitRow({
           Visit #{v.id}
         </Link>
         <div className="text-xs text-muted-foreground">
-          Subscriber #{v.subscriberId} · Property #{v.propertyId}
+          <Link
+            to="/admin/customers/$id"
+            params={{ id: String(v.subscriberId) }}
+            className="rounded font-medium hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {customerName || `Customer #${v.subscriberId}`}
+          </Link>{" "}
+          · {propertyLabel}
           {isCompleted && v.materialsCostCents != null && (
             <> · Materials {formatCentsCad(v.materialsCostCents)}</>
           )}
@@ -567,6 +579,11 @@ function CancelVisitDialog({
  */
 function RescheduleRequestsSection() {
   const { data: requests, isLoading, isError, refetch } = useAdminRescheduleRequests();
+  // Same query/options as `VisitsPage` above (this section is always rendered inside
+  // it), so this reads from the already-warm cache rather than firing a second
+  // request — used only to resolve a customer name for the row below, since the
+  // reschedule-requests endpoint itself carries no name, just `subscriberId`.
+  const { data: visits } = useAdminVisits({ limit: 100 });
   const [confirmTarget, setConfirmTarget] = useState<AdminRescheduleRequestListItem | null>(null);
   const [declineTarget, setDeclineTarget] = useState<AdminRescheduleRequestListItem | null>(null);
 
@@ -600,29 +617,45 @@ function RescheduleRequestsSection() {
       </header>
 
       <ul className="divide-y divide-border">
-        {requests.map((r) => (
-          <li key={r.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
-            <div className="min-w-0">
-              <p className="font-semibold text-foreground">
-                Visit #{r.visitId} · Subscriber #{r.subscriberId}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Requested {formatDateShort(r.createdAt)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Preferred: {r.preferredDates.map((d) => formatDateTime(d)).join(", ")}
-              </p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setDeclineTarget(r)}>
-                Decline
-              </Button>
-              <Button type="button" size="sm" onClick={() => setConfirmTarget(r)}>
-                Confirm
-              </Button>
-            </div>
-          </li>
-        ))}
+        {requests.map((r) => {
+          const visit = visits?.find((v) => v.id === r.visitId);
+          const customerName = visit ? visitCustomerFullName(visit) : "";
+          return (
+            <li key={r.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">
+                  Visit #{r.visitId} ·{" "}
+                  <Link
+                    to="/admin/customers/$id"
+                    params={{ id: String(r.subscriberId) }}
+                    className="hover:underline"
+                  >
+                    {customerName || `Customer #${r.subscriberId}`}
+                  </Link>
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Requested {formatDateShort(r.createdAt)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Preferred: {r.preferredDates.map((d) => formatDateTime(d)).join(", ")}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDeclineTarget(r)}
+                >
+                  Decline
+                </Button>
+                <Button type="button" size="sm" onClick={() => setConfirmTarget(r)}>
+                  Confirm
+                </Button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       <ConfirmRescheduleDialog

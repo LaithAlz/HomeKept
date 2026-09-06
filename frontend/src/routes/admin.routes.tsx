@@ -26,6 +26,7 @@ import {
   useAdminVisits,
   useAdminTechnicians,
   useAdminVisitDayLoad,
+  visitCustomerFullName,
   type AdminVisitListItem,
 } from "@/lib/admin";
 import { cn } from "@/lib/utils";
@@ -71,12 +72,12 @@ const TYPE_LABEL: Record<string, string> = {
  * technician's `userId`, not their row `id`.
  *
  * There is no dispatch/route-optimization backend yet (no drive-time estimate, no
- * addresses, no reordering) and no batched "subscriber by id" lookup either (only
- * `GET /api/admin/subscribers/{id}`, one at a time), so a visit card can't show the
- * customer's name or property address without an N+1 fetch per card — instead each
- * card links straight to that subscriber's full record (`/admin/subscribers/$id`,
- * the same page the dashboard links to) so a dispatcher is one click from the name,
- * address, and phone. See the component doc comments below for the rest of that gap.
+ * reordering), but the visit list endpoint (`GET /api/admin/visits`) does carry the
+ * customer's name and the property's street address/city batched in with each row
+ * (see `AdminVisitListItem.java`) — each card shows those directly, falling back to
+ * the raw ids only when a field is unexpectedly missing, and still links straight to
+ * that customer's full record (`/admin/customers/$id`, the same page the dashboard
+ * links to) so a dispatcher is one click from the phone number too.
  *
  * Layout: the day itself lives in the URL (`?date=YYYY-MM-DD`, see `routesSearchSchema`
  * above) so it's linkable and survives a reload. The month calendar (`MonthLoadCalendar`)
@@ -425,15 +426,18 @@ function TechnicianDayCard({
             </div>
             <div className="mt-1.5 space-y-0.5 text-xs">
               <Link
-                to="/admin/subscribers/$id"
+                to="/admin/customers/$id"
                 params={{ id: String(v.subscriberId) }}
                 className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 hover:underline"
               >
-                Subscriber #{v.subscriberId}
+                {visitCustomerFullName(v) || `Customer #${v.subscriberId}`}
                 <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
               </Link>
               <p className="text-muted-foreground">
-                Property #{v.propertyId} · Visit #{v.id}
+                {v.propertyStreetAddress
+                  ? `${v.propertyStreetAddress}${v.propertyCity ? `, ${v.propertyCity}` : ""}`
+                  : `Property #${v.propertyId}`}{" "}
+                · Visit #{v.id}
               </p>
             </div>
           </li>

@@ -198,10 +198,12 @@ export interface AdminSubscriberListItem {
   /**
    * Contact fields, resolved from the identity domain. Optional here, matching the
    * backend's `@JsonInclude(NON_NULL)` convention on `planCode`/`mrrCents` above.
+   * `phone` is frequently absent since it isn't captured at account creation.
    */
   firstName?: string;
   lastName?: string;
   email?: string;
+  phone?: string;
 }
 
 export interface AdminSubscriberPropertySummary {
@@ -478,6 +480,18 @@ export interface AdminVisitListItem {
   type: VisitType;
   completedAt: string | null;
   createdAt: string;
+  /**
+   * Customer identity and property address, resolved via two batched queries per page
+   * (never per-row — see `AdminVisitListItem.java`). `null` only if the referenced
+   * subscriber/property row is unexpectedly missing (both FKs are RESTRICT, so this
+   * should not happen in practice) — always handle the null case rather than assuming
+   * these are present.
+   */
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  customerPhone: string | null;
+  propertyStreetAddress: string | null;
+  propertyCity: string | null;
 }
 
 /**
@@ -520,10 +534,28 @@ export interface AdminPatchVisitRequest {
   technicianUserId?: number;
 }
 
-/** Response body for `PATCH /api/admin/visits/{id}` — the updated visit, rescheduled/cancelled/reassigned in place. */
-export interface AdminVisitResponse extends AdminVisitListItem {
+/**
+ * Response body for `PATCH /api/admin/visits/{id}` — the updated visit, rescheduled/
+ * cancelled/reassigned in place. Deliberately NOT `extends AdminVisitListItem`: the list
+ * item now also carries the customer/property fields added for the visits list (see
+ * above), which `AdminVisitResponse.java` does not return — extending would have
+ * silently claimed those fields exist here too.
+ */
+export interface AdminVisitResponse {
+  id: number;
+  subscriberId: number;
+  propertyId: number;
+  technicianId: number | null;
   visitTemplateId: number | null;
+  scheduledFor: string;
+  durationMinutes: number;
+  actualDurationMinutes: number | null;
+  materialsCostCents: number | null;
+  status: VisitStatus;
+  type: VisitType;
   completionNotes: string | null;
+  completedAt: string | null;
+  createdAt: string;
 }
 
 /**
@@ -599,8 +631,8 @@ export interface AdminVisitDetail {
 
 /** `firstName`/`lastName` joined, trimmed; empty string when both are absent. */
 export function visitCustomerFullName(v: {
-  customerFirstName?: string;
-  customerLastName?: string;
+  customerFirstName?: string | null;
+  customerLastName?: string | null;
 }): string {
   return [v.customerFirstName, v.customerLastName].filter(Boolean).join(" ").trim();
 }
