@@ -218,6 +218,78 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest());
     }
 
+    // ── GET /api/admin/visits?subscriberId= ──────────────────────────────────
+
+    @Test
+    void listVisits_subscriberIdFilter_returnsOnlyThatSubscribersVisits() throws Exception {
+        Visit targetVisit = seedScheduledVisit();
+        Subscriber otherSubscriber = seedOtherSubscriber();
+        Visit otherVisit = visitRepository.save(new Visit(
+                otherSubscriber.getId(), otherSubscriber.getPropertyId(), null,
+                dbNow().plus(30, ChronoUnit.DAYS), 120, VisitType.ROUTINE));
+
+        MvcResult result = mockMvc.perform(get(LIST_URL + "?subscriberId=" + targetSubscriber.getId() + "&limit=100")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(body, "$[*].id");
+        assertThat(ids).contains(targetVisit.getId().intValue());
+        assertThat(ids).doesNotContain(otherVisit.getId().intValue());
+    }
+
+    @Test
+    void listVisits_subscriberIdAndStatusFilters_compose() throws Exception {
+        Visit scheduled = seedScheduledVisit();
+        Visit cancelled = seedScheduledVisit();
+        cancelled.setStatus(VisitStatus.CANCELLED);
+        visitRepository.save(cancelled);
+
+        MvcResult result = mockMvc.perform(get(LIST_URL
+                        + "?subscriberId=" + targetSubscriber.getId()
+                        + "&status=CANCELLED&limit=100")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> ids = com.jayway.jsonpath.JsonPath.read(body, "$[*].id");
+        assertThat(ids).contains(cancelled.getId().intValue());
+        assertThat(ids).doesNotContain(scheduled.getId().intValue());
+    }
+
+    @Test
+    void listVisits_subscriberIdFilter_unknownSubscriber_returnsEmptyArray() throws Exception {
+        mockMvc.perform(get(LIST_URL + "?subscriberId=999999999")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void listVisits_subscriberIdFilter_cursorPagination_returnsNewestFirst() throws Exception {
+        seedScheduledVisit();
+        seedScheduledVisit();
+
+        MvcResult page1 = mockMvc.perform(get(LIST_URL + "?subscriberId=" + targetSubscriber.getId() + "&limit=1")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andReturn();
+
+        List<Integer> page1Ids = com.jayway.jsonpath.JsonPath.read(
+                page1.getResponse().getContentAsString(), "$[*].id");
+        Long cursor = page1Ids.get(0).longValue();
+
+        mockMvc.perform(get(LIST_URL + "?subscriberId=" + targetSubscriber.getId()
+                        + "&limit=100&cursor=" + cursor)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id >= " + cursor + ")]").isEmpty());
+    }
+
     @Test
     void listVisits_cursorPagination_returnsNewestFirst() throws Exception {
         // Seed two visits — the newest-first ordering guarantees the second one seeded
@@ -809,6 +881,140 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    // ── GET/POST /api/admin/visits/{id}/notes — the threaded log ─────────────
+
+    @Test
+    void addNote_asAdmin_returns201AndPersists() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        MvcResult result = mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Customer asked us to skip the shed this time.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.body").value("Customer asked us to skip the shed this time."))
+                .andExpect(jsonPath("$.authorUserId").value(adminUser.getId()))
+                .andExpect(jsonPath("$.authorFirstName").value("Admin"))
+                .andExpect(jsonPath("$.authorLastName").value("Visit"))
+                .andReturn();
+
+        Long noteId = idFrom(result);
+        Long persistedAuthor = jdbc.queryForObject(
+                "SELECT author_user_id FROM visit_note WHERE id = ?", Long.class, noteId);
+        assertThat(persistedAuthor).isEqualTo(adminUser.getId());
+    }
+
+    @Test
+    void addNote_authorIsAlwaysThePrincipal_neverTheRequestBody() throws Exception {
+        // The request DTO has no authorUserId field at all — sending one is simply ignored
+        // (Jackson silently drops unknown properties by default), so the note's author must
+        // still be the authenticated admin, never the bogus id supplied in the body.
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Spoofed author attempt\",\"authorUserId\":999999999}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorUserId").value(adminUser.getId()));
+    }
+
+    @Test
+    void addNote_blankBody_returns400() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void addNote_nonExistentVisit_returns404() throws Exception {
+        mockMvc.perform(post(PATCH_URL + "/notes", 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addNote_asCustomer_returns403() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void addNote_anonymous_returns401() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void listNotes_newestFirst() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"First note\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Second note\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> bodies = com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$[*].body");
+        assertThat(bodies).containsExactly("Second note", "First note");
+    }
+
+    @Test
+    void listNotes_nonExistentVisit_returns404() throws Exception {
+        mockMvc.perform(get(PATCH_URL + "/notes", 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listNotes_noHistory_returnsEmptyArray() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void listNotes_asCustomer_returns403() throws Exception {
+        Visit visit = seedScheduledVisit();
+
+        mockMvc.perform(get(PATCH_URL + "/notes", visit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Seeds a SCHEDULED ROUTINE visit for the target subscriber. */
@@ -821,6 +1027,24 @@ class AdminVisitIntegrationTest extends AbstractIntegrationTest {
                 120,
                 VisitType.ROUTINE
         ));
+    }
+
+    /** Seeds a second ACTIVE subscriber (distinct customer + property) for filter tests. */
+    private Subscriber seedOtherSubscriber() {
+        long nano = System.nanoTime();
+        User otherUser = userRepository.save(new User(
+                "admin-visit-other-" + nano + "@test.local",
+                passwordEncoder.encode("Test1234!"),
+                "Other", "Customer",
+                Role.CUSTOMER, UserStatus.ACTIVE));
+
+        Property otherProp = propertyRepository.save(new Property(
+                nano + " Other Ave", null, "Mississauga", "L5L 1A1",
+                "L5L", null, null, PropertyType.DETACHED));
+
+        return subscriberRepository.save(new Subscriber(
+                otherUser.getId(), otherProp.getId(),
+                SubscriberStatus.ACTIVE, BillingCycle.MONTHLY));
     }
 
     private Long firstServiceId() {

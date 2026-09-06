@@ -72,7 +72,7 @@ public abstract class AbstractIntegrationTest {
     private static final String MUTABLE_TABLES = String.join(", ",
             "users", "refresh_tokens", "password_reset_tokens",
             "walkthrough_booking", "walkthrough_booking_day_preference",
-            "property", "subscriber", "subscription_event", "activation_token",
+            "property", "property_note", "subscriber", "subscription_event", "activation_token",
             "technician_profile", "visit_photo", "visit_note", "flag", "todo_item",
             "visit", "visit_service", "visit_event",
             "reschedule_request", "reschedule_request_slot",

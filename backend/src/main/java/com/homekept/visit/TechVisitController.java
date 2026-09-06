@@ -1,5 +1,8 @@
 package com.homekept.visit;
 
+import com.homekept.property.dto.CreatePropertyNoteRequest;
+import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.visit.dto.CreateVisitNoteRequest;
 import com.homekept.visit.dto.FlagResponse;
 import com.homekept.visit.dto.TechCompleteVisitRequest;
 import com.homekept.visit.dto.TechCompleteVisitResponse;
@@ -15,6 +18,7 @@ import com.homekept.visit.dto.TechPhotoUploadUrlResponse;
 import com.homekept.visit.dto.TechStartVisitResponse;
 import com.homekept.visit.dto.TechVisitListItem;
 import com.homekept.visit.dto.TodoResponse;
+import com.homekept.visit.dto.VisitNoteItem;
 import com.homekept.visit.dto.VisitServiceItem;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -233,5 +237,84 @@ public class TechVisitController {
             Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(techVisitService.incompleteVisit(id, request, techUserId));
+    }
+
+    /**
+     * GET /api/tech/visits/{id}/notes
+     *
+     * <p>A visit's threaded operational notes, newest first. Same rows the admin console can
+     * read/write via {@code GET}/{@code POST /api/admin/visits/{id}/notes}. Returns 404 if
+     * the visit does not exist or is not assigned to this technician.
+     *
+     * @param id   the visit id
+     * @param auth JWT principal — Long user id
+     * @return 200 with the notes, newest first
+     */
+    @GetMapping("/visits/{id}/notes")
+    public ResponseEntity<List<VisitNoteItem>> listVisitNotes(@PathVariable Long id, Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(techVisitService.listVisitNotes(id, techUserId));
+    }
+
+    /**
+     * POST /api/tech/visits/{id}/notes
+     *
+     * <p>Adds a note to the visit's operational log. The author is always this authenticated
+     * technician. Returns 404 if the visit does not exist or is not assigned to them.
+     *
+     * @param id      the visit id
+     * @param request the note body
+     * @param auth    JWT principal — Long user id, recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/visits/{id}/notes")
+    public ResponseEntity<VisitNoteItem> addVisitNote(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateVisitNoteRequest request,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        VisitNoteItem note = techVisitService.addVisitNote(id, request.body(), techUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
+    }
+
+    /**
+     * GET /api/tech/properties/{propertyId}/notes
+     *
+     * <p>A property's threaded operational notes, newest first — standing context ("dog in
+     * the yard", "gate sticks") that the next technician to attend needs, as distinct from a
+     * single visit's own notes. Returns 404 if the property does not exist, OR if this
+     * technician has never been assigned a visit at it — the two cases are indistinguishable
+     * from outside, per the ownership-failure rule.
+     *
+     * @param propertyId the property id
+     * @param auth       JWT principal — Long user id
+     * @return 200 with the notes, newest first
+     */
+    @GetMapping("/properties/{propertyId}/notes")
+    public ResponseEntity<List<PropertyNoteItem>> listPropertyNotes(
+            @PathVariable Long propertyId, Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(techVisitService.listPropertyNotes(propertyId, techUserId));
+    }
+
+    /**
+     * POST /api/tech/properties/{propertyId}/notes
+     *
+     * <p>Adds a note to the property's operational log. The author is always this
+     * authenticated technician. Same 404 rule as the GET above.
+     *
+     * @param propertyId the property id
+     * @param request    the note body
+     * @param auth       JWT principal — Long user id, recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/properties/{propertyId}/notes")
+    public ResponseEntity<PropertyNoteItem> addPropertyNote(
+            @PathVariable Long propertyId,
+            @Valid @RequestBody CreatePropertyNoteRequest request,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        PropertyNoteItem note = techVisitService.addPropertyNote(propertyId, request.body(), techUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 }

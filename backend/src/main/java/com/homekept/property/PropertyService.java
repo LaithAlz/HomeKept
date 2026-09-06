@@ -1,10 +1,17 @@
 package com.homekept.property;
 
+import com.homekept.identity.UserQueryService;
+import com.homekept.identity.UserQueryService.UserSummary;
+import com.homekept.property.dto.PropertyNoteItem;
 import com.homekept.property.exception.PropertyNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -12,20 +19,39 @@ import java.util.stream.Collectors;
  * Service for the property domain.
  *
  * <p>Cross-domain rule: this service may be called by other domains (e.g., the
- * subscription activation flow) but never exposes its repository or entity to them.
+ * subscription activation flow, or the visit domain's {@code TechVisitService} for the
+ * technician-facing property-notes endpoints) but never exposes its repository or entity to
+ * them.
  *
  * <p>Access notes: only the technician day-sheet slice decrypts access notes.
  * This service only creates and stores encrypted bytes.
+ *
+ * <p>Property notes ({@link #listNotes}/{@link #addNote}) are the OTHER, plaintext note
+ * surface (V18's {@code property_note} table) — never confuse the two. This service resolves
+ * a note's author via {@link UserQueryService} (identity domain) — never by reaching into
+ * the identity domain's repository or entity directly.
  */
 @Service
 public class PropertyService {
 
-    private final PropertyRepository propertyRepository;
-    private final AccessNotesCipher cipher;
+    private static final Logger log = LoggerFactory.getLogger(PropertyService.class);
 
-    public PropertyService(PropertyRepository propertyRepository, AccessNotesCipher cipher) {
+    /** Cap on notes returned per property — mirrors {@code VisitNoteService.NOTES_LIMIT}. */
+    private static final int NOTES_LIMIT = 100;
+
+    private final PropertyRepository propertyRepository;
+    private final PropertyNoteRepository propertyNoteRepository;
+    private final AccessNotesCipher cipher;
+    private final UserQueryService userQueryService;
+
+    public PropertyService(PropertyRepository propertyRepository,
+                           PropertyNoteRepository propertyNoteRepository,
+                           AccessNotesCipher cipher,
+                           UserQueryService userQueryService) {
         this.propertyRepository = propertyRepository;
+        this.propertyNoteRepository = propertyNoteRepository;
         this.cipher = cipher;
+        this.userQueryService = userQueryService;
     }
 
     /**
@@ -178,7 +204,85 @@ public class PropertyService {
         return propertyRepository.save(property);
     }
 
+    /**
+     * Returns a property's threaded notes, newest first, capped at {@value #NOTES_LIMIT}
+     * rows, with each note's author resolved to a name via a single batched
+     * {@link UserQueryService#findSummariesByIds} call for the whole page — never one query
+     * per note. Backs {@code GET /api/admin/properties/{propertyId}/notes} and (after its own
+     * ownership check) {@code GET /api/tech/properties/{propertyId}/notes}.
+     *
+     * @param propertyId the property id
+     * @return the property's notes, newest first
+     * @throws PropertyNotFoundException if the property does not exist (404)
+     */
+    @Transactional(readOnly = true)
+    public List<PropertyNoteItem> listNotes(Long propertyId) {
+        if (!propertyRepository.existsById(propertyId)) {
+            throw new PropertyNotFoundException(propertyId);
+        }
+
+        List<PropertyNote> notes = propertyNoteRepository
+                .findByPropertyIdOrderByCreatedAtDesc(propertyId, PageRequest.of(0, NOTES_LIMIT));
+        if (notes.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> authorIds = notes.stream().map(PropertyNote::getAuthorUserId).distinct().toList();
+        Map<Long, UserSummary> authorsById = userQueryService.findSummariesByIds(authorIds);
+
+        return notes.stream().map(n -> toNoteItem(n, authorsById)).collect(Collectors.toList());
+    }
+
+    /**
+     * Adds a note to a property's operational log. Backs
+     * {@code POST /api/admin/properties/{propertyId}/notes} and (after its own ownership
+     * check) {@code POST /api/tech/properties/{propertyId}/notes}.
+     *
+     * <p>{@code authorUserId} MUST be the authenticated principal's user id — never a value
+     * taken from request input.
+     *
+     * <h2>Why there is no delete (or edit) operation</h2>
+     * <p>Same reasoning the V18 migration states explicitly: a technician writing "furnace
+     * filter sits behind the stairs" is recording an observation. It matters who saw it and
+     * when, notes accumulate across visits, and a later note can supersede an earlier one
+     * without erasing that the earlier one was true at the time. Deleting a note would remove
+     * that history silently, with no trace anything was ever said — worse than an outdated
+     * note staying visible with its timestamp and author, which let a reader judge its
+     * currency. A correction is a new note, not erasing the old one.
+     *
+     * @param propertyId   the property to add a note to
+     * @param body         the note text (already validated non-blank, max length, at the DTO
+     *                     boundary)
+     * @param authorUserId the authenticated principal's user id
+     * @return the created note, with the author's name resolved
+     * @throws PropertyNotFoundException if the property does not exist (404)
+     */
+    @Transactional
+    public PropertyNoteItem addNote(Long propertyId, String body, Long authorUserId) {
+        if (!propertyRepository.existsById(propertyId)) {
+            throw new PropertyNotFoundException(propertyId);
+        }
+
+        PropertyNote saved = propertyNoteRepository.save(new PropertyNote(propertyId, authorUserId, body));
+
+        log.info("property_note_added propertyId={} noteId={}", propertyId, saved.getId());
+
+        Map<Long, UserSummary> authorsById = userQueryService.findSummariesByIds(List.of(authorUserId));
+        return toNoteItem(saved, authorsById);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private PropertyNoteItem toNoteItem(PropertyNote note, Map<Long, UserSummary> authorsById) {
+        UserSummary author = authorsById.get(note.getAuthorUserId());
+        return new PropertyNoteItem(
+                note.getId(),
+                note.getBody(),
+                note.getCreatedAt(),
+                note.getAuthorUserId(),
+                author != null ? author.firstName() : null,
+                author != null ? author.lastName() : null);
+    }
 
     /**
      * Derives the FSA (forward sortation area) from the postal code.

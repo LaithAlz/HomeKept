@@ -9,15 +9,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Integration tests for {@link AdminPropertyController} —
- * {@code PATCH /api/admin/properties/{propertyId}/sku}.
+ * {@code PATCH /api/admin/properties/{propertyId}/sku} and
+ * {@code GET}/{@code POST /api/admin/properties/{propertyId}/notes}.
  *
  * <p>Covers:
  * <ul>
@@ -29,23 +36,31 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>PATCH unknown propertyId → 404.</li>
  *   <li>PATCH waterHeaterAgeYears = -1 → 400 validation error.</li>
  *   <li>PATCH waterHeaterAgeYears = 101 → 400 validation error.</li>
+ *   <li>Notes: add as ADMIN → 201, persists with the admin as author (never a value from
+ *       the request body); list newest first; unknown property → 404; blank body → 400;
+ *       CUSTOMER/anonymous → 403/401; adding/reading notes never touches the property's
+ *       encrypted {@code access_notes} column.</li>
  * </ul>
  */
 class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
 
     private static final String SKU_URL   = "/api/admin/properties/{propertyId}/sku";
+    private static final String NOTES_URL = "/api/admin/properties/{propertyId}/notes";
 
     @Autowired PropertyRepository propertyRepository;
+    @Autowired AccessNotesCipher accessNotesCipher;
+    @Autowired JdbcTemplate jdbc;
 
     private String adminToken;
     private String customerToken;
+    private User adminUser;
     private Property property;
 
     @BeforeEach
     void seedData() throws Exception {
         long nano = System.nanoTime();
 
-        User adminUser = userRepository.save(new User(
+        adminUser = userRepository.save(new User(
                 "admin-property-admin-" + nano + "@test.local",
                 passwordEncoder.encode("Test1234!"),
                 "Admin", "Property",
@@ -177,6 +192,150 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
                         .content("{\"waterHeaterAgeYears\": 101}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    // ── GET/POST /api/admin/properties/{propertyId}/notes ────────────────────
+
+    @Test
+    void addNote_asAdmin_returns201AndPersists() throws Exception {
+        MvcResult result = mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Dog in the back yard, ring twice.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.body").value("Dog in the back yard, ring twice."))
+                .andExpect(jsonPath("$.authorUserId").value(adminUser.getId()))
+                .andExpect(jsonPath("$.authorFirstName").value("Admin"))
+                .andExpect(jsonPath("$.authorLastName").value("Property"))
+                .andReturn();
+
+        Long noteId = idFrom(result);
+        Long persistedAuthor = jdbc.queryForObject(
+                "SELECT author_user_id FROM property_note WHERE id = ?", Long.class, noteId);
+        assertThat(persistedAuthor).isEqualTo(adminUser.getId());
+    }
+
+    @Test
+    void addNote_authorIsAlwaysThePrincipal_neverTheRequestBody() throws Exception {
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Spoofed author attempt\",\"authorUserId\":999999999}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorUserId").value(adminUser.getId()));
+    }
+
+    @Test
+    void addNote_blankBody_returns400() throws Exception {
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void addNote_nonExistentProperty_returns404() throws Exception {
+        mockMvc.perform(post(NOTES_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addNote_asCustomer_returns403() throws Exception {
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void addNote_anonymous_returns401() throws Exception {
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void listNotes_newestFirst() throws Exception {
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"First note\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Second note\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> bodies = com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$[*].body");
+        assertThat(bodies).containsExactly("Second note", "First note");
+    }
+
+    @Test
+    void listNotes_nonExistentProperty_returns404() throws Exception {
+        mockMvc.perform(get(NOTES_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listNotes_noHistory_returnsEmptyArray() throws Exception {
+        mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void listNotes_asCustomer_returns403() throws Exception {
+        mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void notes_neverTouchAccessNotes() throws Exception {
+        // Set encrypted access notes directly (as the technician day-sheet flow would),
+        // then exercise the plaintext notes log, and confirm the encrypted column is
+        // byte-for-byte unchanged and never appears in the notes response.
+        byte[] encrypted = accessNotesCipher.encrypt("Lockbox 4471, alarm code 9021");
+        property.setAccessNotes(encrypted);
+        property = propertyRepository.save(property);
+
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Gate sticks, lift while pushing.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.accessNotes").doesNotExist())
+                .andExpect(jsonPath("$.decryptedAccessNotes").doesNotExist());
+
+        mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].body").value("Gate sticks, lift while pushing."))
+                .andExpect(jsonPath("$[0].accessNotes").doesNotExist());
+
+        Property reloaded = propertyRepository.findById(property.getId()).orElseThrow();
+        assertThat(reloaded.getAccessNotes()).isEqualTo(encrypted);
+        assertThat(accessNotesCipher.decrypt(reloaded.getAccessNotes()))
+                .isEqualTo("Lockbox 4471, alarm code 9021");
     }
 
 }

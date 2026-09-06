@@ -21,6 +21,7 @@ import com.homekept.visit.dto.AdminVisitPropertySummary;
 import com.homekept.visit.dto.AdminVisitResponse;
 import com.homekept.visit.dto.AppVisitPhoto;
 import com.homekept.visit.dto.VisitEventItem;
+import com.homekept.visit.dto.VisitNoteItem;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
@@ -96,6 +97,7 @@ public class VisitAdminService {
     private final VisitPhotoRepository visitPhotoRepository;
     private final VisitTemplateRepository visitTemplateRepository;
     private final VisitEventRepository visitEventRepository;
+    private final VisitNoteService visitNoteService;
     private final VisitStateMachine stateMachine;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
@@ -110,6 +112,7 @@ public class VisitAdminService {
                              VisitPhotoRepository visitPhotoRepository,
                              VisitTemplateRepository visitTemplateRepository,
                              VisitEventRepository visitEventRepository,
+                             VisitNoteService visitNoteService,
                              VisitStateMachine stateMachine,
                              SubscriberQueryService subscriberQueryService,
                              CatalogService catalogService,
@@ -123,6 +126,7 @@ public class VisitAdminService {
         this.visitPhotoRepository = visitPhotoRepository;
         this.visitTemplateRepository = visitTemplateRepository;
         this.visitEventRepository = visitEventRepository;
+        this.visitNoteService = visitNoteService;
         this.stateMachine = stateMachine;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
@@ -193,9 +197,11 @@ public class VisitAdminService {
     /**
      * Returns a cursor-paginated list of visits for the admin console.
      * Ordered by id descending (newest first). If {@code status} is provided, filters
-     * by that status; otherwise returns all statuses. Also backs the admin Routes day view,
-     * which calls this filtered to {@code status=SCHEDULED} and groups the rows by
-     * technician client-side.
+     * by that status; if {@code subscriberId} is provided, filters to that subscriber's
+     * visits (backs the admin customer page's "this customer's visits" list); the two
+     * filters compose — either, both, or neither may be supplied. Also backs the admin
+     * Routes day view, which calls this filtered to {@code status=SCHEDULED} and groups the
+     * rows by technician client-side.
      *
      * <p>Each row's customer identity and property address are resolved via two batched
      * queries for the whole page — {@link SubscriberQueryService#findByIds} then
@@ -203,26 +209,39 @@ public class VisitAdminService {
      * {@link PropertyService#findByIds} for the address — never one query per row. Mirrors
      * {@code SubscriptionAdminService#listSubscribers}'s batching pattern exactly.
      *
-     * @param status optional status filter (name of {@link VisitStatus})
-     * @param cursor optional id cursor (exclusive upper bound — return rows with id &lt; cursor)
-     * @param limit  optional page size (defaults to {@value DEFAULT_PAGE_SIZE}, capped at 100)
+     * @param status       optional status filter (name of {@link VisitStatus})
+     * @param subscriberId optional subscriber filter — no existence check against the
+     *                     subscription domain is performed (an unknown id simply yields an
+     *                     empty page, the same way an unmatched status filter would)
+     * @param cursor       optional id cursor (exclusive upper bound — return rows with id &lt; cursor)
+     * @param limit        optional page size (defaults to {@value DEFAULT_PAGE_SIZE}, capped at 100)
      * @throws InvalidVisitRequestException if {@code status} is not a valid {@link VisitStatus}
      */
     @Transactional(readOnly = true)
-    public List<AdminVisitListItem> listVisits(String status, Long cursor, Integer limit) {
+    public List<AdminVisitListItem> listVisits(String status, Long subscriberId, Long cursor, Integer limit) {
         int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
-        List<Visit> visits;
-
+        VisitStatus visitStatus = null;
         if (status != null && !status.isBlank()) {
-            VisitStatus visitStatus;
             try {
                 visitStatus = VisitStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException e) {
                 throw new InvalidVisitRequestException("Invalid status value: " + status);
             }
+        }
 
+        List<Visit> visits;
+        if (subscriberId != null && visitStatus != null) {
+            visits = (cursor != null)
+                    ? visitRepository.findBySubscriberIdAndStatusAndIdLessThanOrderByIdDesc(
+                            subscriberId, visitStatus, cursor, pageable)
+                    : visitRepository.findBySubscriberIdAndStatusOrderByIdDesc(subscriberId, visitStatus, pageable);
+        } else if (subscriberId != null) {
+            visits = (cursor != null)
+                    ? visitRepository.findBySubscriberIdAndIdLessThanOrderByIdDesc(subscriberId, cursor, pageable)
+                    : visitRepository.findBySubscriberIdOrderByIdDesc(subscriberId, pageable);
+        } else if (visitStatus != null) {
             visits = (cursor != null)
                     ? visitRepository.findByStatusAndIdLessThanOrderByIdDesc(visitStatus, cursor, pageable)
                     : visitRepository.findByStatusOrderByIdDesc(visitStatus, pageable);
@@ -377,6 +396,46 @@ public class VisitAdminService {
                 .stream()
                 .map(this::toEventItem)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns a visit's threaded operational notes, newest first. Backs
+     * {@code GET /api/admin/visits/{id}/notes}. Delegates the actual read to
+     * {@link VisitNoteService}, which is shared with the technician surface
+     * ({@code TechVisitService}) — same rows, same mapping, regardless of who's asking.
+     *
+     * @param visitId the visit id
+     * @return the visit's notes, newest first
+     * @throws VisitNotFoundException if no visit exists with this id (404)
+     */
+    @Transactional(readOnly = true)
+    public List<VisitNoteItem> listNotes(Long visitId) {
+        if (!visitRepository.existsById(visitId)) {
+            throw new VisitNotFoundException(visitId);
+        }
+        return visitNoteService.listNotes(visitId);
+    }
+
+    /**
+     * Adds a note to a visit's operational log. Backs {@code POST /api/admin/visits/{id}/notes}.
+     *
+     * <p>{@code authorUserId} MUST be the authenticated admin's user id (the JWT principal) —
+     * never a value taken from the request body. The controller enforces this by never
+     * exposing an {@code authorUserId} field on {@code CreateVisitNoteRequest}.
+     *
+     * @param visitId      the visit to add a note to
+     * @param body         the note text (already validated non-blank, max length, at the DTO
+     *                     boundary)
+     * @param authorUserId the authenticated admin's user id
+     * @return the created note, with the author's name resolved
+     * @throws VisitNotFoundException if no visit exists with this id (404)
+     */
+    @Transactional
+    public VisitNoteItem addNote(Long visitId, String body, Long authorUserId) {
+        if (!visitRepository.existsById(visitId)) {
+            throw new VisitNotFoundException(visitId);
+        }
+        return visitNoteService.addNote(visitId, body, authorUserId);
     }
 
     /**

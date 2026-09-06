@@ -2,14 +2,22 @@ package com.homekept.property;
 
 import com.homekept.property.dto.AdminPropertySkuResponse;
 import com.homekept.property.dto.AdminUpdateSkuRequest;
+import com.homekept.property.dto.CreatePropertyNoteRequest;
+import com.homekept.property.dto.PropertyNoteItem;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * Admin-only property endpoints.
@@ -19,6 +27,11 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>Property mutations belong to the property domain — this controller calls
  * {@link PropertyService} directly rather than routing through the subscription domain.
+ *
+ * <p>The notes endpoints below read/write the SAME {@code property_note} rows the assigned
+ * technician can reach via {@code GET}/{@code POST /api/tech/properties/{propertyId}/notes}
+ * (in the visit domain's {@code TechVisitController}) — an admin simply has no ownership
+ * restriction on top of the ADMIN role gate.
  */
 @RestController
 @RequestMapping("/api/admin/properties")
@@ -68,5 +81,45 @@ public class AdminPropertyController {
                 property.getWaterHeaterAgeYears(),
                 property.getWaterHeaterFlushEligible()
         ));
+    }
+
+    /**
+     * GET /api/admin/properties/{propertyId}/notes
+     *
+     * <p>A property's threaded operational notes, newest first, capped at 100 rows —
+     * standing knowledge about the home ("dog in the yard", "gate sticks"), as distinct from
+     * a single visit's own notes. Never the encrypted access notes. Unknown
+     * {@code propertyId} → 404.
+     *
+     * @param propertyId the property id
+     * @return 200 with the notes, newest first
+     */
+    @GetMapping("/{propertyId}/notes")
+    public ResponseEntity<List<PropertyNoteItem>> listNotes(@PathVariable Long propertyId) {
+        return ResponseEntity.ok(propertyService.listNotes(propertyId));
+    }
+
+    /**
+     * POST /api/admin/properties/{propertyId}/notes
+     *
+     * <p>Adds a note to the property's operational log. The author is always the
+     * authenticated admin (the JWT principal) — there is no way to supply a different author
+     * in the request body. Never accept a lockbox/alarm code or key location here — see
+     * {@link CreatePropertyNoteRequest}'s javadoc. There is no delete or edit operation on a
+     * note; see {@link PropertyService#addNote}'s javadoc for why.
+     *
+     * @param propertyId the property id
+     * @param request    the note body
+     * @param auth       the authenticated admin — recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/{propertyId}/notes")
+    public ResponseEntity<PropertyNoteItem> addNote(
+            @PathVariable Long propertyId,
+            @Valid @RequestBody CreatePropertyNoteRequest request,
+            Authentication auth) {
+        Long adminUserId = (Long) auth.getPrincipal();
+        PropertyNoteItem note = propertyService.addNote(propertyId, request.body(), adminUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 }

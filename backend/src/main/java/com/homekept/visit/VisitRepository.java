@@ -89,6 +89,35 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     List<Visit> findByStatusOrderByIdDesc(VisitStatus status, Pageable pageable);
 
     /**
+     * Admin: subscriber-filtered cursor-paginated visits newest-first — backs
+     * {@code GET /api/admin/visits?subscriberId=}, composable with the status filter above
+     * (see the two {@code AndStatus} variants below).
+     */
+    List<Visit> findBySubscriberIdAndIdLessThanOrderByIdDesc(Long subscriberId, Long cursor, Pageable pageable);
+
+    /** Admin: subscriber-filtered first page newest-first. */
+    List<Visit> findBySubscriberIdOrderByIdDesc(Long subscriberId, Pageable pageable);
+
+    /** Admin: subscriber- AND status-filtered cursor-paginated visits newest-first. */
+    List<Visit> findBySubscriberIdAndStatusAndIdLessThanOrderByIdDesc(
+            Long subscriberId, VisitStatus status, Long cursor, Pageable pageable);
+
+    /** Admin: subscriber- AND status-filtered first page newest-first. */
+    List<Visit> findBySubscriberIdAndStatusOrderByIdDesc(Long subscriberId, VisitStatus status, Pageable pageable);
+
+    /**
+     * Whether the given technician has ever been assigned a visit (any status) at the given
+     * property. Used by {@code TechVisitService} to authorize the tech-facing property-notes
+     * endpoints ({@code GET}/{@code POST /api/tech/properties/{propertyId}/notes}): a
+     * technician may read/write a property's notes only if they have a genuine, real
+     * assignment history at that property. Deliberately NOT filtered by status — even a
+     * CANCELLED visit still represents a real technician/property pairing, and the point of
+     * this check is only to rule out a technician with no relationship at all to the
+     * property, not to second-guess which of their assignments still stand.
+     */
+    boolean existsByPropertyIdAndTechnicianId(Long propertyId, Long technicianId);
+
+    /**
      * Count of visits in the given status with {@code scheduledFor} at or after the given
      * instant. Used by the admin dashboard aggregate ("upcoming visits" = SCHEDULED and
      * not yet in the past).

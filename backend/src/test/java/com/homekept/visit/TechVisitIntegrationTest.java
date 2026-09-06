@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
@@ -66,6 +67,10 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
     private static final String COMPLETE_URL       = "/api/tech/visits/{id}/complete";
     private static final String INCOMPLETE_URL     = "/api/tech/visits/{id}/incomplete";
     private static final String FLAGS_URL          = "/api/tech/visits/{id}/flags";
+    private static final String VISIT_NOTES_URL    = "/api/tech/visits/{id}/notes";
+    private static final String PROPERTY_NOTES_URL = "/api/tech/properties/{propertyId}/notes";
+    private static final String ADMIN_VISIT_NOTES_URL    = "/api/admin/visits/{id}/notes";
+    private static final String ADMIN_PROPERTY_NOTES_URL = "/api/admin/properties/{propertyId}/notes";
     private static final String APP_VISIT_URL      = "/api/app/visits/{id}";
     private static final String TODO_URL           = "/api/tech/todos/{id}";
 
@@ -746,6 +751,349 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"body\":\"Test\",\"severity\":\"INFO\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ── GET/POST /api/tech/visits/{id}/notes ─────────────────────────────────
+
+    @Test
+    void addVisitNote_asTech_returns201AndPersists() throws Exception {
+        MvcResult result = mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Furnace filter sits behind the stairs.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.body").value("Furnace filter sits behind the stairs."))
+                .andExpect(jsonPath("$.authorUserId").value(techUser.getId()))
+                .andExpect(jsonPath("$.authorFirstName").value("Tech"))
+                .andExpect(jsonPath("$.authorLastName").value("User"))
+                .andReturn();
+
+        Long noteId = idFrom(result);
+        Long persistedAuthor = jdbc.queryForObject(
+                "SELECT author_user_id FROM visit_note WHERE id = ?", Long.class, noteId);
+        assertThat(persistedAuthor).isEqualTo(techUser.getId());
+    }
+
+    @Test
+    void addVisitNote_authorIsAlwaysThePrincipal_neverTheRequestBody() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Spoofed\",\"authorUserId\":999999999}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorUserId").value(techUser.getId()));
+    }
+
+    @Test
+    void addVisitNote_blankBody_returns400() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void addVisitNote_nonExistentVisit_returns404() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addVisitNote_differentTech_returns404() throws Exception {
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-notes-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "Notes",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", tech2Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addVisitNote_asCustomer_returns403() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void addVisitNote_anonymous_returns401() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void listVisitNotes_newestFirst() throws Exception {
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"First note\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Second note\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> bodies = com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$[*].body");
+        assertThat(bodies).containsExactly("Second note", "First note");
+    }
+
+    @Test
+    void listVisitNotes_differentTech_returns404() throws Exception {
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-listnotes-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "ListNotes",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", tech2Token)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listVisitNotes_asCustomer_returns403() throws Exception {
+        mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void visitNotes_sharedBetweenTechAndAdmin() throws Exception {
+        // A note added by the technician must be visible to the admin console, and vice
+        // versa — both surfaces read/write the same visit_note rows.
+        mockMvc.perform(post(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Left by the technician\"}"))
+                .andExpect(status().isCreated());
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].body").value("Left by the technician"));
+
+        mockMvc.perform(post(ADMIN_VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Left by the admin\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].body").value("Left by the admin"));
+    }
+
+    // ── GET/POST /api/tech/properties/{propertyId}/notes ─────────────────────
+
+    @Test
+    void addPropertyNote_asTechWithAssignment_returns201AndPersists() throws Exception {
+        MvcResult result = mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Back gate sticks, lift while pushing.\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.body").value("Back gate sticks, lift while pushing."))
+                .andExpect(jsonPath("$.authorUserId").value(techUser.getId()))
+                .andReturn();
+
+        Long noteId = idFrom(result);
+        Long persistedAuthor = jdbc.queryForObject(
+                "SELECT author_user_id FROM property_note WHERE id = ?", Long.class, noteId);
+        assertThat(persistedAuthor).isEqualTo(techUser.getId());
+    }
+
+    @Test
+    void addPropertyNote_authorIsAlwaysThePrincipal_neverTheRequestBody() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Spoofed\",\"authorUserId\":999999999}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.authorUserId").value(techUser.getId()));
+    }
+
+    @Test
+    void addPropertyNote_blankBody_returns400() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void addPropertyNote_nonExistentProperty_returns404() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addPropertyNote_noRelationship_returns404() throws Exception {
+        // A technician with NO visit ever assigned at this property must be rejected, even
+        // though the property genuinely exists — this is the load-bearing access rule.
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-noaccess-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "NoAccess",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", tech2Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void addPropertyNote_asCustomer_returns403() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", customerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void addPropertyNote_anonymous_returns401() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void listPropertyNotes_newestFirst() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"First note\"}"))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Second note\"}"))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andReturn();
+
+        List<String> bodies = com.jayway.jsonpath.JsonPath.read(
+                result.getResponse().getContentAsString(), "$[*].body");
+        assertThat(bodies).containsExactly("Second note", "First note");
+    }
+
+    @Test
+    void listPropertyNotes_noRelationship_returns404() throws Exception {
+        // THE load-bearing rule: a technician who has never been assigned a visit at this
+        // property must not be able to even READ its notes.
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-listnoaccess-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "ListNoAccess",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", tech2Token)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listPropertyNotes_nonExistentProperty_returns404() throws Exception {
+        mockMvc.perform(get(PROPERTY_NOTES_URL, 999_999_999L)
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listPropertyNotes_asCustomer_returns403() throws Exception {
+        mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", customerToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listPropertyNotes_technicianWithOnlyCancelledVisit_stillAllowed() throws Exception {
+        // Access is NOT filtered by visit status — even a CANCELLED assignment still proves
+        // a genuine technician/property relationship (see
+        // TechVisitService#requirePropertyAccessibleToTechnician).
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-cancelled-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "Cancelled",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        Visit cancelledVisit = visitRepository.save(new Visit(
+                subscriber.getId(), property.getId(), null,
+                dbNow().plus(10, ChronoUnit.DAYS), 60, VisitType.ROUTINE));
+        cancelledVisit.setTechnicianId(tech2.getId());
+        cancelledVisit.setStatus(VisitStatus.CANCELLED);
+        visitRepository.save(cancelledVisit);
+
+        mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", tech2Token)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void propertyNotes_sharedBetweenTechAndAdmin() throws Exception {
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Left by the technician\"}"))
+                .andExpect(status().isCreated());
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].body").value("Left by the technician"));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
