@@ -24,7 +24,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { CalendarGrid, toMonthKey } from "@/components/admin/MonthLoadCalendar";
 import {
+  dayKey,
   formatCentsCad,
   formatDateShort,
   formatDateTime,
@@ -332,20 +334,28 @@ function AssignTechnicianControl({ visit }: { visit: AdminVisitListItem }) {
 }
 
 /**
- * Reschedule dialog for a SCHEDULED visit. Prefilled with the visit's current
- * `scheduledFor`, rendered as America/Toronto wall-clock time (founder's reported bug:
- * "opening the picker doesn't go to the selected time" — it used to always open blank
- * on today). `min` is today's Toronto wall-clock time, since the backend now rejects a
- * past `scheduledFor` with a 400 — the picker discourages picking one, though the
- * authoritative check still happens server-side and is surfaced via
- * `describeVisitError` if the clock ticks past `min` between opening the dialog and
- * submitting.
+ * Reschedule dialog for a SCHEDULED visit. Founder's reported problem: the old
+ * `<input type="datetime-local">` rendered as a text field showing something like
+ * "19-11-2026, 04:21 PM" with a small icon to click before any calendar appeared —
+ * "i want it to be a calendar open." This renders `CalendarGrid` (the same grid the
+ * Routes page uses, see `@/components/admin/MonthLoadCalendar`) inline and already open,
+ * on the visit's own month, with its day preselected, plus a separately labelled time
+ * input for the hour/minute — one glance, one click.
  *
- * `toDatetimeLocalValue`/`fromDatetimeLocalValue` (`@/lib/format`) do this conversion
- * explicitly against `America/Toronto` rather than `new Date(value).toISOString()`
- * (which the runtime reads as the browser's OWN system timezone) — the latter is only
- * correct by coincidence when the admin's device happens to be set to Toronto time,
- * and silently shifts the submitted instant by the UTC-offset difference otherwise.
+ * `day`/`time`/`visibleMonth` are prefilled from the visit's current `scheduledFor`,
+ * read as America/Toronto wall-clock parts via `toDatetimeLocalValue` (`@/lib/format`)
+ * and split on "T" — deliberately not `new Date(value).toISOString()`, which the runtime
+ * parses in the browser's OWN system timezone rather than America/Toronto and would
+ * silently shift every visit by the UTC-offset difference for anyone not sitting in
+ * Toronto. State starts at today/this month (never blank/`NaN`-producing) so the very
+ * first render, before the prefill effect runs, can't hand `CalendarGrid` an invalid
+ * month key.
+ *
+ * Past days are disabled in the grid (`isDayDisabled`) because `PATCH
+ * /api/admin/visits/{id}` rejects a past `scheduledFor` with a 400 — the grid discourages
+ * picking one, though the authoritative check still happens server-side (to the minute,
+ * not just the day) and is surfaced via `describeVisitError` if e.g. today is picked with
+ * a time that's already passed by submission.
  */
 function RescheduleVisitDialog({
   visit,
@@ -356,16 +366,20 @@ function RescheduleVisitDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [value, setValue] = useState("");
-  const [min, setMin] = useState("");
+  const todayKey = dayKey(new Date());
+  const [day, setDay] = useState(todayKey);
+  const [time, setTime] = useState("00:00");
+  const [visibleMonth, setVisibleMonth] = useState(() => toMonthKey(todayKey));
   const [error, setError] = useState<string | null>(null);
   const mutation = usePatchAdminVisit();
   const baseId = useId();
 
   useEffect(() => {
     if (open && visit) {
-      setValue(toDatetimeLocalValue(visit.scheduledFor));
-      setMin(toDatetimeLocalValue(new Date().toISOString()));
+      const [prefillDay, prefillTime] = toDatetimeLocalValue(visit.scheduledFor).split("T");
+      setDay(prefillDay);
+      setTime(prefillTime);
+      setVisibleMonth(toMonthKey(prefillDay));
       setError(null);
       mutation.reset();
     }
@@ -377,13 +391,13 @@ function RescheduleVisitDialog({
     if (!visit) return;
     setError(null);
 
-    if (!value) {
+    if (!day || !time) {
       setError("Pick a new date and time.");
       return;
     }
     let scheduledFor: string;
     try {
-      scheduledFor = fromDatetimeLocalValue(value);
+      scheduledFor = fromDatetimeLocalValue(`${day}T${time}`);
     } catch {
       setError("Pick a valid date and time.");
       return;
@@ -409,7 +423,7 @@ function RescheduleVisitDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Reschedule visit{visit ? ` #${visit.id}` : ""}</DialogTitle>
           <DialogDescription>
@@ -418,18 +432,26 @@ function RescheduleVisitDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} noValidate>
-          <fieldset disabled={mutation.isPending}>
+          <fieldset disabled={mutation.isPending} className="space-y-4">
             <legend className="sr-only">New date and time</legend>
-            <Label htmlFor={`${baseId}-when`}>New date and time</Label>
-            <Input
-              id={`${baseId}-when`}
-              type="datetime-local"
-              value={value}
-              min={min}
-              onChange={(e) => setValue(e.target.value)}
-              required
-              className="mt-1"
+            <CalendarGrid
+              month={visibleMonth}
+              selectedDay={day}
+              onSelectDay={setDay}
+              onMonthChange={setVisibleMonth}
+              isDayDisabled={(d) => d < todayKey}
             />
+            <div>
+              <Label htmlFor={`${baseId}-time`}>Time</Label>
+              <Input
+                id={`${baseId}-time`}
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                required
+                className="mt-1 w-36"
+              />
+            </div>
           </fieldset>
 
           {error && (
@@ -720,6 +742,15 @@ function ConfirmRescheduleDialog({
               </RadioGroup>
 
               {choice === "other" && (
+                // Deliberately still a plain `<input type="datetime-local">`, not the
+                // `CalendarGrid` used in `RescheduleVisitDialog` above. The founder's
+                // complaint ("i want it to be a calendar open") was about that dialog
+                // specifically — the single, prominent way to reschedule a visit. This
+                // field is a secondary, conditionally-revealed fallback inside a denser
+                // form that's primarily a radio choice between the subscriber's own
+                // preferred times; swapping in a full month grid here would push the
+                // radio options and note field down every time it's shown, for a control
+                // most admins won't touch (there's usually a preferred time to just pick).
                 <div>
                   <Label htmlFor={`${baseId}-custom`} className="sr-only">
                     New date and time
