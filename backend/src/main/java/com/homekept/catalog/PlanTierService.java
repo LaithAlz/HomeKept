@@ -39,10 +39,23 @@ public class PlanTierService {
 
     protected PlanTierService() {}
 
+    /**
+     * Creates a new plan composition row (admin "add service to plan"). Both arguments must
+     * already be persisted (non-null id) — {@code @MapsId} derives this row's composite key
+     * from them.
+     */
+    public PlanTierService(PlanTier planTier, Service service, int frequencyPerYear) {
+        this.planTier = planTier;
+        this.service = service;
+        this.id = new PlanTierServiceId(planTier.getId(), service.getId());
+        this.frequencyPerYear = frequencyPerYear;
+    }
+
     public PlanTierServiceId getId() { return id; }
     public PlanTier getPlanTier() { return planTier; }
     public Service getService() { return service; }
     public int getFrequencyPerYear() { return frequencyPerYear; }
+    public void setFrequencyPerYear(int frequencyPerYear) { this.frequencyPerYear = frequencyPerYear; }
 
     // ── Composite key ──────────────────────────────────────────────────────────
 
