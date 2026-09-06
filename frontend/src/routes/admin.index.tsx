@@ -17,6 +17,7 @@ import {
   useAdminSubscribers,
   useAdminBookings,
   useAdminRescheduleRequests,
+  subscriberFullName,
   STATUS_LABEL,
   STATUS_TONE,
   PLAN_LABEL,
@@ -96,7 +97,7 @@ function AdminDashboard() {
         <section aria-label="Key metrics" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="MRR" value={dashboard ? formatCentsCad(dashboard.mrrCents) : "—"} />
           <MetricCard
-            label="Active subscribers"
+            label="Active customers"
             value={dashboard ? String(dashboard.activeSubscribers) : "—"}
           />
           <MetricCard
@@ -109,7 +110,7 @@ function AdminDashboard() {
           />
         </section>
 
-        {/* Recent subscribers */}
+        {/* Recent customers */}
         <RecentSubscribersPanel />
 
         {/* Two-column section */}
@@ -156,7 +157,7 @@ function MetricCard({
 }
 
 // ---------------------------------------------------------------------------
-// Recent subscribers
+// Recent customers
 // ---------------------------------------------------------------------------
 
 function RecentSubscribersPanel() {
@@ -170,24 +171,24 @@ function RecentSubscribersPanel() {
       <header className="flex items-center justify-between border-b border-border p-4">
         <div>
           <h2 id="subs-h" className="font-display text-lg font-bold tracking-tight">
-            Recent subscribers
+            Recent customers
           </h2>
           <p className="text-xs text-muted-foreground">
-            {subscribers ? `${subscribers.length} most recent` : "Loading subscribers."}
+            {subscribers ? `${subscribers.length} most recent` : "Loading customers."}
           </p>
         </div>
         <Button variant="ghost" size="sm" asChild>
-          <Link to="/admin/subscribers">See all</Link>
+          <Link to="/admin/customers">See all</Link>
         </Button>
       </header>
 
-      {isLoading && <PanelLoading label="Loading subscribers." />}
+      {isLoading && <PanelLoading label="Loading customers." />}
       {isError && !isLoading && (
-        <PanelError label="We couldn't load subscribers." onRetry={() => void refetch()} />
+        <PanelError label="We couldn't load customers." onRetry={() => void refetch()} />
       )}
 
       {subscribers && subscribers.length === 0 && (
-        <p className="p-6 text-sm text-muted-foreground">No subscribers yet.</p>
+        <p className="p-6 text-sm text-muted-foreground">No customers yet.</p>
       )}
 
       {subscribers && subscribers.length > 0 && (
@@ -196,11 +197,11 @@ function RecentSubscribersPanel() {
             <li key={s.id} className="flex items-center justify-between gap-3 p-4">
               <div className="min-w-0">
                 <Link
-                  to="/admin/subscribers/$id"
+                  to="/admin/customers/$id"
                   params={{ id: String(s.id) }}
                   className="font-semibold text-foreground hover:underline"
                 >
-                  Subscriber #{s.id}
+                  {subscriberFullName(s) || `Customer #${s.id}`}
                 </Link>
                 <p className="text-xs text-muted-foreground">
                   {s.planCode ? (PLAN_LABEL[s.planCode] ?? s.planCode) : "No plan yet"}
@@ -369,37 +370,55 @@ function NeedsAttentionPanel() {
                 <CreditCard className="size-4" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground">Subscriber #{s.id}: payment issue</p>
+                <p className="font-semibold text-foreground">
+                  {subscriberFullName(s) || `Customer #${s.id}`}: payment issue
+                </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {s.planCode ? `${PLAN_LABEL[s.planCode] ?? s.planCode} plan` : "No plan on file"}{" "}
                   · {formatCentsCad(s.mrrCents)} MRR
                 </p>
               </div>
               <Button size="sm" variant="outline" className="shrink-0" asChild>
-                <Link to="/admin/subscribers/$id" params={{ id: String(s.id) }}>
+                <Link to="/admin/customers/$id" params={{ id: String(s.id) }}>
                   View
                 </Link>
               </Button>
             </li>
           ))}
-          {pendingReschedules.map((r) => (
-            <li key={`rr-${r.id}`} className="flex items-start gap-3 p-4">
-              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <CalendarClock className="size-4" aria-hidden="true" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground">
-                  Reschedule request: visit #{r.visitId}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  Subscriber #{r.subscriberId} · Requested {formatDateShort(r.createdAt)}
-                </p>
-              </div>
-              <Button size="sm" variant="outline" className="shrink-0" asChild>
-                <Link to="/admin/visits">View</Link>
-              </Button>
-            </li>
-          ))}
+          {pendingReschedules.map((r) => {
+            // The reschedule-requests endpoint carries only `subscriberId`, no name — look
+            // it up in the subscriber list already fetched above (same page this panel
+            // renders from). Falls back to the id if the match isn't found (e.g. the
+            // subscriber isn't in this page's first 100), so an operator always has
+            // something to cross-reference with, named or not.
+            const subscriber = subscribers?.find((s) => s.id === r.subscriberId);
+            const name = subscriber ? subscriberFullName(subscriber) : "";
+            return (
+              <li key={`rr-${r.id}`} className="flex items-start gap-3 p-4">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <CalendarClock className="size-4" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-foreground">
+                    Reschedule request: visit #{r.visitId}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    <Link
+                      to="/admin/customers/$id"
+                      params={{ id: String(r.subscriberId) }}
+                      className="font-medium text-foreground hover:underline"
+                    >
+                      {name || `Customer #${r.subscriberId}`}
+                    </Link>{" "}
+                    · Requested {formatDateShort(r.createdAt)}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="shrink-0" asChild>
+                  <Link to="/admin/visits">View</Link>
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </article>
