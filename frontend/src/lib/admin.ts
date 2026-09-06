@@ -198,10 +198,12 @@ export interface AdminSubscriberListItem {
   /**
    * Contact fields, resolved from the identity domain. Optional here, matching the
    * backend's `@JsonInclude(NON_NULL)` convention on `planCode`/`mrrCents` above.
+   * `phone` is frequently absent since it isn't captured at account creation.
    */
   firstName?: string;
   lastName?: string;
   email?: string;
+  phone?: string;
 }
 
 export interface AdminSubscriberPropertySummary {
