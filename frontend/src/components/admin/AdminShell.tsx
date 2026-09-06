@@ -28,7 +28,7 @@ type Item = {
   to:
     | "/admin"
     | "/admin/metrics"
-    | "/admin/subscribers"
+    | "/admin/customers"
     | "/admin/leads"
     | "/admin/walkthroughs"
     | "/admin/visits"
@@ -176,8 +176,8 @@ function AdminConsole() {
         label: "Customers",
         items: [
           {
-            to: "/admin/subscribers",
-            label: "Subscribers",
+            to: "/admin/customers",
+            label: "Customers",
             icon: Users,
             count: dashboard?.activeSubscribers,
           },

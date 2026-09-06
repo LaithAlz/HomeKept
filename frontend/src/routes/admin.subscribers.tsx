@@ -7,26 +7,20 @@ const searchSchema = z.object({
 });
 
 /**
- * Layout-only route for the `/admin/subscribers` prefix: it exists purely to run the
- * `?id=` redirect below for every URL under this prefix, then hands off to whichever
- * child actually matched (the list at `/admin/subscribers/`, or a record at
- * `/admin/subscribers/$id`) via `<Outlet />`. It renders nothing of its own — TanStack
- * Router only renders a matched child route if some ancestor's component includes an
- * `Outlet`, so this file can't also carry the list page's markup the way it used to
- * (that would render the list underneath the detail page too, not instead of it).
+ * `/admin/subscribers` moved to `/admin/customers` (issue: "I don't want a subscribers
+ * page, I want a customers page"). This whole prefix is kept only as a redirect shim so
+ * a bookmarked or previously-shared link still lands somewhere sensible:
+ *   - `/admin/subscribers?id=N` → straight to the record page.
+ *   - every other path under this prefix (the bare list, or `/admin/subscribers/$id`) is
+ *     redirected by its own child route — see `admin.subscribers.index.tsx` and
+ *     `admin.subscribers.$id.tsx`.
  */
 export const Route = createFileRoute("/admin/subscribers")({
   validateSearch: zodValidator(searchSchema),
-  // `/admin/subscribers?id=N` used to open a side-panel over this list; the panel
-  // is gone (issue: "get rid of the sliding side-panel"), replaced by a real page
-  // at `/admin/subscribers/$id`. This keeps every existing deep link working
-  // (the dashboard and the routes dispatch board both still build this URL) by
-  // bouncing straight to the new route instead of breaking the link. `replace`
-  // so the old query-string URL doesn't linger in history.
   beforeLoad: ({ search }) => {
     if (search.id !== undefined) {
       throw redirect({
-        to: "/admin/subscribers/$id",
+        to: "/admin/customers/$id",
         params: { id: String(search.id) },
         replace: true,
       });
