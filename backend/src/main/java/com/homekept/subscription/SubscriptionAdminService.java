@@ -49,6 +49,13 @@ import java.util.stream.Collectors;
  * <p>MRR is in integer cents — never floats. The list/detail DTOs carry customer PII
  * (name, email, phone) since the whole controller is ADMIN-gated — but that PII is never
  * logged, here or anywhere else in this class.
+ *
+ * <p><strong>{@code mrrCents} vs {@code planPriceCents}.</strong> {@code mrrCents} (see
+ * {@link #computeMrrCents}) is {@code 0} for any subscriber not currently paying — see
+ * {@link SubscriberStatus#isBilling()} — even though the page still wants to display their
+ * plan's list price (e.g. "Complete, $169/mo") on a CANCELLED customer's record. That list
+ * price, independent of billing status, is {@code planPriceCents} (see
+ * {@link #computePlanPriceCents}). The two are intentionally different numbers.
  */
 @Service
 public class SubscriptionAdminService {
@@ -135,7 +142,11 @@ public class SubscriptionAdminService {
      *   <li>{@code activeSubscribers} — count of subscribers with status ACTIVE.</li>
      *   <li>{@code mrrCents} — sum of {@link #computeMrrCents} across ACTIVE subscribers
      *       only (PAUSED/PAYMENT_ISSUE/CANCELLED/PENDING_ACTIVATION are excluded — they
-     *       are not currently-paying recurring revenue).</li>
+     *       are not currently-paying recurring revenue, per
+     *       {@link SubscriberStatus#isBilling()}, the same rule the per-subscriber
+     *       {@code mrrCents} field now uses — this aggregate's value is unchanged by that:
+     *       every subscriber summed here already has status ACTIVE, so
+     *       {@code isBilling()} is {@code true} for every one of them, same as before).</li>
      * </ul>
      *
      * @return the subscription metrics slice
@@ -146,7 +157,7 @@ public class SubscriptionAdminService {
 
         int mrrCents = activeSubscribers.stream()
                 .mapToInt(s -> {
-                    Integer cents = computeMrrCents(s);
+                    Integer cents = computeMrrCents(s, computePlanPriceCents(s));
                     return cents != null ? cents : 0;
                 })
                 .sum();
@@ -278,12 +289,14 @@ public class SubscriptionAdminService {
 
     private AdminSubscriberListItem toListItem(Subscriber s, AdminContactDetail contact) {
         String planCode = catalogService.getPlanCode(s.getPlanTierId());
-        Integer mrrCents = computeMrrCents(s);
+        Integer planPriceCents = computePlanPriceCents(s);
+        Integer mrrCents = computeMrrCents(s, planPriceCents);
         return new AdminSubscriberListItem(
                 s.getId(),
                 s.getStatus().name(),
                 planCode,
                 mrrCents,
+                planPriceCents,
                 contact != null ? contact.firstName() : null,
                 contact != null ? contact.lastName() : null,
                 contact != null ? contact.email() : null,
@@ -293,7 +306,8 @@ public class SubscriptionAdminService {
 
     private AdminSubscriberDetail toDetail(Subscriber s, AdminContactDetail contact) {
         String planCode = catalogService.getPlanCode(s.getPlanTierId());
-        Integer mrrCents = computeMrrCents(s);
+        Integer planPriceCents = computePlanPriceCents(s);
+        Integer mrrCents = computeMrrCents(s, planPriceCents);
 
         AdminSubscriberPropertySummary propertySummary = null;
         var property = propertyService.findById(s.getPropertyId());
@@ -319,6 +333,7 @@ public class SubscriptionAdminService {
                 s.getStatus().name(),
                 planCode,
                 mrrCents,
+                planPriceCents,
                 s.getBillingCycle().name(),
                 s.getStripeCustomerId(),
                 s.getStripeSubscriptionId(),
@@ -336,11 +351,37 @@ public class SubscriptionAdminService {
     }
 
     /**
-     * Computes MRR in integer cents for the given subscriber.
-     * Returns {@code null} when no plan tier has been assigned yet (pre-checkout).
-     * Uses the regular monthly price.
+     * Computes MRR in integer cents for the given subscriber: the plan's monthly price if
+     * (and only if) {@link SubscriberStatus#isBilling()} says this subscriber's status is
+     * currently-paying recurring revenue, else {@code 0}.
+     *
+     * <p>This is deliberately NOT the same value as {@code planPriceCents} — a CANCELLED (or
+     * PAUSED, or PAYMENT_ISSUE, or PENDING_ACTIVATION) subscriber contributes {@code 0} here
+     * even though their plan's list price is still known and shown elsewhere on the page (see
+     * {@link #computePlanPriceCents}). Never {@code null}: unlike the old single-field
+     * version of this method, a subscriber with no billing status now still MEANS
+     * "contributes zero dollars", not "unknown" — the {@code null} case is reserved for
+     * {@code planPriceCents} (no plan chosen yet).
+     *
+     * @param s              the subscriber
+     * @param planPriceCents the subscriber's plan's monthly list price, already resolved via
+     *                       {@link #computePlanPriceCents} (passed in rather than
+     *                       re-resolved, since every caller already needs both values)
      */
-    private Integer computeMrrCents(Subscriber s) {
+    private Integer computeMrrCents(Subscriber s, Integer planPriceCents) {
+        if (!s.getStatus().isBilling()) {
+            return 0;
+        }
+        return planPriceCents != null ? planPriceCents : 0;
+    }
+
+    /**
+     * Resolves the plan tier's monthly list price in cents, independent of the subscriber's
+     * status — e.g. so the admin console can still show "Complete, $169/mo" as a plan
+     * attribute for a CANCELLED customer even though their {@code mrrCents} is {@code 0}.
+     * Returns {@code null} when no plan tier has been assigned yet (pre-checkout).
+     */
+    private Integer computePlanPriceCents(Subscriber s) {
         if (s.getPlanTierId() == null) {
             return null;
         }

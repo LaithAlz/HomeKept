@@ -47,4 +47,29 @@ public enum SubscriberStatus {
     public boolean isServiceable() {
         return this == ACTIVE || this == PAYMENT_ISSUE;
     }
+
+    /**
+     * Whether a subscriber in this status is currently-paying recurring revenue — the
+     * single source of truth for MRR (both the per-subscriber {@code mrrCents} field and
+     * the admin dashboard aggregate sum this exact set of statuses).
+     *
+     * <p>Only {@code ACTIVE} counts. Deliberately narrower than {@link #isServiceable}:
+     * <ul>
+     *   <li>{@code PAYMENT_ISSUE} is excluded even though it IS serviceable (dunning
+     *       grace — the customer still gets visits while Stripe retries). But "serviceable"
+     *       answers a different question than "billed": {@code PAYMENT_ISSUE} means the
+     *       most recent invoice attempt FAILED, so counting it as revenue would report money
+     *       that has not actually landed. It only rejoins MRR once the retry succeeds and
+     *       the webhook moves the subscriber back to {@code ACTIVE}.</li>
+     *   <li>{@code PAUSED} is excluded because it reflects Stripe's own "pause collection"
+     *       feature ({@code customer.subscription.paused}) — while paused, Stripe generates
+     *       no invoices at all, so there is no revenue to count, not merely a delay in
+     *       collecting it.</li>
+     *   <li>{@code CANCELLED} and {@code PENDING_ACTIVATION} are obviously not billing:
+     *       terminal/ended, and pre-checkout, respectively.</li>
+     * </ul>
+     */
+    public boolean isBilling() {
+        return this == ACTIVE;
+    }
 }

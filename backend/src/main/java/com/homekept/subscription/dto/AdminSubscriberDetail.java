@@ -17,6 +17,13 @@ import java.time.Instant;
  * {@code firstName}, {@code lastName}, {@code email}, and {@code phone} are resolved from
  * the identity domain via {@code UserQueryService.findAdminContactById}; {@code phone} is
  * frequently null since it isn't captured at account creation.
+ *
+ * <p>{@code mrrCents} is never null: it is the plan's monthly price ONLY while the
+ * subscriber's status is currently-paying revenue ({@code SubscriberStatus.isBilling()} —
+ * ACTIVE only), and {@code 0} otherwise (including CANCELLED, PAUSED, PAYMENT_ISSUE, and
+ * PENDING_ACTIVATION). {@code planPriceCents} is the plan's list price regardless of billing
+ * status (null if no plan has been assigned yet) — kept separately so the page can still show
+ * e.g. "Complete, $169/mo" as a plan attribute on a $0-MRR (e.g. cancelled) customer.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminSubscriberDetail(
@@ -25,6 +32,7 @@ public record AdminSubscriberDetail(
         String status,
         String planCode,
         Integer mrrCents,
+        Integer planPriceCents,
         String billingCycle,
         String stripeCustomerId,
         String stripeSubscriptionId,
