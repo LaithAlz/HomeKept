@@ -12,14 +12,16 @@
 --    get slower as the business grows, and denials are exactly the traffic you get when
 --    something is probing.
 --
--- 2. NOTE READS. property_note already has (property_id, created_at DESC) from V18.
---    visit_note has only V7's plain (visit_id), with no created_at, so the newest-first
---    read has to sort. Adding the matching composite makes the two note tables behave
---    identically, which is the whole point of having given them the same shape.
+-- 2. NOTE READS. visit_note has only V7's plain (visit_id), so the newest-first read has to
+--    sort. This adds the composite that matches how notes are actually read and paged, and
+--    matches V18's property_note index so the two tables behave identically.
 --
--- Both include created_at DESC so the ordered read can be served straight from the index,
--- which also matters for the cursor pagination these endpoints need: a stable cursor
--- requires a total order, and these are the columns it orders on.
+-- The note index is (visit_id, id DESC), NOT (visit_id, created_at DESC). Notes order and
+-- cursor on id alone: for an append-only log insert order is log order, and id is the only
+-- key that is both unique and monotonic, so it is the only one a keyset cursor can partition
+-- exactly without risking a skipped row. Indexing created_at would serve a sort the code
+-- deliberately does not perform. See VisitNoteService's class javadoc for why ordering on
+-- created_at while cursoring on id could silently lose a note.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- Serves existsAttendingAssignment, the technician note-access check.
