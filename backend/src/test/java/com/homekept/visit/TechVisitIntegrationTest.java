@@ -854,11 +854,12 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         MvcResult result = mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", techToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.notes.length()").value(2))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist())
                 .andReturn();
 
         List<String> bodies = com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$[*].body");
+                result.getResponse().getContentAsString(), "$.notes[*].body");
         assertThat(bodies).containsExactly("Second note", "First note");
     }
 
@@ -899,7 +900,7 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(ADMIN_VISIT_NOTES_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].body").value("Left by the technician"));
+                .andExpect(jsonPath("$.notes[0].body").value("Left by the technician"));
 
         mockMvc.perform(post(ADMIN_VISIT_NOTES_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", adminToken))
@@ -910,8 +911,8 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(VISIT_NOTES_URL, todayVisit.getId())
                         .cookie(new Cookie("hk_access", techToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
-                .andExpect(jsonPath("$[0].body").value("Left by the admin"));
+                .andExpect(jsonPath("$.notes.length()").value(2))
+                .andExpect(jsonPath("$.notes[0].body").value("Left by the admin"));
     }
 
     // ── GET/POST /api/tech/properties/{propertyId}/notes ─────────────────────
@@ -1015,11 +1016,12 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         MvcResult result = mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", techToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.notes.length()").value(2))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist())
                 .andReturn();
 
         List<String> bodies = com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$[*].body");
+                result.getResponse().getContentAsString(), "$.notes[*].body");
         assertThat(bodies).containsExactly("Second note", "First note");
     }
 
@@ -1056,10 +1058,13 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void listPropertyNotes_technicianWithOnlyCancelledVisit_stillAllowed() throws Exception {
-        // Access is NOT filtered by visit status — even a CANCELLED assignment still proves
-        // a genuine technician/property relationship (see
-        // TechVisitService#requirePropertyAccessibleToTechnician).
+    void listPropertyNotes_technicianWithOnlyCancelledVisit_returns404() throws Exception {
+        // Access IS filtered by visit status now (safety-review blocker): a CANCELLED
+        // assignment means the attendance did NOT happen, so it must NOT prove a standing
+        // relationship — otherwise assigning a technician by mistake and then cancelling the
+        // visit would leave them with permanent, irrevocable read/write access to the
+        // property's notes. Cancelling the visit is the admin's only revocation lever, so it
+        // must actually revoke. (This inverts the pre-fix expectation, which asserted 200.)
         long nano = System.nanoTime();
         User tech2 = userRepository.save(new User(
                 "tech2-cancelled-" + nano + "@test.local",
@@ -1078,7 +1083,76 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
 
         mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", tech2Token)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listPropertyNotes_technicianWithCompletedVisit_stillAllowed() throws Exception {
+        // COMPLETED (unlike CANCELLED) DOES qualify — the attendance genuinely happened, so
+        // the technician should still be able to read/reference the property's notes
+        // afterward (see VisitStatus#impliesAttendance).
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-completed-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "Completed",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        Visit completedVisit = visitRepository.save(new Visit(
+                subscriber.getId(), property.getId(), null,
+                dbNow().minus(10, ChronoUnit.DAYS), 60, VisitType.ROUTINE));
+        completedVisit.setTechnicianId(tech2.getId());
+        completedVisit.setStatus(VisitStatus.COMPLETED);
+        visitRepository.save(completedVisit);
+
+        mockMvc.perform(get(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", tech2Token)))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void addPropertyNote_technicianWithOnlyCancelledVisit_returns404() throws Exception {
+        // Same revocation rule on the write path, not just the read path.
+        long nano = System.nanoTime();
+        User tech2 = userRepository.save(new User(
+                "tech2-cancelled-write-" + nano + "@test.local",
+                passwordEncoder.encode("Tech1234!"),
+                "Tech2", "CancelledWrite",
+                Role.TECHNICIAN, UserStatus.ACTIVE));
+        techProfileRepository.save(new TechnicianProfile(tech2.getId(), "ACTIVE", null, 4500));
+        String tech2Token = loginAs(tech2.getEmail(), "Tech1234!");
+
+        Visit cancelledVisit = visitRepository.save(new Visit(
+                subscriber.getId(), property.getId(), null,
+                dbNow().plus(10, ChronoUnit.DAYS), 60, VisitType.ROUTINE));
+        cancelledVisit.setTechnicianId(tech2.getId());
+        cancelledVisit.setStatus(VisitStatus.CANCELLED);
+        visitRepository.save(cancelledVisit);
+
+        mockMvc.perform(post(PROPERTY_NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", tech2Token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void existsAttendingAssignment_nullTechnicianId_returnsFalse_neverFailsOpen() {
+        // Regression pin for the safety-review finding: a derived
+        // existsByPropertyIdAndTechnicianId would have Spring Data rewrite a null-bound
+        // technicianId into "IS NULL", matching any property with an unassigned qualifying
+        // visit and granting access instead of denying it. The explicit @Query form must
+        // never do that — standard JPQL "=" against a null-bound parameter is simply never
+        // true. Exercise the real query directly, not just through the (also-fixed)
+        // service-layer Objects.requireNonNull guard.
+        List<VisitStatus> attendanceStatuses = List.of(
+                VisitStatus.SCHEDULED, VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED, VisitStatus.INCOMPLETE);
+
+        boolean result = visitRepository.existsAttendingAssignment(property.getId(), null, attendanceStatuses);
+
+        assertThat(result).isFalse();
     }
 
     @Test
@@ -1093,7 +1167,7 @@ class TechVisitIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(ADMIN_PROPERTY_NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].body").value("Left by the technician"));
+                .andExpect(jsonPath("$.notes[0].body").value("Left by the technician"));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

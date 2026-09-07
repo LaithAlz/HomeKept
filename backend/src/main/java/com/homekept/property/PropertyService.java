@@ -1,8 +1,10 @@
 package com.homekept.property;
 
+import com.homekept.common.Pagination;
 import com.homekept.identity.UserQueryService;
 import com.homekept.identity.UserQueryService.UserSummary;
 import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
 import com.homekept.property.exception.PropertyNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,8 +38,8 @@ public class PropertyService {
 
     private static final Logger log = LoggerFactory.getLogger(PropertyService.class);
 
-    /** Cap on notes returned per property — mirrors {@code VisitNoteService.NOTES_LIMIT}. */
-    private static final int NOTES_LIMIT = 100;
+    private static final int DEFAULT_NOTES_PAGE_SIZE = 20;
+    private static final int MAX_NOTES_PAGE_SIZE = 100;
 
     private final PropertyRepository propertyRepository;
     private final PropertyNoteRepository propertyNoteRepository;
@@ -205,32 +207,65 @@ public class PropertyService {
     }
 
     /**
-     * Returns a property's threaded notes, newest first, capped at {@value #NOTES_LIMIT}
-     * rows, with each note's author resolved to a name via a single batched
+     * Returns one cursor-paginated page of a property's notes, newest first, with each
+     * note's author resolved to a name via a single batched
      * {@link UserQueryService#findSummariesByIds} call for the whole page — never one query
      * per note. Backs {@code GET /api/admin/properties/{propertyId}/notes} and (after its own
      * ownership check) {@code GET /api/tech/properties/{propertyId}/notes}.
      *
-     * @param propertyId the property id
-     * @return the property's notes, newest first
+     * <p>An earlier version of this method had a fixed 100-row cap with no way to page
+     * further, which made "append-only, a correction is a new note" false in practice: enough
+     * filler notes would push a real one past the cap, permanently unreachable through any
+     * API. Cursoring on {@code id} (exclusive upper bound, same convention as
+     * {@code VisitAdminService#listVisits}) fixes that — see
+     * {@code com.homekept.visit.VisitNoteRepository}'s javadoc for why an {@code id}-only
+     * cursor is sound even though the display order is {@code createdAt DESC, id DESC}.
+     * Fetches {@code limit + 1} rows to detect a further page without a separate (and, under
+     * concurrent inserts, racy) {@code COUNT} query.
+     *
+     * @param propertyId   the property id
+     * @param cursor       optional {@code id} cursor (exclusive upper bound); {@code null}
+     *                     for the first page
+     * @param limit        optional page size (defaults to {@value #DEFAULT_NOTES_PAGE_SIZE},
+     *                     capped at {@value #MAX_NOTES_PAGE_SIZE})
+     * @param readerUserId the authenticated principal reading this page — logged, not used
+     *                     for authorization (the caller already did that)
+     * @return the requested page of notes, newest first, with a {@code nextCursor} when more
+     *         remain
      * @throws PropertyNotFoundException if the property does not exist (404)
      */
     @Transactional(readOnly = true)
-    public List<PropertyNoteItem> listNotes(Long propertyId) {
+    public PropertyNotePage listNotes(Long propertyId, Long cursor, Integer limit, Long readerUserId) {
         if (!propertyRepository.existsById(propertyId)) {
             throw new PropertyNotFoundException(propertyId);
         }
 
-        List<PropertyNote> notes = propertyNoteRepository
-                .findByPropertyIdOrderByCreatedAtDesc(propertyId, PageRequest.of(0, NOTES_LIMIT));
-        if (notes.isEmpty()) {
-            return List.of();
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_NOTES_PAGE_SIZE, MAX_NOTES_PAGE_SIZE);
+        PageRequest pageable = PageRequest.of(0, pageSize + 1);
+
+        List<PropertyNote> rows = (cursor != null)
+                ? propertyNoteRepository.findByPropertyIdAndIdLessThanOrderByCreatedAtDescIdDesc(
+                        propertyId, cursor, pageable)
+                : propertyNoteRepository.findByPropertyIdOrderByCreatedAtDescIdDesc(propertyId, pageable);
+
+        boolean hasMore = rows.size() > pageSize;
+        List<PropertyNote> page = hasMore ? rows.subList(0, pageSize) : rows;
+        Long nextCursor = hasMore ? page.get(page.size() - 1).getId() : null;
+
+        // A successful read leaves a trace too (not just writes) — resource id, reader id,
+        // and a count only; no bodies, no other PII — so an over-broad grant is at least
+        // forensically visible.
+        log.info("property_notes_read propertyId={} readerUserId={} count={}", propertyId, readerUserId, page.size());
+
+        if (page.isEmpty()) {
+            return new PropertyNotePage(List.of(), null);
         }
 
-        List<Long> authorIds = notes.stream().map(PropertyNote::getAuthorUserId).distinct().toList();
+        List<Long> authorIds = page.stream().map(PropertyNote::getAuthorUserId).distinct().toList();
         Map<Long, UserSummary> authorsById = userQueryService.findSummariesByIds(authorIds);
 
-        return notes.stream().map(n -> toNoteItem(n, authorsById)).collect(Collectors.toList());
+        List<PropertyNoteItem> items = page.stream().map(n -> toNoteItem(n, authorsById)).collect(Collectors.toList());
+        return new PropertyNotePage(items, nextCursor);
     }
 
     /**

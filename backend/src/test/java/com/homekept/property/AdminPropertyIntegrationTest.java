@@ -255,6 +255,20 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void addNote_asTechnician_returns403() throws Exception {
+        // The technician endpoint for this is POST /api/tech/properties/{propertyId}/notes —
+        // a TECHNICIAN hitting the ADMIN-gated path must be rejected, same as
+        // CUSTOMER/anonymous.
+        String techToken = loginAs(Role.TECHNICIAN);
+
+        mockMvc.perform(post(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"Anything\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void addNote_anonymous_returns401() throws Exception {
         mockMvc.perform(post(NOTES_URL, property.getId())
                         .contentType(MediaType.APPLICATION_JSON)
@@ -278,11 +292,14 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
         MvcResult result = mockMvc.perform(get(NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.notes.length()").value(2))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist())
                 .andReturn();
 
         List<String> bodies = com.jayway.jsonpath.JsonPath.read(
-                result.getResponse().getContentAsString(), "$[*].body");
+                result.getResponse().getContentAsString(), "$.notes[*].body");
+        // Ordered by createdAt DESC, id DESC (V19's tiebreaker) — deterministic even if both
+        // notes land in the same createdAt microsecond.
         assertThat(bodies).containsExactly("Second note", "First note");
     }
 
@@ -298,8 +315,9 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.notes").isArray())
+                .andExpect(jsonPath("$.notes.length()").value(0))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
     }
 
     @Test
@@ -307,6 +325,73 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", customerToken)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void listNotes_asTechnician_returns403() throws Exception {
+        // The technician endpoint for this is GET /api/tech/properties/{propertyId}/notes —
+        // a TECHNICIAN hitting the ADMIN-gated path must be rejected. Nothing pinned this
+        // before: both suites tested customer-403 and anonymous-401, never the technician,
+        // who is the exact principal the ownership rule exists to constrain.
+        String techToken = loginAs(Role.TECHNICIAN);
+
+        mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", techToken)))
+                .andExpect(status().isForbidden());
+    }
+
+    // ── GET /api/admin/properties/{propertyId}/notes — pagination ────────────
+
+    @Test
+    void listNotes_defaultPageSize_returnsTwentyWithNextCursor() throws Exception {
+        for (int i = 0; i < 25; i++) {
+            addNoteViaApi(property.getId(), "Note " + i);
+        }
+
+        MvcResult result = mockMvc.perform(get(NOTES_URL, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.notes.length()").value(20))
+                .andExpect(jsonPath("$.nextCursor").isNumber())
+                .andReturn();
+
+        Long nextCursor = idFrom(result, "$.nextCursor");
+
+        mockMvc.perform(get(NOTES_URL + "?cursor=" + nextCursor, property.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.notes.length()").value(5))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+    }
+
+    @Test
+    void listNotes_pagingThroughFillerNotes_stillFindsTheOriginalNote() throws Exception {
+        // The regression this pins: a fixed, unpaginated cap made a note permanently
+        // unreachable once enough filler notes were posted after it.
+        addNoteViaApi(property.getId(), "The note someone wants gone");
+        for (int i = 0; i < 100; i++) {
+            addNoteViaApi(property.getId(), "Filler " + i);
+        }
+
+        List<String> allBodies = new java.util.ArrayList<>();
+        Long cursor = null;
+        int pages = 0;
+        do {
+            String url = cursor == null ? NOTES_URL : (NOTES_URL + "?cursor=" + cursor);
+            MvcResult page = mockMvc.perform(get(url, property.getId())
+                            .cookie(new Cookie("hk_access", adminToken)))
+                    .andExpect(status().isOk())
+                    .andReturn();
+            String body = page.getResponse().getContentAsString();
+            allBodies.addAll(com.jayway.jsonpath.JsonPath.read(body, "$.notes[*].body"));
+            Object next = com.jayway.jsonpath.JsonPath.read(body, "$.nextCursor");
+            cursor = next == null ? null : ((Number) next).longValue();
+            pages++;
+            assertThat(pages).isLessThan(20);
+        } while (cursor != null);
+
+        assertThat(allBodies).hasSize(101);
+        assertThat(allBodies).contains("The note someone wants gone");
     }
 
     @Test
@@ -329,13 +414,26 @@ class AdminPropertyIntegrationTest extends AbstractIntegrationTest {
         mockMvc.perform(get(NOTES_URL, property.getId())
                         .cookie(new Cookie("hk_access", adminToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].body").value("Gate sticks, lift while pushing."))
-                .andExpect(jsonPath("$[0].accessNotes").doesNotExist());
+                .andExpect(jsonPath("$.notes[0].body").value("Gate sticks, lift while pushing."))
+                .andExpect(jsonPath("$.notes[0].accessNotes").doesNotExist());
 
         Property reloaded = propertyRepository.findById(property.getId()).orElseThrow();
         assertThat(reloaded.getAccessNotes()).isEqualTo(encrypted);
         assertThat(accessNotesCipher.decrypt(reloaded.getAccessNotes()))
                 .isEqualTo("Lockbox 4471, alarm code 9021");
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** Adds a note to the given property via the admin API and returns the created note's id. */
+    private Long addNoteViaApi(Long propertyId, String body) throws Exception {
+        MvcResult result = mockMvc.perform(post(NOTES_URL, propertyId)
+                        .cookie(new Cookie("hk_access", adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"" + body + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        return idFrom(result);
     }
 
 }

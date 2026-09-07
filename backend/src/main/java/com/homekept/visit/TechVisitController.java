@@ -2,6 +2,7 @@ package com.homekept.visit;
 
 import com.homekept.property.dto.CreatePropertyNoteRequest;
 import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
 import com.homekept.visit.dto.CreateVisitNoteRequest;
 import com.homekept.visit.dto.FlagResponse;
 import com.homekept.visit.dto.TechCompleteVisitRequest;
@@ -19,6 +20,7 @@ import com.homekept.visit.dto.TechStartVisitResponse;
 import com.homekept.visit.dto.TechVisitListItem;
 import com.homekept.visit.dto.TodoResponse;
 import com.homekept.visit.dto.VisitNoteItem;
+import com.homekept.visit.dto.VisitNotePage;
 import com.homekept.visit.dto.VisitServiceItem;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -240,20 +243,27 @@ public class TechVisitController {
     }
 
     /**
-     * GET /api/tech/visits/{id}/notes
+     * GET /api/tech/visits/{id}/notes?cursor=&limit=
      *
-     * <p>A visit's threaded operational notes, newest first. Same rows the admin console can
+     * <p>A visit's threaded operational notes, newest first, cursor-paginated (same
+     * convention as the admin console's list endpoints). Same rows the admin console can
      * read/write via {@code GET}/{@code POST /api/admin/visits/{id}/notes}. Returns 404 if
      * the visit does not exist or is not assigned to this technician.
      *
-     * @param id   the visit id
-     * @param auth JWT principal — Long user id
-     * @return 200 with the notes, newest first
+     * @param id     the visit id
+     * @param cursor optional id cursor (exclusive upper bound)
+     * @param limit  optional page size (default 20, max 100)
+     * @param auth   JWT principal — Long user id
+     * @return 200 with the requested page of notes, newest first
      */
     @GetMapping("/visits/{id}/notes")
-    public ResponseEntity<List<VisitNoteItem>> listVisitNotes(@PathVariable Long id, Authentication auth) {
+    public ResponseEntity<VisitNotePage> listVisitNotes(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(techVisitService.listVisitNotes(id, techUserId));
+        return ResponseEntity.ok(techVisitService.listVisitNotes(id, cursor, limit, techUserId));
     }
 
     /**
@@ -278,23 +288,30 @@ public class TechVisitController {
     }
 
     /**
-     * GET /api/tech/properties/{propertyId}/notes
+     * GET /api/tech/properties/{propertyId}/notes?cursor=&limit=
      *
-     * <p>A property's threaded operational notes, newest first — standing context ("dog in
-     * the yard", "gate sticks") that the next technician to attend needs, as distinct from a
+     * <p>A property's threaded operational notes, newest first, cursor-paginated (same
+     * convention as the admin console's list endpoints) — standing context ("dog in the
+     * yard", "gate sticks") that the next technician to attend needs, as distinct from a
      * single visit's own notes. Returns 404 if the property does not exist, OR if this
-     * technician has never been assigned a visit at it — the two cases are indistinguishable
-     * from outside, per the ownership-failure rule.
+     * technician does not have a currently-qualifying assignment at it (see
+     * {@code TechVisitService#requirePropertyAccessibleToTechnician}) — the two cases are
+     * indistinguishable from outside, per the ownership-failure rule.
      *
      * @param propertyId the property id
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size (default 20, max 100)
      * @param auth       JWT principal — Long user id
-     * @return 200 with the notes, newest first
+     * @return 200 with the requested page of notes, newest first
      */
     @GetMapping("/properties/{propertyId}/notes")
-    public ResponseEntity<List<PropertyNoteItem>> listPropertyNotes(
-            @PathVariable Long propertyId, Authentication auth) {
+    public ResponseEntity<PropertyNotePage> listPropertyNotes(
+            @PathVariable Long propertyId,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
-        return ResponseEntity.ok(techVisitService.listPropertyNotes(propertyId, techUserId));
+        return ResponseEntity.ok(techVisitService.listPropertyNotes(propertyId, cursor, limit, techUserId));
     }
 
     /**

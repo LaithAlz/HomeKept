@@ -4,6 +4,7 @@ import com.homekept.property.dto.AdminPropertySkuResponse;
 import com.homekept.property.dto.AdminUpdateSkuRequest;
 import com.homekept.property.dto.CreatePropertyNoteRequest;
 import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,15 +16,15 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.List;
 
 /**
  * Admin-only property endpoints.
  *
- * <p>ADMIN role enforced by {@code @PreAuthorize} (second gate after the JWT filter).
- * These endpoints fall under {@code .anyRequest().authenticated()} in SecurityConfig.
+ * <p>ADMIN role enforced by {@code @PreAuthorize} (defense in depth): {@code /api/admin/**}
+ * already requires {@code hasRole("ADMIN")} in {@link com.homekept.config.SecurityConfig},
+ * not merely {@code anyRequest().authenticated()}.
  *
  * <p>Property mutations belong to the property domain — this controller calls
  * {@link PropertyService} directly rather than routing through the subscription domain.
@@ -84,19 +85,29 @@ public class AdminPropertyController {
     }
 
     /**
-     * GET /api/admin/properties/{propertyId}/notes
+     * GET /api/admin/properties/{propertyId}/notes?cursor=&limit=
      *
-     * <p>A property's threaded operational notes, newest first, capped at 100 rows —
-     * standing knowledge about the home ("dog in the yard", "gate sticks"), as distinct from
-     * a single visit's own notes. Never the encrypted access notes. Unknown
-     * {@code propertyId} → 404.
+     * <p>A property's threaded operational notes, newest first, cursor-paginated (same
+     * convention as {@code GET /api/admin/visits} — an exclusive-upper-bound {@code id}
+     * cursor, default/max page size via {@code Pagination.resolveLimit}) — standing
+     * knowledge about the home ("dog in the yard", "gate sticks"), as distinct from a single
+     * visit's own notes. Never the encrypted access notes. Unknown {@code propertyId} → 404.
      *
      * @param propertyId the property id
-     * @return 200 with the notes, newest first
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size (default 20, max 100)
+     * @param auth       the authenticated admin — recorded in the read-audit log line, not
+     *                   used for authorization
+     * @return 200 with the requested page of notes, newest first
      */
     @GetMapping("/{propertyId}/notes")
-    public ResponseEntity<List<PropertyNoteItem>> listNotes(@PathVariable Long propertyId) {
-        return ResponseEntity.ok(propertyService.listNotes(propertyId));
+    public ResponseEntity<PropertyNotePage> listNotes(
+            @PathVariable Long propertyId,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
+        Long adminUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(propertyService.listNotes(propertyId, cursor, limit, adminUserId));
     }
 
     /**
