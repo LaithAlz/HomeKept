@@ -22,8 +22,8 @@
 -- requires a total order, and these are the columns it orders on.
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Serves existsByPropertyIdAndTechnicianId, the technician note-access check.
+-- Serves existsAttendingAssignment, the technician note-access check.
 CREATE INDEX idx_visit_property_technician ON visit (property_id, technician_id);
 
 -- Serves "this visit's notes, newest first", matching idx_property_note_property.
-CREATE INDEX idx_visit_note_visit_created ON visit_note (visit_id, created_at DESC);
+CREATE INDEX idx_visit_note_visit_id ON visit_note (visit_id, id DESC);

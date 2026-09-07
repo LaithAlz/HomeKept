@@ -32,9 +32,9 @@ interface PropertyNoteRepository extends JpaRepository<PropertyNote, Long> {
      * @param propertyId the property id
      * @param pageable   page size (the service requests {@code limit + 1} to detect whether
      *                   a further page exists without a separate count query)
-     * @return notes ordered by {@code createdAt} descending, {@code id} descending
+     * @return notes ordered by {@code id} descending, which for an append-only log is insert order
      */
-    List<PropertyNote> findByPropertyIdOrderByCreatedAtDescIdDesc(Long propertyId, Pageable pageable);
+    List<PropertyNote> findByPropertyIdOrderByIdDesc(Long propertyId, Pageable pageable);
 
     /**
      * Subsequent page: a property's notes with {@code id} less than the previous page's
@@ -44,8 +44,8 @@ interface PropertyNoteRepository extends JpaRepository<PropertyNote, Long> {
      * @param propertyId the property id
      * @param cursor     exclusive upper bound on {@code id} (the previous page's last note id)
      * @param pageable   page size (the service requests {@code limit + 1})
-     * @return notes ordered by {@code createdAt} descending, {@code id} descending
+     * @return notes ordered by {@code id} descending, which for an append-only log is insert order
      */
-    List<PropertyNote> findByPropertyIdAndIdLessThanOrderByCreatedAtDescIdDesc(
+    List<PropertyNote> findByPropertyIdAndIdLessThanOrderByIdDesc(
             Long propertyId, Long cursor, Pageable pageable);
 }

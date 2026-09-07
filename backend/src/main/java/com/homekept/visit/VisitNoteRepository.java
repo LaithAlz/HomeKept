@@ -32,9 +32,9 @@ interface VisitNoteRepository extends JpaRepository<VisitNote, Long> {
      * @param visitId  the visit id
      * @param pageable page size (the service requests {@code limit + 1} to detect whether a
      *                 further page exists without a separate count query)
-     * @return notes ordered by {@code createdAt} descending, {@code id} descending
+     * @return notes ordered by {@code id} descending, which for an append-only log is insert order
      */
-    List<VisitNote> findByVisitIdOrderByCreatedAtDescIdDesc(Long visitId, Pageable pageable);
+    List<VisitNote> findByVisitIdOrderByIdDesc(Long visitId, Pageable pageable);
 
     /**
      * Subsequent page: a visit's notes with {@code id} less than the previous page's cursor
@@ -44,8 +44,8 @@ interface VisitNoteRepository extends JpaRepository<VisitNote, Long> {
      * @param visitId  the visit id
      * @param cursor   exclusive upper bound on {@code id} (the previous page's last note id)
      * @param pageable page size (the service requests {@code limit + 1})
-     * @return notes ordered by {@code createdAt} descending, {@code id} descending
+     * @return notes ordered by {@code id} descending, which for an append-only log is insert order
      */
-    List<VisitNote> findByVisitIdAndIdLessThanOrderByCreatedAtDescIdDesc(
+    List<VisitNote> findByVisitIdAndIdLessThanOrderByIdDesc(
             Long visitId, Long cursor, Pageable pageable);
 }

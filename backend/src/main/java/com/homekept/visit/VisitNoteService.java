@@ -38,14 +38,29 @@ import java.util.stream.Collectors;
  * — an exclusive-upper-bound {@code id} cursor), so every note stays reachable no matter how
  * many pile up.
  *
- * <p>Cursoring on {@code id} alone, while the display order is {@code createdAt DESC, id
- * DESC} (see {@link VisitNoteRepository}'s javadoc for why the tiebreaker exists at all),
- * is sound for completeness: every row belongs to exactly one page's {@code id}-partitioned
- * candidate set (id ranges are disjoint by construction), so paging can never duplicate or
- * lose a row. The only thing an {@code id}-only cursor cannot guarantee against extreme
- * clock skew between concurrent writers is that a page boundary is a razor-precise
- * chronological cut — an acceptable trade against inventing a compound
- * {@code (createdAt, id)} cursor shape nothing else in this codebase uses.
+ * <p><b>Ordering is {@code id DESC}, and the cursor is {@code id}. Those being the same key
+ * is the point.</b> For an append-only log, insert order is log order, and {@code id} is a
+ * unique monotonic identity column, so this is a total order that a keyset cursor
+ * ({@code WHERE id < :cursor}) partitions exactly: every row falls in exactly one page and
+ * none can be skipped or repeated.
+ *
+ * <p>An earlier version ordered by {@code createdAt DESC, id DESC} while still cursoring on
+ * {@code id} alone, and claimed that was sound because "id ranges are disjoint by
+ * construction". That claim was false, and the reason is worth recording so nobody
+ * reintroduces it. {@code createdAt} is {@code @CreationTimestamp} with the default
+ * {@code SourceType.VM}, so Hibernate stamps it in the JVM at flush; {@code id} is
+ * {@code IDENTITY}, so Postgres assigns it when the INSERT actually executes. Between those
+ * two moments sits a JDBC round trip. Two concurrent writers can therefore produce a row
+ * with a <em>higher id and an older timestamp</em> with no clock skew involved, just a
+ * scheduler. The cursor is set from the last row in display order, which under such an
+ * inversion is not the page's minimum id, so the next page's {@code id < cursor} window
+ * skips the inverted row entirely: returned by no page, ever.
+ *
+ * <p>That is precisely the failure this pagination exists to prevent, in a record whose
+ * whole value is that nothing said in it disappears. Ordering by the cursor key removes the
+ * possibility rather than narrowing it, and it costs only that display order is insert order
+ * rather than timestamp order, which differ only under an inversion, by microseconds, and
+ * arguably the former is the more honest ordering for a log.
  */
 @Service
 class VisitNoteService {
@@ -87,8 +102,8 @@ class VisitNoteService {
         PageRequest pageable = PageRequest.of(0, pageSize + 1);
 
         List<VisitNote> rows = (cursor != null)
-                ? visitNoteRepository.findByVisitIdAndIdLessThanOrderByCreatedAtDescIdDesc(visitId, cursor, pageable)
-                : visitNoteRepository.findByVisitIdOrderByCreatedAtDescIdDesc(visitId, pageable);
+                ? visitNoteRepository.findByVisitIdAndIdLessThanOrderByIdDesc(visitId, cursor, pageable)
+                : visitNoteRepository.findByVisitIdOrderByIdDesc(visitId, pageable);
 
         boolean hasMore = rows.size() > pageSize;
         List<VisitNote> page = hasMore ? rows.subList(0, pageSize) : rows;

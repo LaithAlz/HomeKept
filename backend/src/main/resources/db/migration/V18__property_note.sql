@@ -42,8 +42,11 @@ CREATE TABLE property_note (
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
--- The only read pattern is "this property's notes, newest first".
-CREATE INDEX idx_property_note_property ON property_note (property_id, created_at DESC);
+-- The only read pattern is "this property's notes, newest first", ordered and cursored on
+-- id. For an append-only log insert order is log order, and id is the only key that is both
+-- unique and monotonic, so it is the only one a keyset cursor can partition exactly without
+-- risking a skipped row. See VisitNoteService's class javadoc.
+CREATE INDEX idx_property_note_property ON property_note (property_id, id DESC);
 
 COMMENT ON TABLE property_note IS
     'Plaintext technician notes about a property, newest-first. Never put access '

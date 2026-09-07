@@ -244,9 +244,9 @@ public class PropertyService {
         PageRequest pageable = PageRequest.of(0, pageSize + 1);
 
         List<PropertyNote> rows = (cursor != null)
-                ? propertyNoteRepository.findByPropertyIdAndIdLessThanOrderByCreatedAtDescIdDesc(
+                ? propertyNoteRepository.findByPropertyIdAndIdLessThanOrderByIdDesc(
                         propertyId, cursor, pageable)
-                : propertyNoteRepository.findByPropertyIdOrderByCreatedAtDescIdDesc(propertyId, pageable);
+                : propertyNoteRepository.findByPropertyIdOrderByIdDesc(propertyId, pageable);
 
         boolean hasMore = rows.size() > pageSize;
         List<PropertyNote> page = hasMore ? rows.subList(0, pageSize) : rows;
