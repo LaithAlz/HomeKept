@@ -3,11 +3,14 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PanelLoading, PanelError } from "@/components/admin/PanelStates";
+import { NotesLog } from "@/components/admin/NotesLog";
 import { formatCentsCad, formatDateTime, formatVisitWindow } from "@/lib/format";
 import { ApiError } from "@/lib/api";
 import {
   useAdminVisit,
   useAdminVisitEvents,
+  useAdminVisitNotes,
+  useAddAdminVisitNote,
   useAdminTechnicians,
   visitCustomerFullName,
   VISIT_STATUS_LABEL,
@@ -229,6 +232,7 @@ function VisitDetailView({
           {(visit.completionNotes || visit.materialsNotes || visit.materialsCostCents != null) && (
             <CompletionSection visit={visit} />
           )}
+          <NotesSection visitId={visit.id} />
           <PhotosSection visit={visit} />
           <ActivitySection visitId={visit.id} />
         </div>
@@ -350,6 +354,45 @@ function CompletionSection({ visit }: { visit: AdminVisitDetail }) {
           <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{visit.materialsNotes}</p>
         </div>
       )}
+    </Section>
+  );
+}
+
+/**
+ * The visit's threaded operational notes log (issue: "each visit should also have
+ * notes... technician notes for tracking and whatever") — a running log any number of
+ * staff/technicians can add to, each entry keeping its own author and timestamp.
+ *
+ * Deliberately a separate section from `CompletionSection`'s "Completion notes"/
+ * "Materials notes": those are single fields a technician fills in once, at completion.
+ * This is a log (see the description text `NotesLog` renders, which spells out that
+ * distinction for the reader) and it's always shown, whether or not this visit has been
+ * completed yet.
+ */
+function NotesSection({ visitId }: { visitId: number }) {
+  const query = useAdminVisitNotes(visitId);
+  const addNote = useAddAdminVisitNote(visitId);
+
+  const notes = useMemo(() => query.data?.pages.flatMap((page) => page.notes) ?? [], [query.data]);
+
+  return (
+    <Section title="Notes log">
+      <NotesLog
+        notes={notes}
+        isLoading={query.isLoading}
+        isError={query.isError && !query.data}
+        onRetry={() => void query.refetch()}
+        hasMore={query.hasNextPage}
+        onLoadMore={() => void query.fetchNextPage()}
+        isLoadingMore={query.isFetchingNextPage}
+        loadMoreError={query.isFetchNextPageError}
+        onAddNote={(body) => addNote.mutateAsync(body)}
+        isAdding={addNote.isPending}
+        description="A running log of notes about this visit, from staff and technicians, most recent first. It's separate from the one-time completion notes a technician records when the visit finishes: this log can hold any number of entries, each showing who wrote it and when."
+        emptyMessage="No notes yet for this visit."
+        logLabel="Visit notes"
+        formLabel="Add a note about this visit"
+      />
     </Section>
   );
 }

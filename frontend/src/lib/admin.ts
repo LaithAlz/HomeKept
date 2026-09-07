@@ -11,6 +11,9 @@
  *     (backend/src/main/java/com/homekept/property/dto/*.java)
  *   - AdminVisitListItem / AdminVisitDetail / AdminVisitPropertySummary / VisitEventItem
  *     (backend/src/main/java/com/homekept/visit/dto/*.java)
+ *   - AdminNoteItem / AdminNotePage — named generically here since the wire shape is
+ *     shared verbatim by VisitNoteItem/VisitNotePage (com.homekept.visit.dto) and
+ *     PropertyNoteItem/PropertyNotePage (com.homekept.property.dto)
  *   - AdminTechnicianListItem
  *     (backend/src/main/java/com/homekept/technician/dto/AdminTechnicianListItem.java)
  *   - AdminDashboardResponse
@@ -29,7 +32,7 @@
  * ADMIN role check in `AdminShell` has passed — see that component for the guard.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, patch, post, qs } from "@/lib/api";
 import { submitWalkthroughBooking, type WalkthroughBookingRequest } from "@/lib/booking";
 import type { ServiceCategory, TierClass } from "@/lib/catalog";
@@ -676,6 +679,108 @@ export function useAdminVisitEvents(id: number | null) {
     queryKey: ["admin", "visit-events", id],
     queryFn: () => get<AdminVisitEvent[]>(`/api/admin/visits/${id}/events`),
     enabled: id !== null,
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Notes — threaded operational log (visit + property share this shape)      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One entry of a threaded operational note log. Shared, identical shape returned by
+ * `GET /api/admin/visits/{id}/notes` (mirrors `VisitNoteItem.java`) and
+ * `GET /api/admin/properties/{propertyId}/notes` (mirrors `PropertyNoteItem.java`) — a
+ * visit's own notes and a property's standing notes are different rows in different
+ * tables, but the wire shape is field-for-field identical.
+ *
+ * NOT the same thing as `AdminVisitDetail.completionNotes`/`materialsNotes`: those are
+ * single fields a technician fills in once at completion; this is a log, any number of
+ * entries, each with a resolved author, newest first. There is no delete/edit endpoint
+ * for a note — it is deliberately append-only (same reasoning as `visit_event`); a
+ * correction is posted as a new note, not an edit of the old one.
+ *
+ * `authorFirstName`/`authorLastName` are `null` when the author's user record could not
+ * be resolved (see `noteAuthorName`, which handles that case rather than rendering
+ * "undefined undefined").
+ */
+export interface AdminNoteItem {
+  id: number;
+  body: string;
+  createdAt: string;
+  authorUserId: number;
+  authorFirstName: string | null;
+  authorLastName: string | null;
+}
+
+/** Response body for `GET .../notes?cursor=&limit=` — one cursor-paginated page, newest first. */
+export interface AdminNotePage {
+  notes: AdminNoteItem[];
+  nextCursor: number | null;
+}
+
+/**
+ * `authorFirstName`/`authorLastName` joined and trimmed, or `null` when neither resolved
+ * (e.g. the author's user record was later deleted). Callers should render an honest
+ * fallback rather than joining two nulls into the literal string "undefined undefined".
+ */
+export function noteAuthorName(note: AdminNoteItem): string | null {
+  const name = [note.authorFirstName, note.authorLastName].filter(Boolean).join(" ").trim();
+  return name || null;
+}
+
+/**
+ * Display label for a note's author: the resolved name from `noteAuthorName`, or an
+ * honest "Unknown author" fallback (never the literal string "undefined undefined")
+ * with the raw user id appended so staff can still trace it, matching the fallback
+ * style `TechnicianSection` already uses for an unresolved technician name.
+ */
+export function noteAuthorLabel(note: AdminNoteItem): string {
+  return noteAuthorName(note) ?? `Unknown author (#${note.authorUserId})`;
+}
+
+/** 1–2000 chars, enforced client-side to match `CreateVisitNoteRequest`'s `@Size(max = 2000)`. */
+export const NOTE_BODY_MAX_LENGTH = 2000;
+
+/** Default page size for a notes log, matching the backend's default (`Pagination.resolveLimit`). */
+const NOTES_PAGE_SIZE = 20;
+
+/**
+ * `GET /api/admin/visits/{id}/notes?cursor=&limit=` — the visit's threaded operational
+ * log, newest first, accumulated page by page via `fetchNextPage` ("Load more" in the
+ * UI). `hasNextPage` reflects the backend's own `nextCursor` signal — it goes `false`
+ * only once the server says there is no more, never because the UI stopped asking (the
+ * previous fixed-cap behaviour this replaces made a note past the cap permanently
+ * unreachable — see `VisitNotePage.java`).
+ */
+export function useAdminVisitNotes(visitId: number | null) {
+  return useInfiniteQuery({
+    queryKey: ["admin", "visit-notes", visitId],
+    queryFn: ({ pageParam }: { pageParam: number | null }) =>
+      get<AdminNotePage>(
+        `/api/admin/visits/${visitId}/notes${qs({ cursor: pageParam ?? undefined, limit: NOTES_PAGE_SIZE })}`,
+      ),
+    initialPageParam: null as number | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: visitId !== null,
+  });
+}
+
+/**
+ * `POST /api/admin/visits/{id}/notes` — adds a note; the author is always the
+ * authenticated admin (never a request field). Invalidates the visit's notes log so
+ * every already-fetched page refetches and the new note appears without a manual
+ * reload — matches the invalidate-after-mutation convention used everywhere else in
+ * this file, and (unlike a hand-spliced cache update) stays correct regardless of how
+ * many pages the admin has already loaded.
+ */
+export function useAddAdminVisitNote(visitId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) =>
+      post<AdminNoteItem>(`/api/admin/visits/${visitId}/notes`, { body }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "visit-notes", visitId] });
+    },
   });
 }
 
