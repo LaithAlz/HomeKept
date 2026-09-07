@@ -89,6 +89,66 @@ public interface VisitRepository extends JpaRepository<Visit, Long> {
     List<Visit> findByStatusOrderByIdDesc(VisitStatus status, Pageable pageable);
 
     /**
+     * Admin: subscriber-filtered cursor-paginated visits newest-first — backs
+     * {@code GET /api/admin/visits?subscriberId=}, composable with the status filter above
+     * (see the two {@code AndStatus} variants below).
+     */
+    List<Visit> findBySubscriberIdAndIdLessThanOrderByIdDesc(Long subscriberId, Long cursor, Pageable pageable);
+
+    /** Admin: subscriber-filtered first page newest-first. */
+    List<Visit> findBySubscriberIdOrderByIdDesc(Long subscriberId, Pageable pageable);
+
+    /** Admin: subscriber- AND status-filtered cursor-paginated visits newest-first. */
+    List<Visit> findBySubscriberIdAndStatusAndIdLessThanOrderByIdDesc(
+            Long subscriberId, VisitStatus status, Long cursor, Pageable pageable);
+
+    /** Admin: subscriber- AND status-filtered first page newest-first. */
+    List<Visit> findBySubscriberIdAndStatusOrderByIdDesc(Long subscriberId, VisitStatus status, Pageable pageable);
+
+    /**
+     * Whether the given technician has an assignment at the given property in a status that
+     * means an attendance happened or is going to ({@link VisitStatus#impliesAttendance()} —
+     * SCHEDULED, IN_PROGRESS, COMPLETED, or INCOMPLETE). Used by {@code TechVisitService} to
+     * authorize the tech-facing property-notes endpoints ({@code GET}/
+     * {@code POST /api/tech/properties/{propertyId}/notes}).
+     *
+     * <p><strong>CANCELLED (and legacy RESCHEDULED) are deliberately excluded.</strong> A
+     * CANCELLED visit means the attendance did NOT happen — treating it as proof of a
+     * standing relationship would make a technician's access to a property's notes
+     * permanent and irrevocable (assign by mistake, cancel the visit, and they would keep
+     * read/write access forever). Excluding it gives the admin a real revocation lever that
+     * would not otherwise exist anywhere in the system: cancelling a technician's only
+     * qualifying visit at a property immediately ends their access to that property's notes.
+     *
+     * <p>An explicit {@code @Query} rather than a derived {@code existsBy...} method for two
+     * reasons: it needs the status filter above, and — as an authorization predicate — it
+     * must not silently fail open. A derived {@code existsByPropertyIdAndTechnicianId} would
+     * have Spring Data rewrite a {@code null} {@code technicianId} into {@code IS NULL},
+     * which would match any property with an unassigned qualifying visit and grant access
+     * instead of denying it. Standard JPQL {@code =} against a {@code null}-bound parameter
+     * is simply never true (three-valued SQL logic), so this form cannot fail open on a null
+     * id the way the derived form could — not reachable today ({@code techUserId} always
+     * comes from a validated JWT principal), but this is a public method on a public
+     * repository whose entire job is authorization, so failing open is never acceptable here
+     * regardless of current reachability. {@link TechVisitService} additionally rejects a
+     * null id outright before this method is ever called, as defense in depth.
+     *
+     * @param propertyId          the property id
+     * @param technicianId        the technician's user id — MUST NOT be null (see above)
+     * @param attendanceStatuses  the statuses that count as attendance
+     *                            ({@link VisitStatus#impliesAttendance()}); passed in rather
+     *                            than hardcoded so the single source of truth for "which
+     *                            statuses mean attendance" stays on the enum
+     */
+    @Query("SELECT CASE WHEN COUNT(v) > 0 THEN true ELSE false END FROM Visit v "
+            + "WHERE v.propertyId = :propertyId AND v.technicianId = :technicianId "
+            + "AND v.status IN :attendanceStatuses")
+    boolean existsAttendingAssignment(
+            @Param("propertyId") Long propertyId,
+            @Param("technicianId") Long technicianId,
+            @Param("attendanceStatuses") List<VisitStatus> attendanceStatuses);
+
+    /**
      * Count of visits in the given status with {@code scheduledFor} at or after the given
      * instant. Used by the admin dashboard aggregate ("upcoming visits" = SCHEDULED and
      * not yet in the past).

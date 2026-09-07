@@ -1,10 +1,19 @@
 package com.homekept.property;
 
+import com.homekept.common.Pagination;
+import com.homekept.identity.UserQueryService;
+import com.homekept.identity.UserQueryService.UserSummary;
+import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
 import com.homekept.property.exception.PropertyNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -12,20 +21,39 @@ import java.util.stream.Collectors;
  * Service for the property domain.
  *
  * <p>Cross-domain rule: this service may be called by other domains (e.g., the
- * subscription activation flow) but never exposes its repository or entity to them.
+ * subscription activation flow, or the visit domain's {@code TechVisitService} for the
+ * technician-facing property-notes endpoints) but never exposes its repository or entity to
+ * them.
  *
  * <p>Access notes: only the technician day-sheet slice decrypts access notes.
  * This service only creates and stores encrypted bytes.
+ *
+ * <p>Property notes ({@link #listNotes}/{@link #addNote}) are the OTHER, plaintext note
+ * surface (V18's {@code property_note} table) — never confuse the two. This service resolves
+ * a note's author via {@link UserQueryService} (identity domain) — never by reaching into
+ * the identity domain's repository or entity directly.
  */
 @Service
 public class PropertyService {
 
-    private final PropertyRepository propertyRepository;
-    private final AccessNotesCipher cipher;
+    private static final Logger log = LoggerFactory.getLogger(PropertyService.class);
 
-    public PropertyService(PropertyRepository propertyRepository, AccessNotesCipher cipher) {
+    private static final int DEFAULT_NOTES_PAGE_SIZE = 20;
+    private static final int MAX_NOTES_PAGE_SIZE = 100;
+
+    private final PropertyRepository propertyRepository;
+    private final PropertyNoteRepository propertyNoteRepository;
+    private final AccessNotesCipher cipher;
+    private final UserQueryService userQueryService;
+
+    public PropertyService(PropertyRepository propertyRepository,
+                           PropertyNoteRepository propertyNoteRepository,
+                           AccessNotesCipher cipher,
+                           UserQueryService userQueryService) {
         this.propertyRepository = propertyRepository;
+        this.propertyNoteRepository = propertyNoteRepository;
         this.cipher = cipher;
+        this.userQueryService = userQueryService;
     }
 
     /**
@@ -178,7 +206,118 @@ public class PropertyService {
         return propertyRepository.save(property);
     }
 
+    /**
+     * Returns one cursor-paginated page of a property's notes, newest first, with each
+     * note's author resolved to a name via a single batched
+     * {@link UserQueryService#findSummariesByIds} call for the whole page — never one query
+     * per note. Backs {@code GET /api/admin/properties/{propertyId}/notes} and (after its own
+     * ownership check) {@code GET /api/tech/properties/{propertyId}/notes}.
+     *
+     * <p>An earlier version of this method had a fixed 100-row cap with no way to page
+     * further, which made "append-only, a correction is a new note" false in practice: enough
+     * filler notes would push a real one past the cap, permanently unreachable through any
+     * API. Cursoring on {@code id} (exclusive upper bound, same convention as
+     * {@code VisitAdminService#listVisits}) fixes that — see
+     * {@code com.homekept.visit.VisitNoteRepository}'s javadoc for why an {@code id}-only
+     * cursor is sound even though the display order is {@code createdAt DESC, id DESC}.
+     * Fetches {@code limit + 1} rows to detect a further page without a separate (and, under
+     * concurrent inserts, racy) {@code COUNT} query.
+     *
+     * @param propertyId   the property id
+     * @param cursor       optional {@code id} cursor (exclusive upper bound); {@code null}
+     *                     for the first page
+     * @param limit        optional page size (defaults to {@value #DEFAULT_NOTES_PAGE_SIZE},
+     *                     capped at {@value #MAX_NOTES_PAGE_SIZE})
+     * @param readerUserId the authenticated principal reading this page — logged, not used
+     *                     for authorization (the caller already did that)
+     * @return the requested page of notes, newest first, with a {@code nextCursor} when more
+     *         remain
+     * @throws PropertyNotFoundException if the property does not exist (404)
+     */
+    @Transactional(readOnly = true)
+    public PropertyNotePage listNotes(Long propertyId, Long cursor, Integer limit, Long readerUserId) {
+        if (!propertyRepository.existsById(propertyId)) {
+            throw new PropertyNotFoundException(propertyId);
+        }
+
+        int pageSize = Pagination.resolveLimit(limit, DEFAULT_NOTES_PAGE_SIZE, MAX_NOTES_PAGE_SIZE);
+        PageRequest pageable = PageRequest.of(0, pageSize + 1);
+
+        List<PropertyNote> rows = (cursor != null)
+                ? propertyNoteRepository.findByPropertyIdAndIdLessThanOrderByIdDesc(
+                        propertyId, cursor, pageable)
+                : propertyNoteRepository.findByPropertyIdOrderByIdDesc(propertyId, pageable);
+
+        boolean hasMore = rows.size() > pageSize;
+        List<PropertyNote> page = hasMore ? rows.subList(0, pageSize) : rows;
+        Long nextCursor = hasMore ? page.get(page.size() - 1).getId() : null;
+
+        // A successful read leaves a trace too (not just writes) — resource id, reader id,
+        // and a count only; no bodies, no other PII — so an over-broad grant is at least
+        // forensically visible.
+        log.info("property_notes_read propertyId={} readerUserId={} count={}", propertyId, readerUserId, page.size());
+
+        if (page.isEmpty()) {
+            return new PropertyNotePage(List.of(), null);
+        }
+
+        List<Long> authorIds = page.stream().map(PropertyNote::getAuthorUserId).distinct().toList();
+        Map<Long, UserSummary> authorsById = userQueryService.findSummariesByIds(authorIds);
+
+        List<PropertyNoteItem> items = page.stream().map(n -> toNoteItem(n, authorsById)).collect(Collectors.toList());
+        return new PropertyNotePage(items, nextCursor);
+    }
+
+    /**
+     * Adds a note to a property's operational log. Backs
+     * {@code POST /api/admin/properties/{propertyId}/notes} and (after its own ownership
+     * check) {@code POST /api/tech/properties/{propertyId}/notes}.
+     *
+     * <p>{@code authorUserId} MUST be the authenticated principal's user id — never a value
+     * taken from request input.
+     *
+     * <h2>Why there is no delete (or edit) operation</h2>
+     * <p>Same reasoning the V18 migration states explicitly: a technician writing "furnace
+     * filter sits behind the stairs" is recording an observation. It matters who saw it and
+     * when, notes accumulate across visits, and a later note can supersede an earlier one
+     * without erasing that the earlier one was true at the time. Deleting a note would remove
+     * that history silently, with no trace anything was ever said — worse than an outdated
+     * note staying visible with its timestamp and author, which let a reader judge its
+     * currency. A correction is a new note, not erasing the old one.
+     *
+     * @param propertyId   the property to add a note to
+     * @param body         the note text (already validated non-blank, max length, at the DTO
+     *                     boundary)
+     * @param authorUserId the authenticated principal's user id
+     * @return the created note, with the author's name resolved
+     * @throws PropertyNotFoundException if the property does not exist (404)
+     */
+    @Transactional
+    public PropertyNoteItem addNote(Long propertyId, String body, Long authorUserId) {
+        if (!propertyRepository.existsById(propertyId)) {
+            throw new PropertyNotFoundException(propertyId);
+        }
+
+        PropertyNote saved = propertyNoteRepository.save(new PropertyNote(propertyId, authorUserId, body));
+
+        log.info("property_note_added propertyId={} noteId={}", propertyId, saved.getId());
+
+        Map<Long, UserSummary> authorsById = userQueryService.findSummariesByIds(List.of(authorUserId));
+        return toNoteItem(saved, authorsById);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private PropertyNoteItem toNoteItem(PropertyNote note, Map<Long, UserSummary> authorsById) {
+        UserSummary author = authorsById.get(note.getAuthorUserId());
+        return new PropertyNoteItem(
+                note.getId(),
+                note.getBody(),
+                note.getCreatedAt(),
+                note.getAuthorUserId(),
+                author != null ? author.firstName() : null,
+                author != null ? author.lastName() : null);
+    }
 
     /**
      * Derives the FSA (forward sortation area) from the postal code.

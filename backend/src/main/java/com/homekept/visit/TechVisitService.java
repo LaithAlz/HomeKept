@@ -4,6 +4,9 @@ import com.homekept.analytics.AnalyticsEvent;
 import com.homekept.analytics.AnalyticsService;
 import com.homekept.catalog.CatalogService;
 import com.homekept.property.PropertyService;
+import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
+import com.homekept.property.exception.PropertyNotFoundException;
 import com.homekept.storage.StorageService;
 import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberQueryService;
@@ -22,6 +25,8 @@ import com.homekept.visit.dto.TechPhotoUploadUrlResponse;
 import com.homekept.visit.dto.TechStartVisitResponse;
 import com.homekept.visit.dto.TechVisitListItem;
 import com.homekept.visit.dto.TodoResponse;
+import com.homekept.visit.dto.VisitNoteItem;
+import com.homekept.visit.dto.VisitNotePage;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
@@ -37,9 +42,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -89,6 +96,7 @@ public class TechVisitService {
     private final FlagRepository flagRepository;
     private final TodoItemRepository todoItemRepository;
     private final VisitTemplateRepository visitTemplateRepository;
+    private final VisitNoteService visitNoteService;
     private final VisitStateMachine stateMachine;
     private final PropertyService propertyService;
     private final CatalogService catalogService;
@@ -105,6 +113,7 @@ public class TechVisitService {
                             FlagRepository flagRepository,
                             TodoItemRepository todoItemRepository,
                             VisitTemplateRepository visitTemplateRepository,
+                            VisitNoteService visitNoteService,
                             VisitStateMachine stateMachine,
                             PropertyService propertyService,
                             CatalogService catalogService,
@@ -120,6 +129,7 @@ public class TechVisitService {
         this.flagRepository = flagRepository;
         this.todoItemRepository = todoItemRepository;
         this.visitTemplateRepository = visitTemplateRepository;
+        this.visitNoteService = visitNoteService;
         this.stateMachine = stateMachine;
         this.propertyService = propertyService;
         this.catalogService = catalogService;
@@ -636,6 +646,79 @@ public class TechVisitService {
         );
     }
 
+    // ── GET/POST /api/tech/visits/{id}/notes ─────────────────────────────────
+
+    /**
+     * Returns one cursor-paginated page of a visit's threaded operational notes, newest
+     * first. Verifies the visit is assigned to this technician first (→ 404 if not —
+     * ownership-failure rule). Delegates the actual read to {@link VisitNoteService}, which
+     * is shared with the admin console ({@code VisitAdminService}) — same rows, same mapping,
+     * regardless of who's asking.
+     *
+     * @param visitId    the visit id
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size
+     * @param techUserId the authenticated technician's user id
+     * @return the requested page of notes, newest first
+     */
+    @Transactional(readOnly = true)
+    public VisitNotePage listVisitNotes(Long visitId, Long cursor, Integer limit, Long techUserId) {
+        requireOwnedVisit(visitId, techUserId);
+        return visitNoteService.listNotes(visitId, cursor, limit, techUserId);
+    }
+
+    /**
+     * Adds a note to a visit's operational log. Verifies the visit is assigned to this
+     * technician first (→ 404 if not). {@code techUserId} is recorded as the note's author —
+     * NEVER a value taken from the request body.
+     *
+     * @param visitId    the visit id
+     * @param body       the note text
+     * @param techUserId the authenticated technician's user id
+     * @return the created note, with the author's name resolved
+     */
+    @Transactional
+    public VisitNoteItem addVisitNote(Long visitId, String body, Long techUserId) {
+        requireOwnedVisit(visitId, techUserId);
+        return visitNoteService.addNote(visitId, body, techUserId);
+    }
+
+    // ── GET/POST /api/tech/properties/{propertyId}/notes ─────────────────────
+
+    /**
+     * Returns one cursor-paginated page of a property's threaded operational notes, newest
+     * first. Verifies this technician has a genuine, currently-qualifying assignment at this
+     * property first (→ 404 if not — see {@link #requirePropertyAccessibleToTechnician}).
+     * Delegates the actual read to {@link PropertyService#listNotes}.
+     *
+     * @param propertyId the property id
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size
+     * @param techUserId the authenticated technician's user id
+     * @return the requested page of notes, newest first
+     */
+    @Transactional(readOnly = true)
+    public PropertyNotePage listPropertyNotes(Long propertyId, Long cursor, Integer limit, Long techUserId) {
+        requirePropertyAccessibleToTechnician(propertyId, techUserId);
+        return propertyService.listNotes(propertyId, cursor, limit, techUserId);
+    }
+
+    /**
+     * Adds a note to a property's operational log. Verifies this technician has a genuine
+     * assignment history at this property first (→ 404 if not). {@code techUserId} is
+     * recorded as the note's author — NEVER a value taken from the request body.
+     *
+     * @param propertyId the property id
+     * @param body       the note text
+     * @param techUserId the authenticated technician's user id
+     * @return the created note, with the author's name resolved
+     */
+    @Transactional
+    public PropertyNoteItem addPropertyNote(Long propertyId, String body, Long techUserId) {
+        requirePropertyAccessibleToTechnician(propertyId, techUserId);
+        return propertyService.addNote(propertyId, body, techUserId);
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     /**
@@ -650,6 +733,51 @@ public class TechVisitService {
                             visitId, techUserId);
                     return new VisitNotFoundException(visitId);
                 });
+    }
+
+    /**
+     * Statuses that count as "this technician attended, or is going to attend, this
+     * property" for the property-notes access check — see
+     * {@link VisitStatus#impliesAttendance()} for why CANCELLED and RESCHEDULED are excluded.
+     * Computed once from the enum (the single source of truth), not hardcoded here.
+     */
+    private static final List<VisitStatus> ATTENDANCE_STATUSES = Arrays.stream(VisitStatus.values())
+            .filter(VisitStatus::impliesAttendance)
+            .toList();
+
+    /**
+     * Verifies this technician has a qualifying assignment ({@link #ATTENDANCE_STATUSES}) at
+     * this property — the access rule for the tech-facing property-notes endpoints. A
+     * technician needs to read/write standing notes about a property they attend, but must
+     * NOT be able to browse an arbitrary property they have no relationship to, and must NOT
+     * keep access forever once their only assignment there is cancelled — see
+     * {@link VisitRepository#existsAttendingAssignment}'s javadoc for the full reasoning
+     * (this is also the admin's revocation lever: cancelling the visit ends access).
+     *
+     * <p>Deliberately a single check, not "does the property exist" followed by "is this
+     * tech assigned there": {@link VisitRepository#existsAttendingAssignment} is
+     * {@code false} either way (property genuinely missing, exists but this technician has
+     * no visit there, or their only visit there is CANCELLED), and all cases must return the
+     * SAME 404 — per the ownership-failure rule, this endpoint must never let a technician
+     * distinguish "that property doesn't exist" from "that property isn't yours" by comparing
+     * responses.
+     *
+     * @param propertyId the property id
+     * @param techUserId the authenticated technician's user id — MUST NOT be null
+     * @throws PropertyNotFoundException if the technician has no qualifying visit assignment
+     *                                    at this property (404)
+     */
+    private void requirePropertyAccessibleToTechnician(Long propertyId, Long techUserId) {
+        // Defense in depth on top of existsAttendingAssignment's own null-safe @Query (see
+        // that method's javadoc): an authorization predicate must never be handed a null
+        // principal, so fail loudly here rather than trust the query alone.
+        Objects.requireNonNull(techUserId, "techUserId must not be null");
+
+        if (!visitRepository.existsAttendingAssignment(propertyId, techUserId, ATTENDANCE_STATUSES)) {
+            log.debug("tech_property_not_found_or_no_assignment propertyId={} techUserId={}",
+                    propertyId, techUserId);
+            throw new PropertyNotFoundException(propertyId);
+        }
     }
 
     /**

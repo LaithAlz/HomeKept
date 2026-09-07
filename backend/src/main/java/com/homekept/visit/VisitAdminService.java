@@ -2,6 +2,7 @@ package com.homekept.visit;
 
 import com.homekept.catalog.CatalogService;
 import com.homekept.common.Pagination;
+import com.homekept.identity.Role;
 import com.homekept.identity.UserQueryService;
 import com.homekept.identity.UserQueryService.AdminContactDetail;
 import com.homekept.identity.UserQueryService.UserSummary;
@@ -21,6 +22,8 @@ import com.homekept.visit.dto.AdminVisitPropertySummary;
 import com.homekept.visit.dto.AdminVisitResponse;
 import com.homekept.visit.dto.AppVisitPhoto;
 import com.homekept.visit.dto.VisitEventItem;
+import com.homekept.visit.dto.VisitNoteItem;
+import com.homekept.visit.dto.VisitNotePage;
 import com.homekept.visit.dto.VisitServiceItem;
 import com.homekept.visit.exception.IllegalVisitTransitionException;
 import com.homekept.visit.exception.InvalidVisitRequestException;
@@ -96,6 +99,7 @@ public class VisitAdminService {
     private final VisitPhotoRepository visitPhotoRepository;
     private final VisitTemplateRepository visitTemplateRepository;
     private final VisitEventRepository visitEventRepository;
+    private final VisitNoteService visitNoteService;
     private final VisitStateMachine stateMachine;
     private final SubscriberQueryService subscriberQueryService;
     private final CatalogService catalogService;
@@ -110,6 +114,7 @@ public class VisitAdminService {
                              VisitPhotoRepository visitPhotoRepository,
                              VisitTemplateRepository visitTemplateRepository,
                              VisitEventRepository visitEventRepository,
+                             VisitNoteService visitNoteService,
                              VisitStateMachine stateMachine,
                              SubscriberQueryService subscriberQueryService,
                              CatalogService catalogService,
@@ -123,6 +128,7 @@ public class VisitAdminService {
         this.visitPhotoRepository = visitPhotoRepository;
         this.visitTemplateRepository = visitTemplateRepository;
         this.visitEventRepository = visitEventRepository;
+        this.visitNoteService = visitNoteService;
         this.stateMachine = stateMachine;
         this.subscriberQueryService = subscriberQueryService;
         this.catalogService = catalogService;
@@ -173,6 +179,7 @@ public class VisitAdminService {
         // there is nothing to set it TO even if we wanted to.
 
         if (request.technicianUserId() != null) {
+            requireValidTechnician(request.technicianUserId());
             visit.setTechnicianId(request.technicianUserId());
         }
 
@@ -193,9 +200,11 @@ public class VisitAdminService {
     /**
      * Returns a cursor-paginated list of visits for the admin console.
      * Ordered by id descending (newest first). If {@code status} is provided, filters
-     * by that status; otherwise returns all statuses. Also backs the admin Routes day view,
-     * which calls this filtered to {@code status=SCHEDULED} and groups the rows by
-     * technician client-side.
+     * by that status; if {@code subscriberId} is provided, filters to that subscriber's
+     * visits (backs the admin customer page's "this customer's visits" list); the two
+     * filters compose — either, both, or neither may be supplied. Also backs the admin
+     * Routes day view, which calls this filtered to {@code status=SCHEDULED} and groups the
+     * rows by technician client-side.
      *
      * <p>Each row's customer identity and property address are resolved via two batched
      * queries for the whole page — {@link SubscriberQueryService#findByIds} then
@@ -203,26 +212,39 @@ public class VisitAdminService {
      * {@link PropertyService#findByIds} for the address — never one query per row. Mirrors
      * {@code SubscriptionAdminService#listSubscribers}'s batching pattern exactly.
      *
-     * @param status optional status filter (name of {@link VisitStatus})
-     * @param cursor optional id cursor (exclusive upper bound — return rows with id &lt; cursor)
-     * @param limit  optional page size (defaults to {@value DEFAULT_PAGE_SIZE}, capped at 100)
+     * @param status       optional status filter (name of {@link VisitStatus})
+     * @param subscriberId optional subscriber filter — no existence check against the
+     *                     subscription domain is performed (an unknown id simply yields an
+     *                     empty page, the same way an unmatched status filter would)
+     * @param cursor       optional id cursor (exclusive upper bound — return rows with id &lt; cursor)
+     * @param limit        optional page size (defaults to {@value DEFAULT_PAGE_SIZE}, capped at 100)
      * @throws InvalidVisitRequestException if {@code status} is not a valid {@link VisitStatus}
      */
     @Transactional(readOnly = true)
-    public List<AdminVisitListItem> listVisits(String status, Long cursor, Integer limit) {
+    public List<AdminVisitListItem> listVisits(String status, Long subscriberId, Long cursor, Integer limit) {
         int pageSize = Pagination.resolveLimit(limit, DEFAULT_PAGE_SIZE, 100);
         PageRequest pageable = PageRequest.of(0, pageSize);
 
-        List<Visit> visits;
-
+        VisitStatus visitStatus = null;
         if (status != null && !status.isBlank()) {
-            VisitStatus visitStatus;
             try {
                 visitStatus = VisitStatus.valueOf(status.toUpperCase());
             } catch (IllegalArgumentException e) {
                 throw new InvalidVisitRequestException("Invalid status value: " + status);
             }
+        }
 
+        List<Visit> visits;
+        if (subscriberId != null && visitStatus != null) {
+            visits = (cursor != null)
+                    ? visitRepository.findBySubscriberIdAndStatusAndIdLessThanOrderByIdDesc(
+                            subscriberId, visitStatus, cursor, pageable)
+                    : visitRepository.findBySubscriberIdAndStatusOrderByIdDesc(subscriberId, visitStatus, pageable);
+        } else if (subscriberId != null) {
+            visits = (cursor != null)
+                    ? visitRepository.findBySubscriberIdAndIdLessThanOrderByIdDesc(subscriberId, cursor, pageable)
+                    : visitRepository.findBySubscriberIdOrderByIdDesc(subscriberId, pageable);
+        } else if (visitStatus != null) {
             visits = (cursor != null)
                     ? visitRepository.findByStatusAndIdLessThanOrderByIdDesc(visitStatus, cursor, pageable)
                     : visitRepository.findByStatusOrderByIdDesc(visitStatus, pageable);
@@ -380,6 +402,50 @@ public class VisitAdminService {
     }
 
     /**
+     * Returns one cursor-paginated page of a visit's threaded operational notes, newest
+     * first. Backs {@code GET /api/admin/visits/{id}/notes}. Delegates the actual read to
+     * {@link VisitNoteService}, which is shared with the technician surface
+     * ({@code TechVisitService}) — same rows, same mapping, regardless of who's asking.
+     *
+     * @param visitId     the visit id
+     * @param cursor      optional id cursor (exclusive upper bound)
+     * @param limit       optional page size
+     * @param adminUserId the authenticated admin reading this page — logged, not used for
+     *                    authorization (an admin has none here beyond the ADMIN role gate)
+     * @return the requested page of notes, newest first
+     * @throws VisitNotFoundException if no visit exists with this id (404)
+     */
+    @Transactional(readOnly = true)
+    public VisitNotePage listNotes(Long visitId, Long cursor, Integer limit, Long adminUserId) {
+        if (!visitRepository.existsById(visitId)) {
+            throw new VisitNotFoundException(visitId);
+        }
+        return visitNoteService.listNotes(visitId, cursor, limit, adminUserId);
+    }
+
+    /**
+     * Adds a note to a visit's operational log. Backs {@code POST /api/admin/visits/{id}/notes}.
+     *
+     * <p>{@code authorUserId} MUST be the authenticated admin's user id (the JWT principal) —
+     * never a value taken from the request body. The controller enforces this by never
+     * exposing an {@code authorUserId} field on {@code CreateVisitNoteRequest}.
+     *
+     * @param visitId      the visit to add a note to
+     * @param body         the note text (already validated non-blank, max length, at the DTO
+     *                     boundary)
+     * @param authorUserId the authenticated admin's user id
+     * @return the created note, with the author's name resolved
+     * @throws VisitNotFoundException if no visit exists with this id (404)
+     */
+    @Transactional
+    public VisitNoteItem addNote(Long visitId, String body, Long authorUserId) {
+        if (!visitRepository.existsById(visitId)) {
+            throw new VisitNotFoundException(visitId);
+        }
+        return visitNoteService.addNote(visitId, body, authorUserId);
+    }
+
+    /**
      * Patches a visit: reschedule, cancel, or assign technician.
      *
      * <p>Reschedule ({@code scheduledFor} present): updates the visit's {@code scheduledFor}
@@ -392,13 +458,26 @@ public class VisitAdminService {
      *
      * <p>Assign technician ({@code technicianUserId} present, no other op): updates the
      * technician without a state transition, and records a {@code TECHNICIAN_ASSIGNED}
-     * {@code visit_event} if the technician actually changed.
+     * {@code visit_event} if the technician actually changed. {@code technicianUserId} is
+     * validated against the identity domain first — see
+     * {@link #requireValidTechnician} — and rejected with 400 if it is not a real
+     * TECHNICIAN.
+     *
+     * <p>Unassign technician ({@code unassignTechnician: true}, no other op): clears
+     * {@code technicianId} back to {@code null}, the only way to do so through this API —
+     * see {@link AdminPatchVisitRequest}'s javadoc for why a dedicated flag is required.
      *
      * @param visitId     the visit id to patch
      * @param request     the patch request
      * @param adminUserId the authenticated admin's user id (JWT principal), recorded as the
      *                    acting user on any {@code visit_event} this patch produces
      * @return the updated visit representation
+     * @throws InvalidVisitRequestException if both {@code scheduledFor} and
+     *                                      {@code status=CANCELLED} are supplied, if both
+     *                                      {@code technicianUserId} and
+     *                                      {@code unassignTechnician} are supplied, or if
+     *                                      {@code technicianUserId} does not resolve to a
+     *                                      real TECHNICIAN (400)
      */
     @Transactional
     public AdminVisitResponse patchVisit(Long visitId, AdminPatchVisitRequest request, Long adminUserId) {
@@ -408,10 +487,15 @@ public class VisitAdminService {
         boolean isReschedule = request.scheduledFor() != null;
         boolean isCancel = "CANCELLED".equalsIgnoreCase(request.status());
         boolean isTechAssign = request.technicianUserId() != null;
+        boolean isUnassign = Boolean.TRUE.equals(request.unassignTechnician());
 
         if (isReschedule && isCancel) {
             throw new InvalidVisitRequestException(
                     "Ambiguous request: cannot supply both scheduledFor and status=CANCELLED");
+        }
+        if (isTechAssign && isUnassign) {
+            throw new InvalidVisitRequestException(
+                    "Ambiguous request: cannot supply both technicianUserId and unassignTechnician");
         }
 
         if (isReschedule) {
@@ -423,6 +507,7 @@ public class VisitAdminService {
         }
 
         if (isTechAssign) {
+            requireValidTechnician(request.technicianUserId());
             Long oldTechnicianId = visit.getTechnicianId();
             visit.setTechnicianId(request.technicianUserId());
             Visit saved = visitRepository.save(visit);
@@ -433,6 +518,19 @@ public class VisitAdminService {
             }
             log.info("admin_visit_technician_assigned visitId={} technicianId={}",
                     saved.getId(), saved.getTechnicianId());
+            return toResponse(saved, loadServiceItems(saved.getId()));
+        }
+
+        if (isUnassign) {
+            Long oldTechnicianId = visit.getTechnicianId();
+            visit.setTechnicianId(null);
+            Visit saved = visitRepository.save(visit);
+            if (oldTechnicianId != null) {
+                recordEvent(saved.getId(), VisitEventType.TECHNICIAN_ASSIGNED,
+                        technicianChangePayload(oldTechnicianId, null),
+                        adminUserId, VisitEventSource.ADMIN);
+            }
+            log.info("admin_visit_technician_unassigned visitId={}", saved.getId());
             return toResponse(saved, loadServiceItems(saved.getId()));
         }
 
@@ -565,6 +663,7 @@ public class VisitAdminService {
         Long oldTechnicianId = visit.getTechnicianId();
         boolean technicianChanged = technicianUserId != null && !technicianUserId.equals(oldTechnicianId);
         if (technicianUserId != null) {
+            requireValidTechnician(technicianUserId);
             visit.setTechnicianId(technicianUserId);
         }
 
@@ -617,6 +716,35 @@ public class VisitAdminService {
         payload.put("from", oldTechnicianId);
         payload.put("to", newTechnicianId);
         return payload;
+    }
+
+    /**
+     * Validates that {@code technicianUserId} resolves to a real user with the TECHNICIAN
+     * role, via the identity domain's {@link UserQueryService} — never its repository or
+     * entity directly. Called before every write of {@code Visit#technicianId} (create,
+     * patch-assign, reschedule-with-reassign).
+     *
+     * <p>{@code visit.technician_id} is a bare, FK-less {@code BIGINT} (see {@link Visit}'s
+     * javadoc) that this codebase now also treats as an authorization principal — it decides
+     * who can read/write a visit's and a property's operational notes
+     * ({@code TechVisitService#requireOwnedVisit}/{@code #requirePropertyAccessibleToTechnician}).
+     * Writing an arbitrary, unvalidated id there would let a typo silently grant a real
+     * person (or, if the id happens to belong to a CUSTOMER/ADMIN account, someone with no
+     * technician relationship at all) standing access to a home's operational record.
+     *
+     * @param technicianUserId the id to validate; never null when this is called (callers
+     *                         guard on non-null themselves, since null legitimately means
+     *                         "leave unchanged"/"no technician" depending on call site)
+     * @throws InvalidVisitRequestException if the id does not resolve to a user with the
+     *                                      TECHNICIAN role (400)
+     */
+    private void requireValidTechnician(Long technicianUserId) {
+        Map<Long, UserSummary> summaries = userQueryService.findSummariesByIds(List.of(technicianUserId));
+        UserSummary summary = summaries.get(technicianUserId);
+        if (summary == null || !Role.TECHNICIAN.name().equals(summary.role())) {
+            throw new InvalidVisitRequestException(
+                    "technicianUserId does not refer to an existing technician: " + technicianUserId);
+        }
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

@@ -1,5 +1,9 @@
 package com.homekept.visit;
 
+import com.homekept.property.dto.CreatePropertyNoteRequest;
+import com.homekept.property.dto.PropertyNoteItem;
+import com.homekept.property.dto.PropertyNotePage;
+import com.homekept.visit.dto.CreateVisitNoteRequest;
 import com.homekept.visit.dto.FlagResponse;
 import com.homekept.visit.dto.TechCompleteVisitRequest;
 import com.homekept.visit.dto.TechCompleteVisitResponse;
@@ -15,6 +19,8 @@ import com.homekept.visit.dto.TechPhotoUploadUrlResponse;
 import com.homekept.visit.dto.TechStartVisitResponse;
 import com.homekept.visit.dto.TechVisitListItem;
 import com.homekept.visit.dto.TodoResponse;
+import com.homekept.visit.dto.VisitNoteItem;
+import com.homekept.visit.dto.VisitNotePage;
 import com.homekept.visit.dto.VisitServiceItem;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -27,6 +33,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -233,5 +240,98 @@ public class TechVisitController {
             Authentication auth) {
         Long techUserId = (Long) auth.getPrincipal();
         return ResponseEntity.ok(techVisitService.incompleteVisit(id, request, techUserId));
+    }
+
+    /**
+     * GET /api/tech/visits/{id}/notes?cursor=&limit=
+     *
+     * <p>A visit's threaded operational notes, newest first, cursor-paginated (same
+     * convention as the admin console's list endpoints). Same rows the admin console can
+     * read/write via {@code GET}/{@code POST /api/admin/visits/{id}/notes}. Returns 404 if
+     * the visit does not exist or is not assigned to this technician.
+     *
+     * @param id     the visit id
+     * @param cursor optional id cursor (exclusive upper bound)
+     * @param limit  optional page size (default 20, max 100)
+     * @param auth   JWT principal — Long user id
+     * @return 200 with the requested page of notes, newest first
+     */
+    @GetMapping("/visits/{id}/notes")
+    public ResponseEntity<VisitNotePage> listVisitNotes(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(techVisitService.listVisitNotes(id, cursor, limit, techUserId));
+    }
+
+    /**
+     * POST /api/tech/visits/{id}/notes
+     *
+     * <p>Adds a note to the visit's operational log. The author is always this authenticated
+     * technician. Returns 404 if the visit does not exist or is not assigned to them.
+     *
+     * @param id      the visit id
+     * @param request the note body
+     * @param auth    JWT principal — Long user id, recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/visits/{id}/notes")
+    public ResponseEntity<VisitNoteItem> addVisitNote(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateVisitNoteRequest request,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        VisitNoteItem note = techVisitService.addVisitNote(id, request.body(), techUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
+    }
+
+    /**
+     * GET /api/tech/properties/{propertyId}/notes?cursor=&limit=
+     *
+     * <p>A property's threaded operational notes, newest first, cursor-paginated (same
+     * convention as the admin console's list endpoints) — standing context ("dog in the
+     * yard", "gate sticks") that the next technician to attend needs, as distinct from a
+     * single visit's own notes. Returns 404 if the property does not exist, OR if this
+     * technician does not have a currently-qualifying assignment at it (see
+     * {@code TechVisitService#requirePropertyAccessibleToTechnician}) — the two cases are
+     * indistinguishable from outside, per the ownership-failure rule.
+     *
+     * @param propertyId the property id
+     * @param cursor     optional id cursor (exclusive upper bound)
+     * @param limit      optional page size (default 20, max 100)
+     * @param auth       JWT principal — Long user id
+     * @return 200 with the requested page of notes, newest first
+     */
+    @GetMapping("/properties/{propertyId}/notes")
+    public ResponseEntity<PropertyNotePage> listPropertyNotes(
+            @PathVariable Long propertyId,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(techVisitService.listPropertyNotes(propertyId, cursor, limit, techUserId));
+    }
+
+    /**
+     * POST /api/tech/properties/{propertyId}/notes
+     *
+     * <p>Adds a note to the property's operational log. The author is always this
+     * authenticated technician. Same 404 rule as the GET above.
+     *
+     * @param propertyId the property id
+     * @param request    the note body
+     * @param auth       JWT principal — Long user id, recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/properties/{propertyId}/notes")
+    public ResponseEntity<PropertyNoteItem> addPropertyNote(
+            @PathVariable Long propertyId,
+            @Valid @RequestBody CreatePropertyNoteRequest request,
+            Authentication auth) {
+        Long techUserId = (Long) auth.getPrincipal();
+        PropertyNoteItem note = techVisitService.addPropertyNote(propertyId, request.body(), techUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 }

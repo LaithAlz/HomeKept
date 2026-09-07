@@ -2,17 +2,26 @@ package com.homekept;
 
 import com.homekept.booking.BookingRateLimiter;
 import com.homekept.booking.WalkthroughBookingRepository;
+import com.homekept.catalog.PlanCode;
 import com.homekept.identity.Role;
+import com.homekept.identity.User;
+import com.homekept.identity.UserStatus;
+import com.homekept.property.Property;
 import com.homekept.property.PropertyRepository;
+import com.homekept.property.PropertyType;
 import com.homekept.subscription.ActivationRateLimiter;
 import com.homekept.subscription.ActivationTokenRepository;
 import com.homekept.subscription.ActivationTokenService;
+import com.homekept.subscription.BillingCycle;
+import com.homekept.subscription.Subscriber;
 import com.homekept.subscription.SubscriberRepository;
+import com.homekept.subscription.SubscriberStatus;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.List;
@@ -64,6 +73,7 @@ class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
     @Autowired ActivationTokenService activationTokenService;
     @Autowired ActivationRateLimiter activationRateLimiter;
     @Autowired BookingRateLimiter bookingRateLimiter;
+    @Autowired JdbcTemplate jdbc;
 
     @BeforeEach
     void resetRateLimiters() {
@@ -356,7 +366,121 @@ class AdminSubscriberIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ── MRR semantics (mrrCents vs planPriceCents) ────────────────────────────
+
+    @Test
+    void getSubscriberDetail_activeSubscriber_mrrEqualsPlanPrice() throws Exception {
+        Long planTierId = completePlanTierId();
+        Integer monthlyPriceCents = jdbc.queryForObject(
+                "SELECT monthly_price_cents FROM plan_tier WHERE id = ?", Integer.class, planTierId);
+        Subscriber active = seedSubscriberWithPlan(SubscriberStatus.ACTIVE, planTierId);
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + active.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.mrrCents").value(monthlyPriceCents))
+                .andExpect(jsonPath("$.planPriceCents").value(monthlyPriceCents));
+    }
+
+    @Test
+    void getSubscriberDetail_cancelledSubscriber_mrrIsZero_planPriceStillShown() throws Exception {
+        Long planTierId = completePlanTierId();
+        Integer monthlyPriceCents = jdbc.queryForObject(
+                "SELECT monthly_price_cents FROM plan_tier WHERE id = ?", Integer.class, planTierId);
+        Subscriber cancelled = seedSubscriberWithPlan(SubscriberStatus.CANCELLED, planTierId);
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + cancelled.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.mrrCents").value(0))
+                // The plan's list price must still be shown, even though MRR is 0 — the page
+                // still wants to display "Complete, $169/mo" as a plan attribute.
+                .andExpect(jsonPath("$.planPriceCents").value(monthlyPriceCents));
+    }
+
+    @Test
+    void getSubscriberDetail_pausedSubscriber_mrrIsZero() throws Exception {
+        // PAUSED reflects Stripe's own "pause collection" — no invoices generated at all
+        // while paused, so there is no revenue to count.
+        Subscriber paused = seedSubscriberWithPlan(SubscriberStatus.PAUSED, completePlanTierId());
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + paused.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mrrCents").value(0));
+    }
+
+    @Test
+    void getSubscriberDetail_paymentIssueSubscriber_mrrIsZero() throws Exception {
+        // PAYMENT_ISSUE means the last invoice attempt FAILED — not currently-paying revenue,
+        // even though the subscriber is still "serviceable" (dunning grace).
+        Subscriber paymentIssue = seedSubscriberWithPlan(SubscriberStatus.PAYMENT_ISSUE, completePlanTierId());
+
+        String adminToken = loginAs(Role.ADMIN);
+        mockMvc.perform(get(ADMIN_SUBSCRIBERS + "/" + paymentIssue.getId())
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mrrCents").value(0));
+    }
+
+    @Test
+    void listSubscribers_mrrSemanticsMatchDetail() throws Exception {
+        // The list row must report the same mrrCents/planPriceCents split as the detail view.
+        Long planTierId = completePlanTierId();
+        Integer monthlyPriceCents = jdbc.queryForObject(
+                "SELECT monthly_price_cents FROM plan_tier WHERE id = ?", Integer.class, planTierId);
+        Subscriber cancelled = seedSubscriberWithPlan(SubscriberStatus.CANCELLED, planTierId);
+
+        String adminToken = loginAs(Role.ADMIN);
+        MvcResult result = mockMvc.perform(get(ADMIN_SUBSCRIBERS + "?limit=100")
+                        .cookie(new Cookie("hk_access", adminToken)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        List<Integer> mrr = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + cancelled.getId() + ")].mrrCents");
+        List<Integer> planPrice = com.jayway.jsonpath.JsonPath.read(
+                body, "$[?(@.id == " + cancelled.getId() + ")].planPriceCents");
+
+        assertThat(mrr).containsExactly(0);
+        assertThat(planPrice).containsExactly(monthlyPriceCents);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private Long completePlanTierId() {
+        Long id = jdbc.queryForObject(
+                "SELECT id FROM plan_tier WHERE code = ?", Long.class, PlanCode.COMPLETE.name());
+        if (id == null) {
+            throw new IllegalStateException("COMPLETE plan tier not seeded");
+        }
+        return id;
+    }
+
+    /** Seeds a subscriber with the given status and plan tier (bypassing the checkout flow). */
+    private Subscriber seedSubscriberWithPlan(SubscriberStatus status, Long planTierId) {
+        long nano = System.nanoTime();
+
+        User user = userRepository.save(new User(
+                "mrr-sub-" + nano + "@test.local",
+                passwordEncoder.encode("Test1234!"),
+                "Mrr", "Subscriber",
+                Role.CUSTOMER, UserStatus.ACTIVE));
+
+        Property property = propertyRepository.save(new Property(
+                nano + " Mrr Ave", null, "Mississauga", "L5L 1A1",
+                "L5L", null, null, PropertyType.DETACHED));
+
+        Subscriber sub = new Subscriber(user.getId(), property.getId(), status, BillingCycle.MONTHLY);
+        sub.setPlanTierId(planTierId);
+        return subscriberRepository.save(sub);
+    }
 
     /**
      * Creates a walk-through booking via the public API.

@@ -6,8 +6,12 @@ import com.homekept.visit.dto.AdminVisitDayLoadItem;
 import com.homekept.visit.dto.AdminVisitDetail;
 import com.homekept.visit.dto.AdminVisitListItem;
 import com.homekept.visit.dto.AdminVisitResponse;
+import com.homekept.visit.dto.CreateVisitNoteRequest;
 import com.homekept.visit.dto.VisitEventItem;
+import com.homekept.visit.dto.VisitNoteItem;
+import com.homekept.visit.dto.VisitNotePage;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -32,12 +36,18 @@ import java.util.List;
  *
  * <p>API contract (api-contract.md):
  * <ul>
- *   <li>{@code GET /api/admin/visits?status=&cursor=&limit=} — cursor-paginated visit list</li>
+ *   <li>{@code GET /api/admin/visits?status=&subscriberId=&cursor=&limit=} — cursor-paginated
+ *       visit list</li>
  *   <li>{@code POST /api/admin/visits} — create a visit for a subscriber</li>
  *   <li>{@code GET /api/admin/visits/{id}} — full single-visit detail</li>
  *   <li>{@code PATCH /api/admin/visits/{id}} — reschedule (in place) / cancel / assign
  *       technician</li>
  *   <li>{@code GET /api/admin/visits/{id}/events} — the visit's activity log</li>
+ *   <li>{@code GET /api/admin/visits/{id}/notes} — the visit's threaded operational notes,
+ *       newest first (also readable/writable by the assigned technician — see
+ *       {@code TechVisitController})</li>
+ *   <li>{@code POST /api/admin/visits/{id}/notes} — add a note (author is always the
+ *       authenticated admin)</li>
  *   <li>{@code GET /api/admin/visits/day-load?from=&to=} — per-local-day SCHEDULED visit
  *       load (Routes month-sidebar aggregate)</li>
  * </ul>
@@ -54,26 +64,30 @@ public class AdminVisitController {
     }
 
     /**
-     * GET /api/admin/visits?status=&cursor=&limit=
+     * GET /api/admin/visits?status=&subscriberId=&cursor=&limit=
      * Cursor-paginated visit list, newest first (mirrors {@code AdminBookingController}'s
      * pagination style).
      * - {@code status}: optional filter (name of {@link VisitStatus}); invalid value → 400
+     * - {@code subscriberId}: optional filter to a single subscriber's visits (backs the
+     *   admin customer page's visit list); composable with {@code status}
      * - {@code cursor}: optional id cursor (exclusive upper bound)
      * - {@code limit}: optional page size (default 20, max 100)
      */
     @GetMapping
     public ResponseEntity<List<AdminVisitListItem>> listVisits(
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) Long subscriberId,
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer limit) {
-        return ResponseEntity.ok(visitAdminService.listVisits(status, cursor, limit));
+        return ResponseEntity.ok(visitAdminService.listVisits(status, subscriberId, cursor, limit));
     }
 
     /**
      * POST /api/admin/visits
      *
      * <p>Creates a visit for the given subscriber. Optional service IDs are attached as
-     * checklist items. Optional technician assignment.
+     * checklist items. Optional technician assignment — when supplied it must resolve to a
+     * real TECHNICIAN, else 400 {@code INVALID_REQUEST}.
      *
      * @param request validated create request
      * @return 201 with the created visit
@@ -110,12 +124,17 @@ public class AdminVisitController {
      * <p>Supports: reschedule in place (provide {@code scheduledFor} — updates the visit's
      * {@code scheduledFor}/technician and records a {@code RESCHEDULED} {@code visit_event};
      * no replacement visit is created), cancel (provide {@code status = "CANCELLED"}),
-     * assign technician (provide {@code technicianUserId}). Illegal state transitions →
-     * 409. Missing visit → 404.
+     * assign technician (provide {@code technicianUserId} — must resolve to a real
+     * TECHNICIAN, else 400), unassign technician (provide {@code unassignTechnician: true} —
+     * the only way to clear an assigned technician back to unassigned). Illegal state
+     * transitions → 409. Missing visit → 404.
      *
      * @param id      the visit id
      * @param request the patch request — validated: a present {@code scheduledFor} must be
-     *                in the future (400 {@code VALIDATION_FAILED} otherwise)
+     *                in the future (400 {@code VALIDATION_FAILED} otherwise); a present
+     *                {@code technicianUserId} must resolve to a real TECHNICIAN (400
+     *                {@code INVALID_REQUEST} otherwise); {@code technicianUserId} and
+     *                {@code unassignTechnician} are mutually exclusive (400)
      * @param auth    the authenticated admin — its principal is recorded as the acting user
      *                on any {@code visit_event} this patch produces
      * @return 200 with the updated visit
@@ -141,6 +160,57 @@ public class AdminVisitController {
     @GetMapping("/{id}/events")
     public ResponseEntity<List<VisitEventItem>> listEvents(@PathVariable Long id) {
         return ResponseEntity.ok(visitAdminService.listEvents(id));
+    }
+
+    /**
+     * GET /api/admin/visits/{id}/notes?cursor=&limit=
+     *
+     * <p>A visit's threaded operational notes, newest first, cursor-paginated (same
+     * convention as {@code GET /api/admin/visits} — an exclusive-upper-bound {@code id}
+     * cursor, default/max page size via {@code Pagination.resolveLimit}). Distinct from the
+     * visit's {@code completionNotes}/{@code materialsNotes} (single fields the technician
+     * fills in once, at completion) — this is a log, and each entry carries its author's
+     * resolved name. Same underlying rows the assigned technician can read/write via
+     * {@code GET /api/tech/visits/{id}/notes}. Missing visit → 404.
+     *
+     * @param id     the visit id
+     * @param cursor optional id cursor (exclusive upper bound)
+     * @param limit  optional page size (default 20, max 100)
+     * @param auth   the authenticated admin — recorded in the read-audit log line, not used
+     *               for authorization
+     * @return 200 with the requested page of notes, newest first
+     */
+    @GetMapping("/{id}/notes")
+    public ResponseEntity<VisitNotePage> listNotes(
+            @PathVariable Long id,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer limit,
+            Authentication auth) {
+        Long adminUserId = (Long) auth.getPrincipal();
+        return ResponseEntity.ok(visitAdminService.listNotes(id, cursor, limit, adminUserId));
+    }
+
+    /**
+     * POST /api/admin/visits/{id}/notes
+     *
+     * <p>Adds a note to the visit's operational log. The author is always the authenticated
+     * admin (the JWT principal) — there is no way to supply a different author in the
+     * request body. There is no delete or edit operation on a note; see
+     * {@link VisitNoteService#addNote}'s javadoc for why.
+     *
+     * @param id      the visit id
+     * @param request the note body
+     * @param auth    the authenticated admin — recorded as the note's author
+     * @return 201 with the created note
+     */
+    @PostMapping("/{id}/notes")
+    public ResponseEntity<VisitNoteItem> addNote(
+            @PathVariable Long id,
+            @Valid @RequestBody CreateVisitNoteRequest request,
+            Authentication auth) {
+        Long adminUserId = (Long) auth.getPrincipal();
+        VisitNoteItem note = visitAdminService.addNote(id, request.body(), adminUserId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 
     /**

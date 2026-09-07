@@ -132,6 +132,26 @@ class AdminDashboardIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void getDashboard_cancelledSubscriber_doesNotAffectMrr() throws Exception {
+        // A CANCELLED subscriber must contribute $0, same as before the per-subscriber
+        // mrrCents fix — the dashboard aggregate's meaning is unchanged by that fix (it
+        // already summed ACTIVE subscribers only).
+        long baselineMrr = readLong("$.mrrCents");
+        long baselineActive = readLong("$.activeSubscribers");
+
+        Long planTierId = completePlanTierId();
+        Subscriber cancelled = seedActiveSubscriber(planTierId);
+        cancelled.setStatus(SubscriberStatus.CANCELLED);
+        subscriberRepository.save(cancelled);
+
+        long afterMrr = readLong("$.mrrCents");
+        long afterActive = readLong("$.activeSubscribers");
+
+        assertThat(afterMrr).isEqualTo(baselineMrr);
+        assertThat(afterActive).isEqualTo(baselineActive);
+    }
+
+    @Test
     void getDashboard_pendingWalkthrough_increasesCount() throws Exception {
         long baseline = readLong("$.pendingWalkthroughs");
 
